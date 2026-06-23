@@ -71,7 +71,7 @@ export default function App() {
             <Route
               path="ventas"
               element={
-                <PrivateRoute roles={['Vendedor', 'Administrador']}>
+                <PrivateRoute roles={['Vendedor', 'Administrador', 'Gerente']}>
                   <VentasPage />
                 </PrivateRoute>
               }

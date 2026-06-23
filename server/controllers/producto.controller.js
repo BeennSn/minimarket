@@ -3,15 +3,19 @@
  * Controlador CRUD para la gestión de productos.
  */
 
-const { Producto, Categoria } = require('../models');
+const { Op } = require('sequelize');
+const { Producto, Categoria, Proveedor, EntradaMercaderia } = require('../models');
 const { presentarProducto, presentarLista } = require('../presenters/producto.presenter');
+
+const INCLUDE = [
+  { model: Categoria, as: 'categoria', attributes: ['id', 'nombre'] },
+  { model: Proveedor, as: 'proveedor', attributes: ['id', 'nombre', 'ruc'] },
+];
 
 // ─── Listar todos los productos ───────────────────────────────────────────────
 const listar = async (req, res) => {
   try {
-    const productos = await Producto.findAll({
-      include: [{ model: Categoria, as: 'categoria', attributes: ['id', 'nombre'] }],
-    });
+    const productos = await Producto.findAll({ include: INCLUDE });
     return res.status(200).json(presentarLista(productos));
   } catch (err) {
     console.error('Error en listar productos:', err);
@@ -24,7 +28,7 @@ const listarActivos = async (req, res) => {
   try {
     const productos = await Producto.findAll({
       where: { activo: true },
-      include: [{ model: Categoria, as: 'categoria', attributes: ['id', 'nombre'] }],
+      include: INCLUDE,
     });
     return res.status(200).json(presentarLista(productos));
   } catch (err) {
@@ -33,11 +37,28 @@ const listarActivos = async (req, res) => {
   }
 };
 
+// ─── Buscar producto por código de barras ─────────────────────────────────────
+const buscarPorCodigo = async (req, res) => {
+  try {
+    const producto = await Producto.findOne({
+      where: { codigo_barras: req.params.codigo },
+      include: INCLUDE,
+    });
+    if (!producto) {
+      return res.status(404).json({ mensaje: 'Producto no encontrado para ese código de barras' });
+    }
+    return res.status(200).json(presentarProducto(producto));
+  } catch (err) {
+    console.error('Error en buscarPorCodigo:', err);
+    return res.status(500).json({ mensaje: 'Error interno del servidor' });
+  }
+};
+
 // ─── Obtener un producto por ID ───────────────────────────────────────────────
 const obtener = async (req, res) => {
   try {
     const producto = await Producto.findByPk(req.params.id, {
-      include: [{ model: Categoria, as: 'categoria', attributes: ['id', 'nombre'] }],
+      include: INCLUDE,
     });
     if (!producto) {
       return res.status(404).json({ mensaje: 'Producto no encontrado' });
@@ -52,7 +73,14 @@ const obtener = async (req, res) => {
 // ─── Crear un nuevo producto ──────────────────────────────────────────────────
 const crear = async (req, res) => {
   try {
-    const { nombre, marca, categoria_id, precio, stock } = req.body;
+    const { nombre, marca, categoria_id, proveedor_id, precio, stock, codigo_barras } = req.body;
+
+    if (codigo_barras) {
+      const existe = await Producto.findOne({ where: { codigo_barras } });
+      if (existe) {
+        return res.status(400).json({ mensaje: 'El código de barras ya está registrado en otro producto' });
+      }
+    }
 
     // Verificar que la categoría exista
     if (categoria_id) {
@@ -62,20 +90,31 @@ const crear = async (req, res) => {
       }
     }
 
+    // Verificar que el proveedor exista
+    if (proveedor_id) {
+      const proveedor = await Proveedor.findByPk(proveedor_id);
+      if (!proveedor) {
+        return res.status(400).json({ mensaje: 'Proveedor no encontrado' });
+      }
+    }
+
+    const fvDefecto = new Date();
+    fvDefecto.setFullYear(fvDefecto.getFullYear() + 2);
+
     const nuevo = await Producto.create({
       nombre,
       marca,
       categoria_id,
+      proveedor_id: proveedor_id || null,
       precio,
       stock: stock || 0,
+      codigo_barras: codigo_barras || null,
+      fecha_vencimiento: fvDefecto.toISOString().split('T')[0],
       activo: true,
     });
 
-    const productoConCategoria = await Producto.findByPk(nuevo.id, {
-      include: [{ model: Categoria, as: 'categoria', attributes: ['id', 'nombre'] }],
-    });
-
-    return res.status(201).json(presentarProducto(productoConCategoria));
+    const productoCreado = await Producto.findByPk(nuevo.id, { include: INCLUDE });
+    return res.status(201).json(presentarProducto(productoCreado));
   } catch (err) {
     console.error('Error en crear producto:', err);
     return res.status(500).json({ mensaje: 'Error interno del servidor' });
@@ -90,7 +129,14 @@ const actualizar = async (req, res) => {
       return res.status(404).json({ mensaje: 'Producto no encontrado' });
     }
 
-    const { nombre, marca, categoria_id, precio } = req.body;
+    const { nombre, marca, categoria_id, proveedor_id, precio, codigo_barras, fecha_vencimiento } = req.body;
+
+    if (codigo_barras !== undefined) {
+      const existe = await Producto.findOne({ where: { codigo_barras, id: { [Op.ne]: producto.id } } });
+      if (existe) {
+        return res.status(400).json({ mensaje: 'El código de barras ya está registrado en otro producto' });
+      }
+    }
 
     // Verificar que la categoría exista (si se proporciona)
     if (categoria_id) {
@@ -100,19 +146,29 @@ const actualizar = async (req, res) => {
       }
     }
 
+    // Verificar que el proveedor exista (si se proporciona)
+    if (proveedor_id !== undefined) {
+      if (proveedor_id) {
+        const proveedor = await Proveedor.findByPk(proveedor_id);
+        if (!proveedor) {
+          return res.status(400).json({ mensaje: 'Proveedor no encontrado' });
+        }
+      }
+      producto.proveedor_id = proveedor_id || null;
+    }
+
     // Actualizar solo los campos recibidos
     if (nombre !== undefined) producto.nombre = nombre;
     if (marca !== undefined) producto.marca = marca;
     if (categoria_id !== undefined) producto.categoria_id = categoria_id;
     if (precio !== undefined) producto.precio = precio;
+    if (codigo_barras !== undefined) producto.codigo_barras = codigo_barras || null;
+    if (fecha_vencimiento !== undefined) producto.fecha_vencimiento = fecha_vencimiento || null;
 
     await producto.save();
 
-    const productoConCategoria = await Producto.findByPk(producto.id, {
-      include: [{ model: Categoria, as: 'categoria', attributes: ['id', 'nombre'] }],
-    });
-
-    return res.status(200).json(presentarProducto(productoConCategoria));
+    const productoActualizado = await Producto.findByPk(producto.id, { include: INCLUDE });
+    return res.status(200).json(presentarProducto(productoActualizado));
   } catch (err) {
     console.error('Error en actualizar producto:', err);
     return res.status(500).json({ mensaje: 'Error interno del servidor' });
@@ -151,4 +207,56 @@ const reactivar = async (req, res) => {
   }
 };
 
-module.exports = { listar, listarActivos, obtener, crear, actualizar, desactivar, reactivar };
+// ─── Productos próximos a vencer ──────────────────────────────────────────────
+const listarProximosVencer = async (req, res) => {
+  try {
+    const dias = parseInt(req.query.dias, 10) || 30;
+    const hoy = new Date();
+    const fechaLimite = new Date(hoy);
+    fechaLimite.setDate(fechaLimite.getDate() + dias);
+
+    const entradas = await EntradaMercaderia.findAll({
+      where: {
+        fecha_vencimiento: { [Op.ne]: null },
+      },
+      include: [
+        { association: 'producto', attributes: ['id', 'nombre', 'marca'] },
+      ],
+    });
+
+    const vencidos = [];
+    const porVencer = [];
+    const mapa = {};
+
+    for (const e of entradas) {
+      const fv = new Date(e.fecha_vencimiento);
+      if (!mapa[e.producto_id]) {
+        mapa[e.producto_id] = {
+          id: e.producto.id,
+          nombre: e.producto.nombre,
+          marca: e.producto.marca,
+          stock_vencido: 0,
+          stock_por_vencer: 0,
+          proxima_fecha: null,
+        };
+      }
+      if (fv < hoy) {
+        mapa[e.producto_id].stock_vencido += e.cantidad;
+      } else if (fv <= fechaLimite) {
+        mapa[e.producto_id].stock_por_vencer += e.cantidad;
+        const d = fv.toISOString().split('T')[0];
+        if (!mapa[e.producto_id].proxima_fecha || d < mapa[e.producto_id].proxima_fecha) {
+          mapa[e.producto_id].proxima_fecha = d;
+        }
+      }
+    }
+
+    const resultado = Object.values(mapa);
+    return res.status(200).json(resultado);
+  } catch (err) {
+    console.error('Error en listarProximosVencer:', err);
+    return res.status(500).json({ mensaje: 'Error interno del servidor' });
+  }
+};
+
+module.exports = { listar, listarActivos, buscarPorCodigo, obtener, crear, actualizar, desactivar, reactivar, listarProximosVencer };

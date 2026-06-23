@@ -19,6 +19,10 @@ const LogAcceso          = require('./LogAcceso');
 Producto.belongsTo(Categoria, { foreignKey: 'categoria_id', as: 'categoria' });
 Categoria.hasMany(Producto,   { foreignKey: 'categoria_id', as: 'productos' });
 
+// Producto → Proveedor
+Producto.belongsTo(Proveedor, { foreignKey: 'proveedor_id', as: 'proveedor' });
+Proveedor.hasMany(Producto,   { foreignKey: 'proveedor_id', as: 'productos' });
+
 // Venta → Usuario
 Venta.belongsTo(Usuario, { foreignKey: 'usuario_id', as: 'usuario' });
 Usuario.hasMany(Venta,   { foreignKey: 'usuario_id', as: 'ventas' });
@@ -46,6 +50,10 @@ Proveedor.hasMany(EntradaMercaderia,   { foreignKey: 'proveedor_id', as: 'entrad
 // EntradaMercaderia → Usuario
 EntradaMercaderia.belongsTo(Usuario, { foreignKey: 'usuario_id', as: 'usuario' });
 Usuario.hasMany(EntradaMercaderia,   { foreignKey: 'usuario_id', as: 'entradas' });
+
+// EntradaMercaderia → SolicitudReposicion
+EntradaMercaderia.belongsTo(SolicitudReposicion, { foreignKey: 'solicitud_id', as: 'solicitud' });
+SolicitudReposicion.hasMany(EntradaMercaderia,   { foreignKey: 'solicitud_id', as: 'entradas' });
 
 // BajaInventario → Producto
 BajaInventario.belongsTo(Producto, { foreignKey: 'producto_id', as: 'producto' });

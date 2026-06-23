@@ -1,6 +1,12 @@
 import { useState, useEffect } from 'react';
-import { Plus, Search, Pencil, UserX, UserCheck, Loader2, X } from 'lucide-react';
+import { Plus, Search, Pencil, UserX, UserCheck, X } from 'lucide-react';
 import api from '../../utils/axios';
+import Breadcrumb from '../../components/Breadcrumb';
+import Spinner from '../../components/Spinner';
+import ConfirmDialog from '../../components/ConfirmDialog';
+import Toast from '../../components/Toast';
+import { useAuth } from '../../context/AuthContext';
+import useToast from '../../hooks/useToast';
 
 function ModalProveedor({ abierto, onCerrar, onGuardar, proveedorEditando }) {
   const [nombre, setNombre] = useState('');
@@ -124,7 +130,7 @@ function ModalProveedor({ abierto, onCerrar, onGuardar, proveedorEditando }) {
               disabled={loading}
               className="flex items-center gap-2 rounded-lg bg-[#6366f1] px-4 py-2 text-sm text-white transition-colors hover:bg-indigo-600 disabled:opacity-70"
             >
-              {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+              {loading && <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />}
               Guardar
             </button>
           </div>
@@ -135,6 +141,8 @@ function ModalProveedor({ abierto, onCerrar, onGuardar, proveedorEditando }) {
 }
 
 export default function ProveedoresPage() {
+  const { usuario } = useAuth();
+  const { toast, mostrarExito, mostrarError, cerrar } = useToast();
   const [proveedores, setProveedores] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -142,6 +150,7 @@ export default function ProveedoresPage() {
   const [proveedorEditando, setProveedorEditando] = useState(null);
   const [busqueda, setBusqueda] = useState('');
   const [filtroEstado, setFiltroEstado] = useState('Todos');
+  const [confirmarEstado, setConfirmarEstado] = useState(null);
 
   const cargarProveedores = async () => {
     try {
@@ -167,16 +176,18 @@ export default function ProveedoresPage() {
 
   const esActivo = (p) => p.activo === true || p.activo == null;
 
-  const toggleEstado = async (p) => {
+  const toggleEstado = async () => {
+    if (!confirmarEstado) return;
+    const p = confirmarEstado;
     const activo = esActivo(p);
     const accion = activo ? 'desactivar' : 'reactivar';
-    if (!window.confirm(`¿Deseas ${accion} a ${p.nombre}?`)) return;
-
+    setConfirmarEstado(null);
     try {
       await api.patch(`/proveedores/${p.id}/${accion}`);
+      mostrarExito(`Proveedor ${accion}do correctamente`);
       cargarProveedores();
     } catch (err) {
-      setError(err.response?.data?.mensaje || `Error al ${accion} proveedor`);
+      mostrarError(err.response?.data?.mensaje || `Error al ${accion} proveedor`);
     }
   };
 
@@ -193,6 +204,9 @@ export default function ProveedoresPage() {
 
   return (
     <div className="space-y-6">
+      <Toast mensaje={toast.mensaje} tipo={toast.tipo} visible={toast.visible} onCerrar={cerrar} />
+      <Breadcrumb items={[{ label: 'Inicio', path: '/dashboard' }, { label: 'Proveedores' }]} />
+
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-800">Proveedores</h1>
         <button
@@ -228,9 +242,7 @@ export default function ProveedoresPage() {
       </div>
 
       {loading ? (
-        <div className="flex h-64 items-center justify-center">
-          <Loader2 className="h-6 w-6 animate-spin text-[#6366f1]" />
-        </div>
+        <Spinner texto="Cargando proveedores..." />
       ) : error ? (
         <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>
       ) : filtrados.length === 0 ? (
@@ -258,7 +270,7 @@ export default function ProveedoresPage() {
                     {p.contacto ? (
                       <span className="text-gray-500">{p.contacto}</span>
                     ) : (
-                      <span className="text-gray-400">—</span>
+                      <span className="text-gray-400">&mdash;</span>
                     )}
                   </td>
                   <td className="px-4 py-3">
@@ -281,21 +293,23 @@ export default function ProveedoresPage() {
                       >
                         <Pencil className="h-4 w-4" />
                       </button>
-                      <button
-                        onClick={() => toggleEstado(p)}
-                        className={`rounded-lg p-1.5 transition-colors ${
-                          esActivo(p)
-                            ? 'text-red-500 hover:bg-red-50'
-                            : 'text-green-500 hover:bg-green-50'
-                        }`}
-                        title={esActivo(p) ? 'Desactivar' : 'Reactivar'}
-                      >
-                        {esActivo(p) ? (
-                          <UserX className="h-4 w-4" />
-                        ) : (
-                          <UserCheck className="h-4 w-4" />
-                        )}
-                      </button>
+                      {usuario?.rol === 'Administrador' && (
+                        <button
+                          onClick={() => setConfirmarEstado(p)}
+                          className={`rounded-lg p-1.5 transition-colors ${
+                            esActivo(p)
+                              ? 'text-red-500 hover:bg-red-50'
+                              : 'text-green-500 hover:bg-green-50'
+                          }`}
+                          title={esActivo(p) ? 'Desactivar' : 'Reactivar'}
+                        >
+                          {esActivo(p) ? (
+                            <UserX className="h-4 w-4" />
+                          ) : (
+                            <UserCheck className="h-4 w-4" />
+                          )}
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -310,6 +324,15 @@ export default function ProveedoresPage() {
         onCerrar={() => { setModalAbierto(false); setProveedorEditando(null); }}
         onGuardar={handleGuardar}
         proveedorEditando={proveedorEditando}
+      />
+
+      <ConfirmDialog
+        abierto={!!confirmarEstado}
+        titulo={confirmarEstado ? `${esActivo(confirmarEstado) ? 'Desactivar' : 'Reactivar'} proveedor` : ''}
+        mensaje={confirmarEstado ? `¿Deseas ${esActivo(confirmarEstado) ? 'desactivar' : 'reactivar'} a ${confirmarEstado.nombre}?` : ''}
+        onConfirmar={toggleEstado}
+        onCancelar={() => setConfirmarEstado(null)}
+        colorConfirmar={confirmarEstado && esActivo(confirmarEstado) ? '#ef4444' : '#10b981'}
       />
     </div>
   );

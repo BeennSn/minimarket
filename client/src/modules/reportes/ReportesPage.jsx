@@ -1,3 +1,429 @@
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import { Download, Loader2, FileText, ShoppingCart, DollarSign, TrendingUp } from 'lucide-react';
+import api from '../../utils/axios';
+import Breadcrumb from '../../components/Breadcrumb';
+
+function formatFecha(dia) {
+  if (!dia) return '';
+  const date = new Date(dia + 'T00:00:00');
+  return `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function formatFechaCompleta(dia) {
+  if (!dia) return '';
+  const date = new Date(dia + 'T00:00:00');
+  const meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Setiembre','Octubre','Noviembre','Diciembre'];
+  return `${date.getDate()} de ${meses[date.getMonth()]} del ${date.getFullYear()}`;
+}
+
 export default function ReportesPage() {
-  return <div className="p-4">ReportesPage</div>;
+  const [resumen, setResumen] = useState(null);
+  const [ventasPorDia, setVentasPorDia] = useState([]);
+  const [metodoPago, setMetodoPago] = useState([]);
+  const [productosTop, setProductosTop] = useState([]);
+  const [fechaInicio, setFechaInicio] = useState('');
+  const [fechaHasta, setFechaHasta] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [generando, setGenerando] = useState(false);
+  const datosRef = useRef(null);
+
+  const buildParams = useCallback(() => {
+    const params = {};
+    if (fechaInicio) params.fecha_inicio = fechaInicio;
+    if (fechaHasta) params.fecha_hasta = fechaHasta;
+    return params;
+  }, [fechaInicio, fechaHasta]);
+
+  const cargarDatos = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const params = buildParams();
+      const [rRes, rDia, rMet, rTop] = await Promise.all([
+        api.get('/reportes/ventas/resumen', { params }),
+        api.get('/reportes/ventas/por-dia', { params }),
+        api.get('/reportes/ventas/por-metodo-pago', { params }),
+        api.get('/reportes/ventas/productos-top', { params: { ...params, limite: 10 } }),
+      ]);
+      setResumen(rRes.data);
+      setVentasPorDia(Array.isArray(rDia.data) ? rDia.data : []);
+      setMetodoPago(Array.isArray(rMet.data) ? rMet.data : []);
+      setProductosTop(Array.isArray(rTop.data) ? rTop.data : []);
+    } catch (err) {
+      setError(err.response?.data?.mensaje || 'Error al cargar reportes');
+    } finally {
+      setLoading(false);
+    }
+  }, [buildParams]);
+
+  useEffect(() => { cargarDatos(); }, [cargarDatos]);
+
+  useEffect(() => {
+    datosRef.current = { resumen, ventasPorDia, metodoPago, productosTop, fechaInicio, fechaHasta };
+  }, [resumen, ventasPorDia, metodoPago, productosTop, fechaInicio, fechaHasta]);
+
+  const generarPDF = async () => {
+    setGenerando(true);
+    try {
+      const d = datosRef.current;
+      const hoy = new Date();
+      const tituloFecha = `Reporte del ${d.fechaInicio ? formatFechaCompleta(d.fechaInicio) : 'inicio'} al ${d.fechaHasta ? formatFechaCompleta(d.fechaHasta) : formatFechaCompleta(hoy.toISOString().split('T')[0])}`;
+
+      const doc = new jsPDF();
+      let y = 20;
+
+      doc.setFontSize(18);
+      doc.setFont('helvetica', 'bold');
+      doc.text('MiniMarket', 105, y, { align: 'center' });
+      y += 8;
+      doc.setFontSize(14);
+      doc.text('Reporte de Ventas', 105, y, { align: 'center' });
+      y += 7;
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(100);
+      doc.text(tituloFecha, 105, y, { align: 'center' });
+      y += 12;
+
+      // ─── Resumen ────────────────────────────────────────────────────────────
+      doc.setTextColor(0);
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Resumen de Ventas', 14, y);
+      y += 7;
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      const r = d.resumen || {};
+      doc.text(`Total de Ventas: ${r.total_ventas ?? 0}`, 20, y); y += 6;
+      doc.text(`Ingresos Totales: S/ ${Number(r.monto_total ?? 0).toFixed(2)}`, 20, y); y += 6;
+      doc.text(`Ticket Promedio: S/ ${Number(r.promedio_venta ?? 0).toFixed(2)}`, 20, y); y += 12;
+
+      // ─── Ventas por día ────────────────────────────────────────────────────
+      if (d.ventasPorDia?.length > 0) {
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Ventas por Día', 14, y);
+        y += 4;
+        autoTable(doc, {
+          startY: y,
+          head: [['Fecha', 'Ventas', 'Monto Total']],
+          body: d.ventasPorDia.map((v) => [
+            formatFecha(v.fecha),
+            String(v.total_ventas ?? 0),
+            `S/ ${Number(v.monto_total ?? 0).toFixed(2)}`,
+          ]),
+          theme: 'striped',
+          headStyles: { fillColor: [99, 102, 241] },
+          styles: { fontSize: 9 },
+          margin: { left: 14 },
+        });
+        y = doc.lastAutoTable.finalY + 12;
+      }
+
+      // ─── Ventas por método de pago ─────────────────────────────────────────
+      if (d.metodoPago?.length > 0) {
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Ventas por Método de Pago', 14, y);
+        y += 4;
+        autoTable(doc, {
+          startY: y,
+          head: [['Método', 'Ventas', 'Monto Total']],
+          body: d.metodoPago.map((m) => [
+            m.metodo_pago,
+            String(m.total_ventas ?? 0),
+            `S/ ${Number(m.monto_total ?? 0).toFixed(2)}`,
+          ]),
+          theme: 'striped',
+          headStyles: { fillColor: [99, 102, 241] },
+          styles: { fontSize: 9 },
+          margin: { left: 14 },
+        });
+        y = doc.lastAutoTable.finalY + 12;
+      }
+
+      // ─── Top productos ─────────────────────────────────────────────────────
+      if (d.productosTop?.length > 0) {
+        if (y > 240) { doc.addPage(); y = 20; }
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Top 10 Productos Más Vendidos', 14, y);
+        y += 4;
+        autoTable(doc, {
+          startY: y,
+          head: [['#', 'Producto', 'Marca', 'Unidades', 'Ingresos']],
+          body: d.productosTop.map((p, i) => [
+            String(i + 1),
+            p.nombre || '',
+            p.marca || '',
+            String(p.total_vendido ?? 0),
+            `S/ ${Number(p.ingreso_total ?? 0).toFixed(2)}`,
+          ]),
+          theme: 'striped',
+          headStyles: { fillColor: [99, 102, 241] },
+          styles: { fontSize: 9 },
+          margin: { left: 14 },
+        });
+        y = doc.lastAutoTable.finalY + 12;
+      }
+
+      // ─── Footer ────────────────────────────────────────────────────────────
+      doc.setFontSize(8);
+      doc.setTextColor(150);
+      doc.text(`Generado el ${hoy.toLocaleDateString('es-PE')} a las ${hoy.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}`, 105, 285, { align: 'center' });
+
+      doc.save('reporte_ventas.pdf');
+    } catch (err) {
+      console.error('Error al generar PDF:', err);
+    } finally {
+      setGenerando(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex h-96 items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="h-6 w-6 animate-spin text-[#6366f1]" />
+          <span className="text-sm text-gray-400">Cargando reportes...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex h-96 items-center justify-center">
+        <div className="rounded-lg bg-red-50 px-6 py-4 text-sm text-red-600">{error}</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <Breadcrumb items={[{ label: 'Inicio', path: '/dashboard' }, { label: 'Reportes' }]} />
+
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-800">Reporte de Ventas</h1>
+          <p className="mt-1 text-sm text-gray-500">Genera reportes detallados de ventas en PDF</p>
+        </div>
+        <button
+          onClick={generarPDF}
+          disabled={generando}
+          className="flex items-center gap-2 rounded-lg bg-[#6366f1] px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-indigo-600 disabled:opacity-70"
+        >
+          {generando ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Download className="h-4 w-4" />
+          )}
+          {generando ? 'Generando...' : 'Descargar Reporte PDF'}
+        </button>
+      </div>
+
+      <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+        <div className="flex flex-wrap items-end gap-4">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">Desde</label>
+            <input
+              type="date" value={fechaInicio}
+              onChange={(e) => setFechaInicio(e.target.value)}
+              className="rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">Hasta</label>
+            <input
+              type="date" value={fechaHasta}
+              onChange={(e) => setFechaHasta(e.target.value)}
+              className="rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            />
+          </div>
+          <button
+            onClick={cargarDatos}
+            className="rounded-lg bg-[#6366f1] px-4 py-2 text-sm text-white transition-colors hover:bg-indigo-600"
+          >
+            Aplicar filtros
+          </button>
+          <button
+            onClick={() => { setFechaInicio(''); setFechaHasta(''); cargarDatos(); }}
+            className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-500 transition-colors hover:bg-gray-50"
+          >
+            Limpiar
+          </button>
+        </div>
+      </div>
+
+      {/* ─── Resumen ──────────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-sm text-gray-500">Total de Ventas</p>
+              <p className="mt-1 text-3xl font-bold text-gray-800">{resumen?.total_ventas ?? 0}</p>
+            </div>
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-50">
+              <ShoppingCart className="h-5 w-5 text-[#6366f1]" />
+            </div>
+          </div>
+        </div>
+        <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-sm text-gray-500">Ingresos Totales</p>
+              <p className="mt-1 text-3xl font-bold text-gray-800">S/ {Number(resumen?.monto_total ?? 0).toFixed(2)}</p>
+            </div>
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-50">
+              <DollarSign className="h-5 w-5 text-emerald-500" />
+            </div>
+          </div>
+        </div>
+        <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-sm text-gray-500">Ticket Promedio</p>
+              <p className="mt-1 text-3xl font-bold text-gray-800">S/ {Number(resumen?.promedio_venta ?? 0).toFixed(2)}</p>
+            </div>
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-50">
+              <TrendingUp className="h-5 w-5 text-amber-500" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ─── Top 10 Productos ──────────────────────────────────────────────────── */}
+      <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="font-semibold text-gray-700">Top 10 productos más vendidos</h2>
+          <div className="flex items-center gap-1 text-sm text-gray-400">
+            <FileText className="h-4 w-4" />
+            <span>Se incluirá en el PDF</span>
+          </div>
+        </div>
+        {productosTop.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="bg-[#6366f1] text-white">
+                  <th className="px-4 py-3 font-medium">#</th>
+                  <th className="px-4 py-3 font-medium">Producto</th>
+                  <th className="px-4 py-3 font-medium">Marca</th>
+                  <th className="px-4 py-3 font-medium">Unidades vendidas</th>
+                  <th className="px-4 py-3 font-medium">Ingresos totales</th>
+                </tr>
+              </thead>
+              <tbody>
+                {productosTop.map((p, i) => {
+                  const maxVendido = productosTop.length > 0 ? Math.max(...productosTop.map((x) => x.total_vendido)) : 1;
+                  return (
+                    <tr key={p.producto_id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                      <td className="px-4 py-3">
+                        {i === 0 ? (
+                          <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-yellow-400 text-xs font-bold text-white">1</span>
+                        ) : i === 1 ? (
+                          <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-gray-300 text-xs font-bold text-white">2</span>
+                        ) : i === 2 ? (
+                          <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-amber-700 text-xs font-bold text-white">3</span>
+                        ) : (
+                          <span className="text-sm text-gray-400">{i + 1}</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="text-gray-800">{p.nombre}</p>
+                        <div className="mt-1 h-1.5 w-full rounded-full bg-gray-100">
+                          <div
+                            className="h-1.5 rounded-full"
+                            style={{ width: `${(p.total_vendido / maxVendido) * 100}%`, backgroundColor: '#6366f1', opacity: 0.2 }}
+                          />
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-gray-500">{p.marca}</td>
+                      <td className="px-4 py-3">
+                        <span className="inline-block rounded-full bg-[#6366f1] px-2.5 py-0.5 text-xs font-medium text-white">
+                          {p.total_vendido}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 font-semibold text-gray-800">
+                        S/ {Number(p.ingreso_total).toFixed(2)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="flex h-32 items-center justify-center text-sm text-gray-400">
+            No hay datos de ventas aún
+          </div>
+        )}
+      </div>
+
+      {/* ─── Ventas por día ──────────────────────────────────────────────────── */}
+      <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+        <h2 className="mb-4 font-semibold text-gray-700">Ventas por día</h2>
+        {ventasPorDia.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="bg-[#6366f1] text-white">
+                  <th className="px-4 py-3 font-medium">Fecha</th>
+                  <th className="px-4 py-3 font-medium">Ventas</th>
+                  <th className="px-4 py-3 font-medium">Monto Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ventasPorDia.map((v, i) => (
+                  <tr key={v.fecha || i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                    <td className="px-4 py-3 text-gray-700">{formatFecha(v.fecha)}</td>
+                    <td className="px-4 py-3 text-gray-600">{v.total_ventas ?? 0}</td>
+                    <td className="px-4 py-3 font-semibold text-gray-800">S/ {Number(v.monto_total ?? 0).toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="flex h-32 items-center justify-center text-sm text-gray-400">
+            No hay ventas en el período seleccionado
+          </div>
+        )}
+      </div>
+
+      {/* ─── Ventas por método de pago ────────────────────────────────────────── */}
+      <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+        <h2 className="mb-4 font-semibold text-gray-700">Ventas por método de pago</h2>
+        {metodoPago.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="bg-[#6366f1] text-white">
+                  <th className="px-4 py-3 font-medium">Método de Pago</th>
+                  <th className="px-4 py-3 font-medium">Ventas</th>
+                  <th className="px-4 py-3 font-medium">Monto Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {metodoPago.map((m, i) => (
+                  <tr key={m.metodo_pago || i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                    <td className="px-4 py-3 text-gray-700">{m.metodo_pago}</td>
+                    <td className="px-4 py-3 text-gray-600">{m.total_ventas ?? 0}</td>
+                    <td className="px-4 py-3 font-semibold text-gray-800">S/ {Number(m.monto_total ?? 0).toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="flex h-32 items-center justify-center text-sm text-gray-400">
+            No hay datos de ventas en el período seleccionado
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }

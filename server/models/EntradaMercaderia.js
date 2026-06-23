@@ -35,6 +35,18 @@ const EntradaMercaderia = sequelize.define('EntradaMercaderia', {
       key: 'id',
     },
   },
+  solicitud_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: 'solicitudes_reposicion',
+      key: 'id',
+    },
+  },
+  fecha_vencimiento: {
+    type: DataTypes.DATEONLY,
+    allowNull: true,
+  },
 }, {
   tableName: 'entradas_mercaderia',
   timestamps: true,

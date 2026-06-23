@@ -12,12 +12,16 @@ const armarWhereFecha = (req) => {
   if (!fecha_inicio && !fecha_hasta) return {};
 
   if (fecha_inicio && fecha_hasta) {
-    return { createdAt: { [Op.between]: [new Date(fecha_inicio), new Date(fecha_hasta)] } };
+    const hasta = new Date(fecha_hasta);
+    hasta.setDate(hasta.getDate() + 1);
+    return { createdAt: { [Op.between]: [new Date(fecha_inicio), hasta] } };
   }
   if (fecha_inicio) {
     return { createdAt: { [Op.gte]: new Date(fecha_inicio) } };
   }
-  return { createdAt: { [Op.lte]: new Date(fecha_hasta) } };
+  const hasta = new Date(fecha_hasta);
+  hasta.setDate(hasta.getDate() + 1);
+  return { createdAt: { [Op.lt]: hasta } };
 };
 
 const resumenVentas = async (req, res) => {
@@ -50,7 +54,7 @@ const productosTop = async (req, res) => {
     ];
 
     if (Object.keys(whereVenta).length > 0) {
-      includeOpciones.push({ association: 'venta', required: true, where: whereVenta });
+      includeOpciones.push({ association: 'venta', required: true, where: whereVenta, attributes: [] });
     }
 
     const data = await DetalleVenta.findAll({
@@ -60,10 +64,15 @@ const productosTop = async (req, res) => {
         [sequelize.fn('SUM', sequelize.col('subtotal')), 'ingreso_total'],
       ],
       include: includeOpciones,
-      group: ['producto_id', 'producto.id'],
+      group: [
+        sequelize.col('DetalleVenta.producto_id'),
+        sequelize.col('producto.id'),
+        sequelize.col('producto.nombre'),
+        sequelize.col('producto.marca'),
+      ],
       order: [[sequelize.literal('total_vendido'), 'DESC']],
       limit: parseInt(limite) || 10,
-      raw: true,
+      subQuery: false,
     });
 
     return res.status(200).json(data.map(presentarProductoTop));
@@ -84,8 +93,9 @@ const ventasPorDia = async (req, res) => {
         [sequelize.fn('COUNT', sequelize.col('id')), 'total_ventas'],
         [sequelize.fn('SUM', sequelize.col('monto_total')), 'monto_total'],
       ],
-      group: [sequelize.literal('fecha')],
-      order: [[sequelize.literal('fecha'), 'ASC']],
+      group: [sequelize.fn('DATE', sequelize.col('createdAt'))],
+      order: [[sequelize.fn('DATE', sequelize.col('createdAt')), 'ASC']],
+      raw: true,
     });
 
     return res.status(200).json(data.map(presentarVentasPorDia));
@@ -107,6 +117,7 @@ const ventasPorMetodoPago = async (req, res) => {
         [sequelize.fn('SUM', sequelize.col('monto_total')), 'monto_total'],
       ],
       group: ['metodo_pago'],
+      raw: true,
     });
 
     return res.status(200).json(data.map(presentarMetodoPago));

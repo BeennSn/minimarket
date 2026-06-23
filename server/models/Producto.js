@@ -34,6 +34,23 @@ const Producto = sequelize.define('Producto', {
     type: DataTypes.INTEGER,
     defaultValue: 0,
   },
+  proveedor_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: 'proveedores',
+      key: 'id',
+    },
+  },
+  codigo_barras: {
+    type: DataTypes.STRING,
+    unique: true,
+    allowNull: true,
+  },
+  fecha_vencimiento: {
+    type: DataTypes.DATEONLY,
+    allowNull: true,
+  },
   activo: {
     type: DataTypes.BOOLEAN,
     defaultValue: true,

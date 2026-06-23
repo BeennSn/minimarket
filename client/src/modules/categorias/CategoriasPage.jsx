@@ -1,6 +1,12 @@
 import { useState, useEffect } from 'react';
-import { Plus, Search, Pencil, Trash2, Loader2, X } from 'lucide-react';
+import { Plus, Search, Pencil, Trash2, X } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 import api from '../../utils/axios';
+import Breadcrumb from '../../components/Breadcrumb';
+import Spinner from '../../components/Spinner';
+import ConfirmDialog from '../../components/ConfirmDialog';
+import Toast from '../../components/Toast';
+import useToast from '../../hooks/useToast';
 
 function ModalCategoria({ abierto, onCerrar, onGuardar, categoriaEditando }) {
   const [nombre, setNombre] = useState('');
@@ -77,7 +83,7 @@ function ModalCategoria({ abierto, onCerrar, onGuardar, categoriaEditando }) {
               disabled={loading}
               className="flex items-center gap-2 rounded-lg bg-[#6366f1] px-4 py-2 text-sm text-white transition-colors hover:bg-indigo-600 disabled:opacity-70"
             >
-              {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+              {loading && <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />}
               Guardar
             </button>
           </div>
@@ -88,12 +94,15 @@ function ModalCategoria({ abierto, onCerrar, onGuardar, categoriaEditando }) {
 }
 
 export default function CategoriasPage() {
+  const { usuario } = useAuth();
+  const { toast, mostrarExito, mostrarError, cerrar } = useToast();
   const [categorias, setCategorias] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [modalAbierto, setModalAbierto] = useState(false);
   const [categoriaEditando, setCategoriaEditando] = useState(null);
   const [busqueda, setBusqueda] = useState('');
+  const [confirmarEliminar, setConfirmarEliminar] = useState(null);
 
   const cargarCategorias = async () => {
     try {
@@ -117,14 +126,16 @@ export default function CategoriasPage() {
     cargarCategorias();
   };
 
-  const handleEliminar = async (c) => {
-    if (!window.confirm(`¿Eliminar categoría "${c.nombre}"?`)) return;
+  const handleEliminar = async () => {
+    if (!confirmarEliminar) return;
+    const c = confirmarEliminar;
+    setConfirmarEliminar(null);
     try {
       await api.delete(`/categorias/${c.id}`);
+      mostrarExito('Categoría eliminada correctamente');
       cargarCategorias();
     } catch (err) {
-      const msg = err.response?.data?.mensaje || err.response?.data?.message || 'Error al eliminar';
-      setError(msg);
+      mostrarError(err.response?.data?.mensaje || err.response?.data?.message || 'Error al eliminar');
     }
   };
 
@@ -134,6 +145,9 @@ export default function CategoriasPage() {
 
   return (
     <div className="space-y-6">
+      <Toast mensaje={toast.mensaje} tipo={toast.tipo} visible={toast.visible} onCerrar={cerrar} />
+      <Breadcrumb items={[{ label: 'Inicio', path: '/dashboard' }, { label: 'Categorías' }]} />
+
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-800">Categorías</h1>
         <button
@@ -157,9 +171,7 @@ export default function CategoriasPage() {
       </div>
 
       {loading ? (
-        <div className="flex h-64 items-center justify-center">
-          <Loader2 className="h-6 w-6 animate-spin text-[#6366f1]" />
-        </div>
+        <Spinner texto="Cargando categorías..." />
       ) : error ? (
         <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>
       ) : filtradas.length === 0 ? (
@@ -190,13 +202,15 @@ export default function CategoriasPage() {
                       >
                         <Pencil className="h-4 w-4" />
                       </button>
-                      <button
-                        onClick={() => handleEliminar(c)}
-                        className="rounded-lg p-1.5 text-red-500 transition-colors hover:bg-red-50"
-                        title="Eliminar"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
+                      {usuario?.rol === 'Administrador' && (
+                        <button
+                          onClick={() => setConfirmarEliminar(c)}
+                          className="rounded-lg p-1.5 text-red-500 transition-colors hover:bg-red-50"
+                          title="Eliminar"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -211,6 +225,14 @@ export default function CategoriasPage() {
         onCerrar={() => { setModalAbierto(false); setCategoriaEditando(null); }}
         onGuardar={handleGuardar}
         categoriaEditando={categoriaEditando}
+      />
+
+      <ConfirmDialog
+        abierto={!!confirmarEliminar}
+        titulo="Eliminar categoría"
+        mensaje={confirmarEliminar ? `¿Eliminar categoría "${confirmarEliminar.nombre}"?` : ''}
+        onConfirmar={handleEliminar}
+        onCancelar={() => setConfirmarEliminar(null)}
       />
     </div>
   );

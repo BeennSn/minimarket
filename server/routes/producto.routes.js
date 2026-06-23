@@ -23,6 +23,12 @@ router.get(
 // GET  /api/productos/activos → cualquier rol autenticado (para POS)
 router.get('/activos', productoController.listarActivos);
 
+// GET  /api/productos/vencer  → cualquier rol autenticado (stock próximo a vencer)
+router.get('/vencer', productoController.listarProximosVencer);
+
+// GET  /api/productos/codigo/:codigo → cualquier rol autenticado (para escáner)
+router.get('/codigo/:codigo', productoController.buscarPorCodigo);
+
 // GET  /api/productos/:id     → cualquier rol autenticado
 router.get('/:id', productoController.obtener);
 

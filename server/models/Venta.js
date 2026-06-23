@@ -39,6 +39,26 @@ const Venta = sequelize.define('Venta', {
     type: DataTypes.DECIMAL(10, 2),
     allowNull: true,
   },
+  tipo_comprobante: {
+    type: DataTypes.ENUM('Boleta', 'Factura'),
+    defaultValue: 'Boleta',
+  },
+  cliente_dni: {
+    type: DataTypes.STRING(8),
+    allowNull: true,
+  },
+  cliente_ruc: {
+    type: DataTypes.STRING(11),
+    allowNull: true,
+  },
+  cliente_razon_social: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  cliente_direccion: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
 }, {
   tableName: 'ventas',
   timestamps: true,

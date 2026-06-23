@@ -10,11 +10,18 @@ const {
 } = require('../models');
 const { presentarEntrada, presentarBaja, presentarSolicitud } = require('../presenters/inventario.presenter');
 
+const INCLUDES_ENTRADA = [
+  { association: 'producto', attributes: ['id', 'nombre', 'marca'] },
+  { association: 'proveedor', attributes: ['id', 'nombre'] },
+  { association: 'usuario', attributes: ['id', 'nombre'] },
+  { association: 'solicitud', attributes: ['id'] },
+];
+
 // ─── Entradas ─────────────────────────────────────────────────────────────────
 
 const registrarEntrada = async (req, res) => {
   try {
-    const { producto_id, proveedor_id, cantidad } = req.body;
+    const { producto_id, proveedor_id, cantidad, fecha_vencimiento } = req.body;
 
     if (!cantidad || cantidad <= 0) {
       return res.status(400).json({ mensaje: 'La cantidad debe ser mayor a 0' });
@@ -36,6 +43,7 @@ const registrarEntrada = async (req, res) => {
         proveedor_id,
         cantidad,
         usuario_id: req.usuario.id,
+        fecha_vencimiento: fecha_vencimiento || null,
       }, { transaction: t });
 
       producto.stock += cantidad;
@@ -45,11 +53,7 @@ const registrarEntrada = async (req, res) => {
     });
 
     const entradaCompleta = await EntradaMercaderia.findByPk(entrada.id, {
-      include: [
-        { association: 'producto', attributes: ['id', 'nombre', 'marca'] },
-        { association: 'proveedor', attributes: ['id', 'nombre'] },
-        { association: 'usuario', attributes: ['id', 'nombre'] },
-      ],
+      include: INCLUDES_ENTRADA,
     });
 
     return res.status(201).json(presentarEntrada(entradaCompleta));
@@ -81,11 +85,7 @@ const listarEntradas = async (req, res) => {
 
     const entradas = await EntradaMercaderia.findAll({
       where,
-      include: [
-        { association: 'producto', attributes: ['id', 'nombre', 'marca'] },
-        { association: 'proveedor', attributes: ['id', 'nombre'] },
-        { association: 'usuario', attributes: ['id', 'nombre'] },
-      ],
+      include: INCLUDES_ENTRADA,
       order: [['createdAt', 'DESC']],
     });
 
@@ -124,6 +124,7 @@ const registrarBaja = async (req, res) => {
       }, { transaction: t });
 
       producto.stock -= cantidad;
+      if (producto.stock === 0) producto.fecha_vencimiento = null;
       await producto.save({ transaction: t });
 
       return bajaCreada;
@@ -203,12 +204,7 @@ const crearSolicitud = async (req, res) => {
     });
 
     const solicitudCompleta = await SolicitudReposicion.findByPk(solicitud.id, {
-      include: [
-        { association: 'producto', attributes: ['id', 'nombre', 'marca'] },
-        { association: 'proveedor', attributes: ['id', 'nombre'] },
-        { association: 'solicitante', attributes: ['id', 'nombre'] },
-        { association: 'aprobador', attributes: ['id', 'nombre'] },
-      ],
+      include: INCLUDE_SOLICITUD,
     });
 
     return res.status(201).json(presentarSolicitud(solicitudCompleta));
@@ -229,12 +225,7 @@ const listarSolicitudes = async (req, res) => {
 
     const solicitudes = await SolicitudReposicion.findAll({
       where,
-      include: [
-        { association: 'producto', attributes: ['id', 'nombre', 'marca'] },
-        { association: 'proveedor', attributes: ['id', 'nombre'] },
-        { association: 'solicitante', attributes: ['id', 'nombre'] },
-        { association: 'aprobador', attributes: ['id', 'nombre'] },
-      ],
+      include: INCLUDE_SOLICITUD,
       order: [['createdAt', 'DESC']],
     });
 
@@ -314,9 +305,18 @@ const rechazarSolicitud = async (req, res) => {
   }
 };
 
+const INCLUDE_SOLICITUD = [
+  { association: 'producto', attributes: ['id', 'nombre', 'marca'] },
+  { association: 'proveedor', attributes: ['id', 'nombre'] },
+  { association: 'solicitante', attributes: ['id', 'nombre'] },
+  { association: 'aprobador', attributes: ['id', 'nombre'] },
+];
+
 const completarSolicitud = async (req, res) => {
   try {
-    const solicitud = await SolicitudReposicion.findByPk(req.params.id);
+    const solicitud = await SolicitudReposicion.findByPk(req.params.id, {
+      include: [{ association: 'producto', attributes: ['id', 'nombre', 'marca', 'stock'] }],
+    });
     if (!solicitud) {
       return res.status(404).json({ mensaje: 'Solicitud no encontrada' });
     }
@@ -325,20 +325,48 @@ const completarSolicitud = async (req, res) => {
       return res.status(400).json({ mensaje: 'Solo se pueden completar solicitudes aprobadas' });
     }
 
-    solicitud.estado = 'Completada';
-    await solicitud.save();
+    if (!solicitud.proveedor_id) {
+      return res.status(400).json({ mensaje: 'La solicitud no tiene un proveedor asignado' });
+    }
+
+    const cantidadRecibida = req.body.cantidad_recibida
+      ? parseInt(req.body.cantidad_recibida, 10)
+      : solicitud.cantidad;
+
+    if (cantidadRecibida <= 0) {
+      return res.status(400).json({ mensaje: 'La cantidad recibida debe ser mayor a 0' });
+    }
+
+    const fechaVencimiento = req.body.fecha_vencimiento || null;
+
+    await sequelize.transaction(async (t) => {
+      solicitud.estado = 'Completada';
+      await solicitud.save({ transaction: t });
+
+      await EntradaMercaderia.create({
+        producto_id: solicitud.producto_id,
+        proveedor_id: solicitud.proveedor_id,
+        cantidad: cantidadRecibida,
+        usuario_id: req.usuario.id,
+        solicitud_id: solicitud.id,
+        fecha_vencimiento: fechaVencimiento,
+      }, { transaction: t });
+
+      const producto = await Producto.findByPk(solicitud.producto_id, { transaction: t });
+      if (!producto) throw { status: 404, mensaje: 'Producto no encontrado' };
+      producto.stock += cantidadRecibida;
+      await producto.save({ transaction: t });
+    });
 
     const solicitudCompleta = await SolicitudReposicion.findByPk(solicitud.id, {
-      include: [
-        { association: 'producto', attributes: ['id', 'nombre', 'marca'] },
-        { association: 'proveedor', attributes: ['id', 'nombre'] },
-        { association: 'solicitante', attributes: ['id', 'nombre'] },
-        { association: 'aprobador', attributes: ['id', 'nombre'] },
-      ],
+      include: INCLUDE_SOLICITUD,
     });
 
     return res.status(200).json(presentarSolicitud(solicitudCompleta));
   } catch (err) {
+    if (err.status && err.mensaje) {
+      return res.status(err.status).json({ mensaje: err.mensaje });
+    }
     console.error('Error en completarSolicitud:', err);
     return res.status(500).json({ mensaje: 'Error interno del servidor' });
   }

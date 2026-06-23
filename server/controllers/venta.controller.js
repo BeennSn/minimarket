@@ -4,7 +4,7 @@ const { presentarVenta, presentarLista } = require('../presenters/venta.presente
 
 const registrar = async (req, res) => {
   try {
-    const { cliente_id, metodo_pago, monto_recibido, items } = req.body;
+    const { cliente_id, metodo_pago, monto_recibido, items, tipo_comprobante, cliente_dni, cliente_ruc, cliente_razon_social, cliente_direccion } = req.body;
 
     if (!items || items.length === 0) {
       return res.status(400).json({ mensaje: 'La venta debe tener al menos un producto' });
@@ -34,6 +34,7 @@ const registrar = async (req, res) => {
         });
 
         producto.stock -= item.cantidad;
+        if (producto.stock === 0) producto.fecha_vencimiento = null;
         await producto.save({ transaction: t });
       }
 
@@ -52,6 +53,11 @@ const registrar = async (req, res) => {
         monto_total:   monto_total.toFixed(2),
         monto_recibido: metodo_pago === 'Efectivo' ? monto_recibido : null,
         vuelto:        vuelto.toFixed(2),
+        tipo_comprobante: tipo_comprobante || 'Boleta',
+        cliente_dni:   cliente_dni || null,
+        cliente_ruc:   cliente_ruc || null,
+        cliente_razon_social: cliente_razon_social || null,
+        cliente_direccion: cliente_direccion || null,
       }, { transaction: t });
 
       const detalles = await DetalleVenta.bulkCreate(

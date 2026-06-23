@@ -35,7 +35,7 @@ router.get(
 // Solicitudes
 router.post(
   '/solicitudes',
-  verificarRol('Almacenero'),
+  verificarRol('Almacenero', 'Administrador'),
   inventarioController.crearSolicitud
 );
 

@@ -8,6 +8,7 @@ import {
 } from 'recharts';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../utils/axios';
+import Breadcrumb from '../../components/Breadcrumb';
 
 function KpiCard({ titulo, valor, icono: Icono, color, prefijo }) {
   return (
@@ -117,6 +118,8 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
+      <Breadcrumb items={[{ label: 'Inicio', path: '/dashboard' }, { label: 'Dashboard' }]} />
+
       <div>
         <h1 className="text-2xl font-bold text-gray-800">Dashboard</h1>
         <p className="mt-1 text-sm text-gray-500">

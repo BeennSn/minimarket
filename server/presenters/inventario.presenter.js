@@ -14,6 +14,11 @@ const presentarEntrada = (entrada) => ({
     id:     entrada.usuario.id,
     nombre: entrada.usuario.nombre,
   },
+  solicitud_id: entrada.solicitud_id || null,
+  solicitud: entrada.solicitud
+    ? { id: entrada.solicitud.id }
+    : null,
+  fecha_vencimiento: entrada.fecha_vencimiento || null,
   createdAt: entrada.createdAt,
 });
 

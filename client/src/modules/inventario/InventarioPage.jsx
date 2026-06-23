@@ -1,19 +1,14 @@
 import { useState, useEffect } from 'react';
 import { Loader2, CheckCircle } from 'lucide-react';
 import api from '../../utils/axios';
-
-function formatearFecha(str) {
-  if (!str) return '';
-  const d = new Date(str);
-  const dd = String(d.getDate()).padStart(2, '0');
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const yy = d.getFullYear();
-  const hh = String(d.getHours()).padStart(2, '0');
-  const min = String(d.getMinutes()).padStart(2, '0');
-  return `${dd}/${mm}/${yy} ${hh}:${min}`;
-}
+import { formatFechaHora } from '../../utils/format';
+import Breadcrumb from '../../components/Breadcrumb';
+import Spinner from '../../components/Spinner';
+import Toast from '../../components/Toast';
+import useToast from '../../hooks/useToast';
 
 export default function InventarioPage() {
+  const { toast, mostrarExito, mostrarError, cerrar } = useToast();
   const [tabActiva, setTabActiva] = useState('entradas');
 
   const [productos, setProductos] = useState([]);
@@ -27,8 +22,8 @@ export default function InventarioPage() {
   const [proveedorId, setProveedorId] = useState('');
   const [cantidad, setCantidad] = useState('');
   const [motivo, setMotivo] = useState('');
+  const [fechaVencimiento, setFechaVencimiento] = useState('');
   const [enviando, setEnviando] = useState(false);
-  const [mensaje, setMensaje] = useState('');
 
   const cargarDatos = async () => {
     setLoading(true);
@@ -53,11 +48,6 @@ export default function InventarioPage() {
 
   useEffect(() => { cargarDatos(); }, []);
 
-  const mostrarMensaje = (texto) => {
-    setMensaje(texto);
-    setTimeout(() => setMensaje(''), 3000);
-  };
-
   const registrarEntrada = async (e) => {
     e.preventDefault();
     setEnviando(true);
@@ -67,11 +57,13 @@ export default function InventarioPage() {
         producto_id: productoId,
         proveedor_id: proveedorId,
         cantidad: parseInt(cantidad, 10),
+        fecha_vencimiento: fechaVencimiento || null,
       });
-      mostrarMensaje('✓ Entrada registrada correctamente');
+      mostrarExito('Entrada registrada correctamente');
       setProductoId('');
       setProveedorId('');
       setCantidad('');
+      setFechaVencimiento('');
       const [rP, rE] = await Promise.all([
         api.get('/productos/activos'),
         api.get('/inventario/entradas'),
@@ -79,7 +71,7 @@ export default function InventarioPage() {
       setProductos(Array.isArray(rP.data) ? rP.data : []);
       setEntradas(Array.isArray(rE.data) ? rE.data : []);
     } catch (err) {
-      setError(err.response?.data?.mensaje || err.response?.data?.message || 'Error al registrar entrada');
+      mostrarError(err.response?.data?.mensaje || err.response?.data?.message || 'Error al registrar entrada');
     } finally {
       setEnviando(false);
     }
@@ -95,7 +87,7 @@ export default function InventarioPage() {
         cantidad: parseInt(cantidad, 10),
         motivo,
       });
-      mostrarMensaje('✓ Baja registrada correctamente');
+      mostrarExito('Baja registrada correctamente');
       setProductoId('');
       setCantidad('');
       setMotivo('');
@@ -106,29 +98,26 @@ export default function InventarioPage() {
       setProductos(Array.isArray(rP.data) ? rP.data : []);
       setBajas(Array.isArray(rB.data) ? rB.data : []);
     } catch (err) {
-      setError(err.response?.data?.mensaje || err.response?.data?.message || 'Error al registrar baja');
+      mostrarError(err.response?.data?.mensaje || err.response?.data?.message || 'Error al registrar baja');
     } finally {
       setEnviando(false);
     }
   };
 
-  const limpiarMensajes = () => { setError(''); setMensaje(''); };
-
   if (loading) {
-    return (
-      <div className="flex h-64 items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-[#6366f1]" />
-      </div>
-    );
+    return <Spinner texto="Cargando inventario..." />;
   }
 
   return (
     <div className="space-y-6">
+      <Toast mensaje={toast.mensaje} tipo={toast.tipo} visible={toast.visible} onCerrar={cerrar} />
+      <Breadcrumb items={[{ label: 'Inicio', path: '/dashboard' }, { label: 'Inventario' }]} />
+
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-800">Inventario</h1>
         <div className="flex gap-2">
           <button
-            onClick={() => { setTabActiva('entradas'); limpiarMensajes(); }}
+            onClick={() => setTabActiva('entradas')}
             className={`rounded-lg px-4 py-2 text-sm transition-colors ${
               tabActiva === 'entradas'
                 ? 'bg-[#6366f1] text-white'
@@ -138,7 +127,7 @@ export default function InventarioPage() {
             Entradas
           </button>
           <button
-            onClick={() => { setTabActiva('bajas'); limpiarMensajes(); }}
+            onClick={() => setTabActiva('bajas')}
             className={`rounded-lg px-4 py-2 text-sm transition-colors ${
               tabActiva === 'bajas'
                 ? 'bg-[#6366f1] text-white'
@@ -149,13 +138,6 @@ export default function InventarioPage() {
           </button>
         </div>
       </div>
-
-      {mensaje && (
-        <div className="flex items-center gap-2 rounded-lg bg-green-50 px-4 py-3 text-sm text-green-700">
-          <CheckCircle className="h-4 w-4" />
-          {mensaje}
-        </div>
-      )}
 
       {tabActiva === 'entradas' ? (
         <>
@@ -206,6 +188,15 @@ export default function InventarioPage() {
                     className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                   />
                 </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Vencimiento</label>
+                  <input
+                    type="date"
+                    value={fechaVencimiento}
+                    onChange={(e) => setFechaVencimiento(e.target.value)}
+                    className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  />
+                </div>
               </div>
               {error && (
                 <div className="rounded-lg bg-red-50 px-4 py-2 text-sm text-red-600">{error}</div>
@@ -239,6 +230,7 @@ export default function InventarioPage() {
                       <th className="px-4 py-3 font-medium">Producto</th>
                       <th className="px-4 py-3 font-medium">Proveedor</th>
                       <th className="px-4 py-3 font-medium">Cantidad</th>
+                      <th className="px-4 py-3 font-medium">Vencimiento</th>
                       <th className="px-4 py-3 font-medium">Registrado por</th>
                       <th className="px-4 py-3 font-medium">Fecha</th>
                     </tr>
@@ -248,6 +240,11 @@ export default function InventarioPage() {
                       <tr key={e.id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                         <td className="px-4 py-3 text-gray-800">
                           {e.producto?.nombre || e.producto_nombre}
+                          {e.solicitud_id && (
+                            <span className="ml-2 inline-block rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700">
+                              Solicitud #{e.solicitud_id}
+                            </span>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-gray-500">
                           {e.proveedor?.nombre || e.proveedor_nombre}
@@ -258,10 +255,13 @@ export default function InventarioPage() {
                           </span>
                         </td>
                         <td className="px-4 py-3 text-gray-500">
+                          {e.fecha_vencimiento || <span className="text-gray-300">—</span>}
+                        </td>
+                        <td className="px-4 py-3 text-gray-500">
                           {e.usuario?.nombre || e.registrado_por}
                         </td>
                         <td className="px-4 py-3 text-gray-400">
-                          {formatearFecha(e.createdAt)}
+                          {formatFechaHora(e.createdAt)}
                         </td>
                       </tr>
                     ))}
@@ -368,7 +368,7 @@ export default function InventarioPage() {
                           {b.usuario?.nombre || b.registrado_por}
                         </td>
                         <td className="px-4 py-3 text-gray-400">
-                          {formatearFecha(b.createdAt)}
+                          {formatFechaHora(b.createdAt)}
                         </td>
                       </tr>
                     ))}

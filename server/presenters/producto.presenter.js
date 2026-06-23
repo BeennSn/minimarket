@@ -15,6 +15,13 @@ const presentarProducto = (producto) => ({
   precio: producto.precio,
   stock:  producto.stock,
   activo: producto.activo,
+  codigo_barras: producto.codigo_barras || null,
+  fecha_vencimiento: producto.fecha_vencimiento || null,
+  proveedor: producto.proveedor ? {
+    id:     producto.proveedor.id,
+    nombre: producto.proveedor.nombre,
+    ruc:    producto.proveedor.ruc,
+  } : null,
   categoria: producto.categoria ? {
     id:     producto.categoria.id,
     nombre: producto.categoria.nombre,

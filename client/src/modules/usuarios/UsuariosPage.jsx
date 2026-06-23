@@ -1,7 +1,12 @@
 import { useState, useEffect } from 'react';
-import { Pencil, UserX, UserCheck, Plus, Eye, EyeOff, Loader2, X } from 'lucide-react';
+import { Pencil, UserX, UserCheck, Plus, Eye, EyeOff, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../utils/axios';
+import Breadcrumb from '../../components/Breadcrumb';
+import Spinner from '../../components/Spinner';
+import ConfirmDialog from '../../components/ConfirmDialog';
+import Toast from '../../components/Toast';
+import useToast from '../../hooks/useToast';
 
 const ROL_BADGE = {
   Administrador: 'bg-purple-100 text-purple-700',
@@ -149,7 +154,7 @@ function ModalUsuario({ abierto, onCerrar, onGuardar, usuarioEditando }) {
               disabled={loading}
               className="flex items-center gap-2 rounded-lg bg-[#6366f1] px-4 py-2 text-sm text-white transition-colors hover:bg-indigo-600 disabled:opacity-70"
             >
-              {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+              {loading && <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />}
               Guardar
             </button>
           </div>
@@ -161,6 +166,7 @@ function ModalUsuario({ abierto, onCerrar, onGuardar, usuarioEditando }) {
 
 export default function UsuariosPage() {
   const { usuario: currentUser } = useAuth();
+  const { toast, mostrarExito, mostrarError, cerrar } = useToast();
   const [usuarios, setUsuarios] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -168,6 +174,7 @@ export default function UsuariosPage() {
   const [usuarioEditando, setUsuarioEditando] = useState(null);
   const [filtroRol, setFiltroRol] = useState('Todos');
   const [filtroEstado, setFiltroEstado] = useState('Todos');
+  const [confirmarEstado, setConfirmarEstado] = useState(null);
 
   const cargarUsuarios = async () => {
     try {
@@ -202,19 +209,18 @@ export default function UsuariosPage() {
 
   const esActivo = (u) => u.activo === true || u.activo == null;
 
-  const toggleEstado = async (u) => {
+  const toggleEstado = async () => {
+    if (!confirmarEstado) return;
+    const u = confirmarEstado;
     const activo = esActivo(u);
     const accion = activo ? 'desactivar' : 'reactivar';
-    const confirmacion = window.confirm(
-      `¿Deseas ${accion} a ${u.nombre}?`
-    );
-    if (!confirmacion) return;
-
+    setConfirmarEstado(null);
     try {
       await api.patch(`/usuarios/${u.id}/${accion}`);
+      mostrarExito(`Usuario ${accion}do correctamente`);
       cargarUsuarios();
     } catch (err) {
-      setError(err.response?.data?.mensaje || `Error al ${accion} usuario`);
+      mostrarError(err.response?.data?.mensaje || `Error al ${accion} usuario`);
     }
   };
 
@@ -229,6 +235,9 @@ export default function UsuariosPage() {
 
   return (
     <div className="space-y-6">
+      <Toast mensaje={toast.mensaje} tipo={toast.tipo} visible={toast.visible} onCerrar={cerrar} />
+      <Breadcrumb items={[{ label: 'Inicio', path: '/dashboard' }, { label: 'Usuarios' }]} />
+
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-800">Usuarios</h1>
         <button
@@ -265,9 +274,7 @@ export default function UsuariosPage() {
       </div>
 
       {loading ? (
-        <div className="flex h-64 items-center justify-center">
-          <Loader2 className="h-6 w-6 animate-spin text-[#6366f1]" />
-        </div>
+        <Spinner texto="Cargando usuarios..." />
       ) : error ? (
         <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>
       ) : filtrados.length === 0 ? (
@@ -322,7 +329,7 @@ export default function UsuariosPage() {
                       </button>
                       {currentUser?.id !== u.id && (
                         <button
-                          onClick={() => toggleEstado(u)}
+                          onClick={() => setConfirmarEstado(u)}
                           className={`rounded-lg p-1.5 transition-colors ${
                             esActivo(u)
                               ? 'text-red-500 hover:bg-red-50'
@@ -351,6 +358,15 @@ export default function UsuariosPage() {
         onCerrar={() => { setModalAbierto(false); setUsuarioEditando(null); }}
         onGuardar={handleGuardar}
         usuarioEditando={usuarioEditando}
+      />
+
+      <ConfirmDialog
+        abierto={!!confirmarEstado}
+        titulo={confirmarEstado ? `${esActivo(confirmarEstado) ? 'Desactivar' : 'Reactivar'} usuario` : ''}
+        mensaje={confirmarEstado ? `¿Deseas ${esActivo(confirmarEstado) ? 'desactivar' : 'reactivar'} a ${confirmarEstado.nombre}?` : ''}
+        onConfirmar={toggleEstado}
+        onCancelar={() => setConfirmarEstado(null)}
+        colorConfirmar={confirmarEstado && esActivo(confirmarEstado) ? '#ef4444' : '#10b981'}
       />
     </div>
   );
