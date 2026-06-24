@@ -475,6 +475,7 @@ export default function SolicitudesPage() {
                 <th className="px-4 py-3 font-medium">Proveedor</th>
                 <th className="px-4 py-3 font-medium">Fecha Est.</th>
                 <th className="px-4 py-3 font-medium">Solicitante</th>
+                <th className="px-4 py-3 font-medium">Aprobado por</th>
                 <th className="px-4 py-3 font-medium">Acciones</th>
               </tr>
             </thead>
@@ -508,6 +509,13 @@ export default function SolicitudesPage() {
                     )}
                   </td>
                   <td className="px-4 py-3 text-gray-500">{s.solicitante?.nombre}</td>
+                  <td className="px-4 py-3 text-gray-500">
+                    {s.aprobador?.nombre ? (
+                      <span>{s.aprobador.nombre}</span>
+                    ) : (
+                      <span className="text-gray-300">—</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1">
                       {s.estado === 'Pendiente' && (rol === 'Administrador' || rol === 'Gerente') && (

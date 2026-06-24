@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Loader2, CheckCircle } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Loader2, Filter, X } from 'lucide-react';
 import api from '../../utils/axios';
 import { formatFechaHora } from '../../utils/format';
 import Breadcrumb from '../../components/Breadcrumb';
@@ -18,12 +18,27 @@ export default function InventarioPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  // Formulario de registro
   const [productoId, setProductoId] = useState('');
   const [proveedorId, setProveedorId] = useState('');
   const [cantidad, setCantidad] = useState('');
   const [motivo, setMotivo] = useState('');
   const [fechaVencimiento, setFechaVencimiento] = useState('');
   const [enviando, setEnviando] = useState(false);
+
+  // Filtros — Entradas
+  const [filtroEntradaDesde, setFiltroEntradaDesde] = useState('');
+  const [filtroEntradaHasta, setFiltroEntradaHasta] = useState('');
+  const [filtroEntradaProducto, setFiltroEntradaProducto] = useState('');
+  const [cargandoEntradas, setCargandoEntradas] = useState(false);
+
+  // Filtros — Bajas
+  const [filtroBajaDesde, setFiltroBajaDesde] = useState('');
+  const [filtroBajaHasta, setFiltroBajaHasta] = useState('');
+  const [filtroBajaProducto, setFiltroBajaProducto] = useState('');
+  const [cargandoBajas, setCargandoBajas] = useState(false);
+
+  // ─── Carga inicial ────────────────────────────────────────────────────────
 
   const cargarDatos = async () => {
     setLoading(true);
@@ -47,6 +62,62 @@ export default function InventarioPage() {
   };
 
   useEffect(() => { cargarDatos(); }, []);
+
+  // ─── Filtrar entradas ─────────────────────────────────────────────────────
+
+  const filtrarEntradas = useCallback(async () => {
+    setCargandoEntradas(true);
+    try {
+      const params = {};
+      if (filtroEntradaDesde) params.fecha_inicio = filtroEntradaDesde;
+      if (filtroEntradaHasta) params.fecha_hasta = filtroEntradaHasta;
+      if (filtroEntradaProducto) params.producto_id = filtroEntradaProducto;
+      const { data } = await api.get('/inventario/entradas', { params });
+      setEntradas(Array.isArray(data) ? data : []);
+    } catch (err) {
+      mostrarError(err.response?.data?.mensaje || 'Error al filtrar entradas');
+    } finally {
+      setCargandoEntradas(false);
+    }
+  }, [filtroEntradaDesde, filtroEntradaHasta, filtroEntradaProducto]);
+
+  const limpiarFiltrosEntradas = () => {
+    setFiltroEntradaDesde('');
+    setFiltroEntradaHasta('');
+    setFiltroEntradaProducto('');
+    api.get('/inventario/entradas').then(({ data }) =>
+      setEntradas(Array.isArray(data) ? data : [])
+    );
+  };
+
+  // ─── Filtrar bajas ────────────────────────────────────────────────────────
+
+  const filtrarBajas = useCallback(async () => {
+    setCargandoBajas(true);
+    try {
+      const params = {};
+      if (filtroBajaDesde) params.fecha_inicio = filtroBajaDesde;
+      if (filtroBajaHasta) params.fecha_hasta = filtroBajaHasta;
+      if (filtroBajaProducto) params.producto_id = filtroBajaProducto;
+      const { data } = await api.get('/inventario/bajas', { params });
+      setBajas(Array.isArray(data) ? data : []);
+    } catch (err) {
+      mostrarError(err.response?.data?.mensaje || 'Error al filtrar bajas');
+    } finally {
+      setCargandoBajas(false);
+    }
+  }, [filtroBajaDesde, filtroBajaHasta, filtroBajaProducto]);
+
+  const limpiarFiltrosBajas = () => {
+    setFiltroBajaDesde('');
+    setFiltroBajaHasta('');
+    setFiltroBajaProducto('');
+    api.get('/inventario/bajas').then(({ data }) =>
+      setBajas(Array.isArray(data) ? data : [])
+    );
+  };
+
+  // ─── Registro de entrada ──────────────────────────────────────────────────
 
   const registrarEntrada = async (e) => {
     e.preventDefault();
@@ -76,6 +147,8 @@ export default function InventarioPage() {
       setEnviando(false);
     }
   };
+
+  // ─── Registro de baja ─────────────────────────────────────────────────────
 
   const registrarBaja = async (e) => {
     e.preventDefault();
@@ -117,7 +190,7 @@ export default function InventarioPage() {
         <h1 className="text-2xl font-bold text-gray-800">Inventario</h1>
         <div className="flex gap-2">
           <button
-            onClick={() => setTabActiva('entradas')}
+            onClick={() => { setTabActiva('entradas'); setProductoId(''); setCantidad(''); }}
             className={`rounded-lg px-4 py-2 text-sm transition-colors ${
               tabActiva === 'entradas'
                 ? 'bg-[#6366f1] text-white'
@@ -127,7 +200,7 @@ export default function InventarioPage() {
             Entradas
           </button>
           <button
-            onClick={() => setTabActiva('bajas')}
+            onClick={() => { setTabActiva('bajas'); setProductoId(''); setCantidad(''); }}
             className={`rounded-lg px-4 py-2 text-sm transition-colors ${
               tabActiva === 'bajas'
                 ? 'bg-[#6366f1] text-white'
@@ -141,6 +214,7 @@ export default function InventarioPage() {
 
       {tabActiva === 'entradas' ? (
         <>
+          {/* ─── Formulario Entrada ──────────────────────────────────────────── */}
           <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
             <h2 className="mb-4 font-semibold text-gray-700">Registrar Entrada</h2>
             <form onSubmit={registrarEntrada} className="space-y-4">
@@ -214,10 +288,68 @@ export default function InventarioPage() {
             </form>
           </div>
 
+          {/* ─── Historial Entradas ───────────────────────────────────────────── */}
           <div className="rounded-2xl border border-gray-100 bg-white shadow-sm">
             <div className="p-5 pb-0">
               <h2 className="mb-3 font-semibold text-gray-700">Historial de Entradas</h2>
+
+              {/* Filtros de historial */}
+              <div className="mb-4 flex flex-wrap items-end gap-3 rounded-xl bg-gray-50 p-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-gray-500">
+                  <Filter className="h-4 w-4" />
+                  Filtrar:
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-500">Desde</label>
+                  <input
+                    type="date"
+                    value={filtroEntradaDesde}
+                    onChange={(e) => setFiltroEntradaDesde(e.target.value)}
+                    className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-500">Hasta</label>
+                  <input
+                    type="date"
+                    value={filtroEntradaHasta}
+                    onChange={(e) => setFiltroEntradaHasta(e.target.value)}
+                    className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-500">Producto</label>
+                  <select
+                    value={filtroEntradaProducto}
+                    onChange={(e) => setFiltroEntradaProducto(e.target.value)}
+                    className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  >
+                    <option value="">Todos</option>
+                    {productos.map((p) => (
+                      <option key={p.id} value={p.id}>{p.nombre} - {p.marca}</option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  onClick={filtrarEntradas}
+                  disabled={cargandoEntradas}
+                  className="flex items-center gap-1.5 rounded-lg bg-[#6366f1] px-3 py-1.5 text-sm text-white transition-colors hover:bg-indigo-600 disabled:opacity-70"
+                >
+                  {cargandoEntradas ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Filter className="h-3.5 w-3.5" />}
+                  Aplicar
+                </button>
+                {(filtroEntradaDesde || filtroEntradaHasta || filtroEntradaProducto) && (
+                  <button
+                    onClick={limpiarFiltrosEntradas}
+                    className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-500 transition-colors hover:bg-gray-100"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                    Limpiar
+                  </button>
+                )}
+              </div>
             </div>
+
             {entradas.length === 0 ? (
               <div className="flex h-32 items-center justify-center text-sm text-gray-400">
                 No hay entradas registradas
@@ -273,6 +405,7 @@ export default function InventarioPage() {
         </>
       ) : (
         <>
+          {/* ─── Formulario Baja ──────────────────────────────────────────────── */}
           <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
             <h2 className="mb-4 font-semibold text-gray-700">Registrar Baja</h2>
             <form onSubmit={registrarBaja} className="space-y-4">
@@ -332,10 +465,68 @@ export default function InventarioPage() {
             </form>
           </div>
 
+          {/* ─── Historial Bajas ──────────────────────────────────────────────── */}
           <div className="rounded-2xl border border-gray-100 bg-white shadow-sm">
             <div className="p-5 pb-0">
               <h2 className="mb-3 font-semibold text-gray-700">Historial de Bajas</h2>
+
+              {/* Filtros de historial */}
+              <div className="mb-4 flex flex-wrap items-end gap-3 rounded-xl bg-gray-50 p-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-gray-500">
+                  <Filter className="h-4 w-4" />
+                  Filtrar:
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-500">Desde</label>
+                  <input
+                    type="date"
+                    value={filtroBajaDesde}
+                    onChange={(e) => setFiltroBajaDesde(e.target.value)}
+                    className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-500">Hasta</label>
+                  <input
+                    type="date"
+                    value={filtroBajaHasta}
+                    onChange={(e) => setFiltroBajaHasta(e.target.value)}
+                    className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-500">Producto</label>
+                  <select
+                    value={filtroBajaProducto}
+                    onChange={(e) => setFiltroBajaProducto(e.target.value)}
+                    className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  >
+                    <option value="">Todos</option>
+                    {productos.map((p) => (
+                      <option key={p.id} value={p.id}>{p.nombre} - {p.marca}</option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  onClick={filtrarBajas}
+                  disabled={cargandoBajas}
+                  className="flex items-center gap-1.5 rounded-lg bg-[#6366f1] px-3 py-1.5 text-sm text-white transition-colors hover:bg-indigo-600 disabled:opacity-70"
+                >
+                  {cargandoBajas ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Filter className="h-3.5 w-3.5" />}
+                  Aplicar
+                </button>
+                {(filtroBajaDesde || filtroBajaHasta || filtroBajaProducto) && (
+                  <button
+                    onClick={limpiarFiltrosBajas}
+                    className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-500 transition-colors hover:bg-gray-100"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                    Limpiar
+                  </button>
+                )}
+              </div>
             </div>
+
             {bajas.length === 0 ? (
               <div className="flex h-32 items-center justify-center text-sm text-gray-400">
                 No hay bajas registradas

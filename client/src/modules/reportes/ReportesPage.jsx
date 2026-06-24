@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { Download, Loader2, FileText, ShoppingCart, DollarSign, TrendingUp } from 'lucide-react';
+import { Download, Loader2, FileText, ShoppingCart, DollarSign, TrendingUp, AlertTriangle, CheckCircle, RefreshCw } from 'lucide-react';
 import api from '../../utils/axios';
 import Breadcrumb from '../../components/Breadcrumb';
 
@@ -29,6 +29,13 @@ export default function ReportesPage() {
   const [error, setError] = useState('');
   const [generando, setGenerando] = useState(false);
   const datosRef = useRef(null);
+
+  // Stock crítico
+  const [stockCritico, setStockCritico] = useState([]);
+  const [umbral, setUmbral] = useState(5);
+  const [umbralInput, setUmbralInput] = useState('5');
+  const [cargandoStock, setCargandoStock] = useState(false);
+
 
   const buildParams = useCallback(() => {
     const params = {};
@@ -64,6 +71,27 @@ export default function ReportesPage() {
   useEffect(() => {
     datosRef.current = { resumen, ventasPorDia, metodoPago, productosTop, fechaInicio, fechaHasta };
   }, [resumen, ventasPorDia, metodoPago, productosTop, fechaInicio, fechaHasta]);
+
+  const cargarStockCritico = useCallback(async (u) => {
+    setCargandoStock(true);
+    try {
+      const { data } = await api.get('/reportes/stock-critico', { params: { umbral: u } });
+      setStockCritico(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('Error al cargar stock crítico:', err);
+    } finally {
+      setCargandoStock(false);
+    }
+  }, []);
+
+  useEffect(() => { cargarStockCritico(umbral); }, [cargarStockCritico, umbral]);
+
+  const aplicarUmbral = () => {
+    const val = parseInt(umbralInput, 10);
+    if (!isNaN(val) && val >= 0) {
+      setUmbral(val);
+    }
+  };
 
   const generarPDF = async () => {
     setGenerando(true);
@@ -421,6 +449,85 @@ export default function ReportesPage() {
         ) : (
           <div className="flex h-32 items-center justify-center text-sm text-gray-400">
             No hay datos de ventas en el período seleccionado
+          </div>
+        )}
+      </div>
+
+      {/* ─── Stock Crítico ──────────────────────────────────────────────────────── */}
+      <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-amber-500" />
+            <h2 className="font-semibold text-gray-700">Stock Crítico</h2>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-medium text-gray-600">Umbral:</label>
+            <input
+              type="number"
+              min="0"
+              value={umbralInput}
+              onChange={(e) => setUmbralInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && aplicarUmbral()}
+              className="w-20 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            />
+            <button
+              onClick={aplicarUmbral}
+              disabled={cargandoStock}
+              className="flex items-center gap-1.5 rounded-lg bg-[#6366f1] px-3 py-1.5 text-sm text-white transition-colors hover:bg-indigo-600 disabled:opacity-70"
+            >
+              {cargandoStock
+                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                : <RefreshCw className="h-3.5 w-3.5" />
+              }
+              Actualizar
+            </button>
+          </div>
+        </div>
+
+        {cargandoStock ? (
+          <div className="flex h-32 items-center justify-center">
+            <Loader2 className="h-5 w-5 animate-spin text-[#6366f1]" />
+          </div>
+        ) : stockCritico.length === 0 ? (
+          <div className="flex items-center justify-center gap-2 rounded-xl bg-emerald-50 py-6 text-sm font-medium text-emerald-700">
+            <CheckCircle className="h-5 w-5" />
+            ✓ Todo el stock está en orden
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="bg-[#6366f1] text-white">
+                  <th className="px-4 py-3 font-medium">Producto</th>
+                  <th className="px-4 py-3 font-medium">Marca</th>
+                  <th className="px-4 py-3 font-medium">Categoría</th>
+                  <th className="px-4 py-3 font-medium">Stock actual</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stockCritico.map((p, i) => (
+                  <tr key={p.id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                    <td className="px-4 py-3 font-medium text-gray-800">{p.nombre}</td>
+                    <td className="px-4 py-3 text-gray-500">{p.marca}</td>
+                    <td className="px-4 py-3 text-gray-500">{p.categoria?.nombre || '—'}</td>
+                    <td className="px-4 py-3">
+                      {p.stock === 0 ? (
+                        <span className="inline-block rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-700">
+                          Sin stock
+                        </span>
+                      ) : (
+                        <span className="inline-block rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
+                          {p.stock} und(s)
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="px-4 py-2 text-xs text-gray-400">
+              Mostrando productos con stock ≤ {umbral}. Modifica el umbral para ajustar el criterio.
+            </p>
           </div>
         )}
       </div>
