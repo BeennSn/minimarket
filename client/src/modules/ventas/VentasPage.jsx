@@ -810,6 +810,19 @@ export default function VentasPage() {
                 <option value="Plin">Plin</option>
               </select>
 
+              {metodoPago === 'Yape' && (
+                <div className="mt-3 flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-indigo-200 bg-indigo-50 p-4">
+                  <img
+                    src="/CodigoQrYape.jpg"
+                    alt="Código QR Yape"
+                    className="h-48 w-48 rounded-lg border border-indigo-100 bg-white object-contain p-1"
+                  />
+                  <p className="text-center text-xs text-indigo-600">
+                    Escanea el código QR con tu app Yape para pagar
+                  </p>
+                </div>
+              )}
+
               {metodoPago === 'Efectivo' && (
                 <div className="mt-3 space-y-2">
                   <div className="relative">
