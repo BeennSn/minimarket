@@ -24,4 +24,10 @@ router.get(
   ventaController.obtener
 );
 
+router.patch(
+  '/:id/verificar-yape',
+  verificarRol('Vendedor', 'Administrador'),
+  ventaController.verificarYape
+);
+
 module.exports = router;

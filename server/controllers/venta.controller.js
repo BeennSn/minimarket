@@ -4,7 +4,7 @@ const { presentarVenta, presentarLista } = require('../presenters/venta.presente
 
 const registrar = async (req, res) => {
   try {
-    const { cliente_id, metodo_pago, monto_recibido, monto_yape, monto_efectivo, items, tipo_comprobante, cliente_dni, cliente_ruc, cliente_razon_social, cliente_direccion } = req.body;
+    const { cliente_id, metodo_pago, monto_recibido, items, tipo_comprobante, cliente_dni, cliente_ruc, cliente_razon_social, cliente_direccion, yape_verificado } = req.body;
 
     if (!items || items.length === 0) {
       return res.status(400).json({ mensaje: 'La venta debe tener al menos un producto' });
@@ -25,16 +25,6 @@ const registrar = async (req, res) => {
 
     if (metodo_pago === 'Efectivo' && parseFloat(monto_recibido || 0) < monto_total_prev) {
       return res.status(400).json({ mensaje: 'Monto recibido insuficiente' });
-    }
-
-    if (metodo_pago === 'Mixto') {
-      const yape = parseFloat(monto_yape || 0);
-      const efectivo = parseFloat(monto_efectivo || 0);
-      const suma = parseFloat((yape + efectivo).toFixed(2));
-      const totalCr = parseFloat(monto_total_prev.toFixed(2));
-      if (Math.abs(suma - totalCr) > 0.01) {
-        return res.status(400).json({ mensaje: 'La suma de Yape y Efectivo debe ser igual al total' });
-      }
     }
 
     const venta = await sequelize.transaction(async (t) => {
@@ -60,7 +50,9 @@ const registrar = async (req, res) => {
 
       const vuelto = metodo_pago === 'Efectivo'
         ? parseFloat(monto_recibido) - monto_total
-        : 0;
+        : null;
+
+      const esYapeVerificado = metodo_pago === 'Yape' && yape_verificado === true;
 
       const nuevaVenta = await Venta.create({
         usuario_id:    req.usuario.id,
@@ -68,14 +60,16 @@ const registrar = async (req, res) => {
         metodo_pago,
         monto_total:   monto_total.toFixed(2),
         monto_recibido: metodo_pago === 'Efectivo' ? monto_recibido : null,
-        monto_yape:    metodo_pago === 'Mixto' ? parseFloat((monto_yape || 0).toFixed(2)) : null,
-        monto_efectivo: metodo_pago === 'Mixto' ? parseFloat((monto_efectivo || 0).toFixed(2)) : null,
-        vuelto:        vuelto.toFixed(2),
+        monto_yape:    metodo_pago === 'Yape' ? monto_total.toFixed(2) : null,
+        vuelto:        metodo_pago === 'Efectivo' ? vuelto.toFixed(2) : null,
         tipo_comprobante: tipo_comprobante || 'Boleta',
         cliente_dni:   cliente_dni || null,
         cliente_ruc:   cliente_ruc || null,
         cliente_razon_social: cliente_razon_social || null,
         cliente_direccion: cliente_direccion || null,
+        yape_verificado: esYapeVerificado,
+        yape_verificado_por: esYapeVerificado ? req.usuario.id : null,
+        yape_verificado_en: esYapeVerificado ? new Date() : null,
       }, { transaction: t });
 
       const detalles = await DetalleVenta.bulkCreate(
@@ -109,7 +103,7 @@ const registrar = async (req, res) => {
 
 const listar = async (req, res) => {
   try {
-    const { fecha_inicio, fecha_hasta, metodo_pago } = req.query;
+    const { fecha_inicio, fecha_hasta, metodo_pago, pagina, limite } = req.query;
     const where = {};
 
     if (fecha_inicio && fecha_hasta) {
@@ -124,7 +118,11 @@ const listar = async (req, res) => {
       where.metodo_pago = metodo_pago;
     }
 
-    const ventas = await Venta.findAll({
+    const page = Math.max(1, parseInt(pagina) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(limite) || 25));
+    const offset = (page - 1) * limit;
+
+    const { count, rows } = await Venta.findAndCountAll({
       where,
       include: [
         { association: 'usuario', attributes: ['id', 'nombre'] },
@@ -135,9 +133,19 @@ const listar = async (req, res) => {
         },
       ],
       order: [['createdAt', 'DESC']],
+      limit,
+      offset,
     });
 
-    return res.status(200).json(presentarLista(ventas));
+    return res.status(200).json({
+      data: presentarLista(rows),
+      pagination: {
+        total: count,
+        pagina: page,
+        limite: limit,
+        totalPaginas: Math.ceil(count / limit),
+      },
+    });
   } catch (err) {
     console.error('Error en listar ventas:', err);
     return res.status(500).json({ mensaje: 'Error interno del servidor' });
@@ -168,4 +176,43 @@ const obtener = async (req, res) => {
   }
 };
 
-module.exports = { registrar, listar, obtener };
+const verificarYape = async (req, res) => {
+  try {
+    const venta = await Venta.findByPk(req.params.id);
+
+    if (!venta) {
+      return res.status(404).json({ mensaje: 'Venta no encontrada' });
+    }
+
+    if (venta.metodo_pago !== 'Yape') {
+      return res.status(400).json({ mensaje: 'La venta no es de tipo Yape' });
+    }
+
+    if (venta.yape_verificado) {
+      return res.status(400).json({ mensaje: 'El Yape ya fue verificado anteriormente' });
+    }
+
+    venta.yape_verificado = true;
+    venta.yape_verificado_por = req.usuario.id;
+    venta.yape_verificado_en = new Date();
+    await venta.save();
+
+    const ventaCompleta = await Venta.findByPk(venta.id, {
+      include: [
+        { association: 'usuario', attributes: ['id', 'nombre'] },
+        { association: 'cliente', attributes: ['id', 'nombre', 'dni'] },
+        {
+          association: 'detalles',
+          include: [{ association: 'producto', attributes: ['id', 'nombre', 'marca'] }],
+        },
+      ],
+    });
+
+    return res.status(200).json(presentarVenta(ventaCompleta));
+  } catch (err) {
+    console.error('Error en verificarYape:', err);
+    return res.status(500).json({ mensaje: 'Error interno del servidor' });
+  }
+};
+
+module.exports = { registrar, listar, obtener, verificarYape };

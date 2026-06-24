@@ -10,6 +10,7 @@ import CategoriasPage from './modules/categorias/CategoriasPage';
 import ProductosPage from './modules/productos/ProductosPage';
 import ProveedoresPage from './modules/proveedores/ProveedoresPage';
 import VentasPage from './modules/ventas/VentasPage';
+import HistorialVentasPage from './modules/ventas/HistorialVentasPage';
 import InventarioPage from './modules/inventario/InventarioPage';
 import SolicitudesPage from './modules/solicitudes/SolicitudesPage';
 import ReportesPage from './modules/reportes/ReportesPage';
@@ -73,6 +74,14 @@ export default function App() {
               element={
                 <PrivateRoute roles={['Vendedor', 'Administrador', 'Gerente']}>
                   <VentasPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="ventas/historial"
+              element={
+                <PrivateRoute roles={['Administrador', 'Gerente', 'Vendedor']}>
+                  <HistorialVentasPage />
                 </PrivateRoute>
               }
             />

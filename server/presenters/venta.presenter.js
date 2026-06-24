@@ -30,8 +30,11 @@ const presentarVenta = (venta) => ({
   cliente_ruc:       venta.cliente_ruc || null,
   cliente_razon_social: venta.cliente_razon_social || null,
   cliente_direccion: venta.cliente_direccion || null,
-  createdAt:         venta.createdAt,
-  detalles:          venta.detalles.map(presentarDetalle),
+  yape_verificado:     venta.yape_verificado || false,
+  yape_verificado_por: venta.yape_verificado_por || null,
+  yape_verificado_en:  venta.yape_verificado_en || null,
+  createdAt:           venta.createdAt,
+  detalles:            venta.detalles.map(presentarDetalle),
 });
 
 const presentarLista = (ventas) => ventas.map(presentarVenta);

@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { jsPDF } from 'jspdf';
+import html2pdf from 'html2pdf.js';
 import autoTable from 'jspdf-autotable';
 import {
   Search, User, X, Trash2, Minus, Plus, Banknote,
@@ -44,138 +45,88 @@ function numeroALetras(num) {
 }
 
 function generarPDF(venta) {
-  const tipo = venta.tipo_comprobante;
-  const esFactura = tipo === 'Factura';
-  const ancho = esFactura ? 210 : 80;
-  const doc = new jsPDF({ unit: 'mm', format: esFactura ? 'a4' : [ancho, 297] });
-  const margen = esFactura ? 20 : 6;
-  const cx = ancho / 2;
-  const dr = ancho - margen;
-  const subtotal = parseFloat(venta.monto_total) / (1 + IGV);
-  const igv = parseFloat(venta.monto_total) - subtotal;
   const fecha = new Date(venta.createdAt);
-  const serie = esFactura ? 'F001' : 'B001';
-  const numero = `${serie}-${String(venta.id).padStart(8, '0')}`;
+  const numero = `B173-${String(venta.id).padStart(8, '0')}`;
 
-  let y = margen;
+  const productosHTML = (venta.detalles || venta.items || []).map(d => {
+    const nombre = d.producto?.nombre || d.nombre || '';
+    const cant = d.cantidad > 1 ? `${d.cantidad} ` : '';
+    const desc = `${cant}${nombre}`;
+    const precio = Number(d.subtotal || 0).toFixed(2);
+    return `
+      <tr>
+        <td class="col-product">${desc}</td>
+        <td class="col-price">${precio}</td>
+      </tr>
+    `;
+  }).join('');
 
-  function ln() { doc.line(margen, y, dr, y); y += 4; }
-  function txt(s, x, opts) { doc.text(s, x ?? cx, y, { align: opts?.align ?? 'center', ...opts }); }
-  function bold() { doc.setFont('helvetica', 'bold'); }
-  function norm() { doc.setFont('helvetica', 'normal'); }
-  function sz(n) { doc.setFontSize(n); }
-  function sp(n) { y += n; }
+  const container = document.createElement('div');
+  container.innerHTML = `
+    <div style="width: 80mm; padding: 8mm 5mm; box-sizing: border-box; font-family: 'Helvetica', 'Arial', sans-serif; font-size: 10px; line-height: 1.4; color: #000; background-color: #fff;">
+        <style>
+            .text-center { text-align: center; }
+            .text-left { text-align: left; }
+            .text-right { text-align: right; }
+            .bold { font-weight: bold; }
+            .divider { border-bottom: 1px dotted #000; padding-bottom: 5px; margin-bottom: 5px; }
+            .header-title { font-size: 14px; margin: 0 0 4px 0; }
+            .slogan { font-size: 9px; margin: 0 0 5px 0; }
+            .info-doc { margin: 5px 0; }
+            .table-layout { width: 100%; border-collapse: collapse; }
+            .table-layout th, .table-layout td { vertical-align: top; padding: 2px 0; }
+            .table-layout th { font-weight: normal; }
+            .table-layout th.bold { font-weight: bold; }
+            .col-product { width: 75%; text-align: left; word-wrap: break-word; padding-right: 5px; }
+            .col-price { width: 25%; text-align: right; white-space: nowrap; }
+        </style>
+        <div class="text-center header-title bold">${EMPRESA.nombre.toUpperCase()}</div>
+        <div class="text-center slogan bold divider">PARTICIPA EN RÁPIDOS Y TAMBEROS</div>
 
-  // ─── Header ────────────────────────────────────────────────────────────────
-  bold(); sz(esFactura ? 18 : 12);
-  txt(EMPRESA.nombre); sp(esFactura ? 7 : 5);
-  sz(esFactura ? 10 : 8); norm();
-  txt(`RUC: ${EMPRESA.ruc}`); sp(4);
-  sz(esFactura ? 9 : 7);
-  txt(EMPRESA.direccion); sp(4);
-  txt(`Tel: ${EMPRESA.telefono}`); sp(6);
-  ln();
-  sz(esFactura ? 14 : 10); bold();
-  txt(esFactura ? 'FACTURA ELECTRÓNICA' : 'BOLETA DE VENTA ELECTRÓNICA'); sp(6);
-  sz(esFactura ? 10 : 8); norm();
-  txt(`N° ${numero}`); sp(5);
-  txt(`Fecha: ${fecha.toLocaleDateString('es-PE')} ${fecha.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}`); sp(esFactura ? 4 : 3);
-  if (esFactura) { txt(`Moneda: SOLES (PEN)`); sp(4); }
-  ln();
+        <div class="text-center info-doc divider">
+            <div>BOLETA DE VENTA ELECTRÓNICA</div>
+            <div>${numero}</div>
+        </div>
 
-  // ─── Cliente ───────────────────────────────────────────────────────────────
-  sz(esFactura ? 10 : 8); bold();
-  if (esFactura) {
-    txt('DATOS DEL ADQUIRENTE', cx, { align: 'center' }); sp(5);
-    norm();
-    txt(`RUC: ${venta.cliente_ruc || '-'}`, cx, { align: 'center' }); sp(4);
-    txt(`Razón Social: ${venta.cliente_razon_social || '-'}`, cx, { align: 'center' }); sp(4);
-    txt(`Dirección: ${venta.cliente_direccion || '-'}`, cx, { align: 'center' }); sp(4);
-  } else {
-    const dni = venta.cliente_dni;
-    const nom = venta.cliente?.nombre || venta.cliente_razon_social;
-    if (dni || nom) {
-      txt('DATOS DEL COMPRADOR', cx, { align: 'center' }); sp(5);
-      norm();
-      if (dni) txt(`DNI: ${dni}`, cx, { align: 'center' }); sp(4);
-      txt(`Nombre: ${nom || 'CLIENTE VARIOS'}`, cx, { align: 'center' }); sp(4);
-    } else {
-      norm();
-      txt('CLIENTE VARIOS', cx, { align: 'center' }); sp(4);
-    }
-  }
-  ln();
+        <table class="table-layout divider">
+            <tr>
+                <td class="text-left">Fecha: ${fecha.toLocaleDateString('es-PE')}</td>
+                <td class="text-right">Hora: ${fecha.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</td>
+            </tr>
+        </table>
 
-  // ─── Tabla de productos ────────────────────────────────────────────────────
-  const colW = esFactura ? [12, 60, 28, 20, 20, 30] : [8, 30, 12, 14];
-  const headers = esFactura
-    ? ['N°', 'Descripción', 'Unidad', 'Cant.', 'Valor Unit.', 'Valor Venta']
-    : ['Cant.', 'Descripción', 'P. Unit.', 'Importe'];
-  sz(esFactura ? 7 : 6);
-  autoTable(doc, {
-    startY: y,
-    head: [headers],
-    body: (venta.detalles || []).map((d, i) => {
-      const vu = Number(d.precio_unitario) / (1 + IGV);
-      const vv = Number(d.subtotal) / (1 + IGV);
-      return esFactura
-        ? [String(i + 1), d.producto?.nombre || '', 'NIU', String(d.cantidad),
-          `S/ ${vu.toFixed(2)}`, `S/ ${vv.toFixed(2)}`]
-        : [String(d.cantidad), d.producto?.nombre || '', `S/ ${Number(d.precio_unitario).toFixed(2)}`,
-          `S/ ${Number(d.subtotal).toFixed(2)}`];
-    }),
-    theme: 'plain',
-    headStyles: { fillColor: [0, 0, 0], textColor: [255, 255, 255], fontSize: esFactura ? 7 : 6, fontStyle: 'bold' },
-    styles: { fontSize: esFactura ? 7 : 6, lineColor: [200, 200, 200], lineWidth: 0.1 },
-    columnStyles: esFactura
-      ? { 0: { cellWidth: 8 }, 1: { cellWidth: 60 }, 2: { cellWidth: 18, halign: 'center' }, 3: { cellWidth: 14, halign: 'center' }, 4: { cellWidth: 28, halign: 'right' }, 5: { cellWidth: 28, halign: 'right' } }
-      : { 0: { cellWidth: 10, halign: 'center' }, 1: { cellWidth: 34 }, 2: { cellWidth: 16, halign: 'right' }, 3: { cellWidth: 16, halign: 'right' } },
-    margin: { left: margen },
-    tableWidth: esFactura ? 170 : 68,
-    tableLineColor: [0, 0, 0],
-    tableLineWidth: 0.3,
-  });
-  y = doc.lastAutoTable.finalY + 4;
-  ln();
+        <table class="table-layout divider">
+            <thead>
+                <tr>
+                    <th class="col-product text-left">PRODUCTOS</th>
+                    <th class="col-price bold">PRECIO</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${productosHTML}
+            </tbody>
+        </table>
 
-  // ─── Totales ────────────────────────────────────────────────────────────────
-  sz(esFactura ? 9 : 8);
-  const tx = esFactura ? 110 : 30;
-  const tv = esFactura ? 170 : 64;
-  norm();
-  txt('Op. Gravadas', tx, { align: 'left' }); txt(`S/ ${subtotal.toFixed(2)}`, tv, { align: 'right' }); sp(5);
-  txt('IGV 18%', tx, { align: 'left' }); txt(`S/ ${igv.toFixed(2)}`, tv, { align: 'right' }); sp(esFactura ? 3 : 2);
-  ln();
-  bold(); sz(esFactura ? 12 : 10);
-  txt('IMPORTE TOTAL', tx, { align: 'left' }); txt(`S/ ${Number(venta.monto_total).toFixed(2)}`, tv, { align: 'right' }); sp(6);
-  sz(esFactura ? 8 : 6); norm();
-  txt(numeroALetras(Number(venta.monto_total)), cx, { align: 'center' }); sp(4);
+        <table class="table-layout">
+            <tr>
+                <td class="text-left">TOTAL:</td>
+                <td class="text-right bold">S/ ${Number(venta.monto_total || venta.total || 0).toFixed(2)}</td>
+            </tr>
+        </table>
+    </div>
+  `;
 
-  ln();
-  bold(); sz(esFactura ? 9 : 8);
-  txt('MÉTODO DE PAGO', cx, { align: 'center' }); sp(5);
-  norm(); sz(esFactura ? 8 : 7);
+  // Calcular un alto aproximado basado en los items, pero podemos dejar un largo estándar de 297 (A4)
+  // o ajustar a algo mas dinamico si usaramos canvas.
+  const opt = {
+    margin: 0,
+    filename: `boleta_${numero}.pdf`,
+    image: { type: 'jpeg', quality: 0.98 },
+    html2canvas: { scale: 2 },
+    jsPDF: { unit: 'mm', format: [80, 297], orientation: 'portrait' }
+  };
 
-  if (venta.metodo_pago === 'Mixto') {
-    txt('Yape', tx, { align: 'left' }); txt(`S/ ${Number(venta.monto_yape || 0).toFixed(2)}`, tv, { align: 'right' }); sp(5);
-    txt('Efectivo', tx, { align: 'left' }); txt(`S/ ${Number(venta.monto_efectivo || 0).toFixed(2)}`, tv, { align: 'right' }); sp(4);
-  } else {
-    txt(venta.metodo_pago, cx, { align: 'center' }); sp(4);
-  }
-
-  if (esFactura) {
-    txt('Contado', cx, { align: 'center' }); sp(4);
-  }
-  ln();
-
-  // ─── Pie ────────────────────────────────────────────────────────────────────
-  sz(esFactura ? 8 : 6);
-  txt(`Fecha de emisión: ${fecha.toLocaleDateString('es-PE')} ${fecha.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}`, cx, { align: 'center' }); sp(3);
-  txt('---', cx, { align: 'center' }); sp(3);
-  txt(`Representación impresa de la ${esFactura ? 'Factura' : 'Boleta de Venta'} Electrónica`, cx, { align: 'center' }); sp(3);
-  txt('Consulte su comprobante en: www.sunat.gob.pe', cx, { align: 'center' });
-
-  doc.save(`comprobante_${numero}.pdf`);
+  html2pdf().set(opt).from(container.firstElementChild).save();
 }
 
 function ModalComprobante({ venta, onCerrar, onDescargarPDF }) {
@@ -211,36 +162,28 @@ function ModalComprobante({ venta, onCerrar, onDescargarPDF }) {
         </div>
 
         <div className="mt-2 flex items-center justify-center gap-2">
-          <span className="rounded-full bg-indigo-100 px-3 py-1 text-xs font-semibold text-indigo-700">
-            {venta.tipo_comprobante === 'Factura' ? 'Factura' : 'Boleta'}
-          </span>
+          <span className="rounded-full bg-indigo-100 px-3 py-1 text-xs font-semibold text-indigo-700">Boleta</span>
           <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
             venta.metodo_pago === 'Yape'
               ? 'bg-purple-100 text-purple-700'
-              : venta.metodo_pago === 'Efectivo'
-                ? 'bg-green-100 text-green-700'
-                : venta.metodo_pago === 'Mixto'
-                  ? 'bg-orange-100 text-orange-700'
-                  : 'bg-gray-100 text-gray-700'
+              : 'bg-green-100 text-green-700'
           }`}>
-            {venta.metodo_pago === 'Mixto' ? 'Yape + Efectivo' : venta.metodo_pago}
+            {venta.metodo_pago}
           </span>
         </div>
 
-        {venta.metodo_pago === 'Mixto' ? (
-          <div className="mt-2 space-y-1 text-center text-sm text-gray-500">
-            <p>Yape: S/. {Number(venta.monto_yape || 0).toFixed(2)}</p>
-            <p>Efectivo: S/. {Number(venta.monto_efectivo || 0).toFixed(2)}</p>
-          </div>
-        ) : venta?.monto_recibido > 0 && (
+        {venta?.monto_recibido > 0 && (
           <p className="text-sm text-gray-500 text-center">
             Monto recibido: S/. {Number(venta?.monto_recibido).toFixed(2)}
             {' '}— Vuelto: S/. {Number(venta?.vuelto || 0).toFixed(2)}
           </p>
         )}
 
-        {venta?.cliente?.nombre && (
-          <p className="text-sm text-gray-500">Cliente: {venta.cliente.nombre}</p>
+        {venta?.yape_verificado && (
+          <p className="text-center text-xs text-emerald-600">
+            <CheckCircle className="mr-1 inline h-3 w-3" />
+            Yape verificado — S/. {Number(venta?.monto_total || 0).toFixed(2)}
+          </p>
         )}
 
         <button
@@ -248,7 +191,7 @@ function ModalComprobante({ venta, onCerrar, onDescargarPDF }) {
           className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-500 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-600"
         >
           <FileText className="h-4 w-4" />
-          Descargar {venta.tipo_comprobante === 'Factura' ? 'Factura' : 'Boleta'} PDF
+          Descargar Boleta PDF
         </button>
 
         <button
@@ -270,12 +213,10 @@ export default function VentasPage() {
   const [busqueda, setBusqueda] = useState('');
   const [categoriaFiltro, setCategoriaFiltro] = useState('');
   const [paginaActual, setPaginaActual] = useState(1);
-  const [cliente, setCliente] = useState(null);
-  const [dni, setDni] = useState('');
   const [metodoPago, setMetodoPago] = useState('Efectivo');
   const [montoRecibido, setMontoRecibido] = useState('');
-  const [montoYape, setMontoYape] = useState('');
-  const [montoEfectivo, setMontoEfectivo] = useState('');
+  const [yapeVerificado, setYapeVerificado] = useState(false);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [modalComprobante, setModalComprobante] = useState(false);
@@ -283,10 +224,6 @@ export default function VentasPage() {
   const [codigoBarras, setCodigoBarras] = useState('');
   const [buscandoCodigo, setBuscandoCodigo] = useState(false);
   const [mostrarLista, setMostrarLista] = useState(false);
-  const [tipoComprobante, setTipoComprobante] = useState('Boleta');
-  const [clienteRuc, setClienteRuc] = useState('');
-  const [clienteRazonSocial, setClienteRazonSocial] = useState('');
-  const [clienteDireccion, setClienteDireccion] = useState('');
   const inputCodigoRef = useRef(null);
 
   const cargarProductos = () => {
@@ -355,16 +292,6 @@ export default function VentasPage() {
   const inicio = (paginaSegura - 1) * ITEMS_PER_PAGE;
   const productosPagina = productosFiltrados.slice(inicio, inicio + ITEMS_PER_PAGE);
 
-  const buscarCliente = async () => {
-    if (!dni.trim()) return;
-    try {
-      const { data } = await api.post('/clientes/buscar-o-crear', { dni: dni.trim() });
-      setCliente(data);
-    } catch (err) {
-      setError(err.response?.data?.mensaje || 'Error al buscar cliente');
-    }
-  };
-
   const agregarAlCarrito = (producto) => {
     setCarrito((prev) => {
       const existente = prev.find((item) => item.id === producto.id);
@@ -395,39 +322,24 @@ export default function VentasPage() {
   const total = carrito.reduce((sum, item) => sum + item.precio * item.cantidad, 0);
   const vuelto = montoRecibido ? parseFloat(montoRecibido) - total : 0;
 
-  const datosClienteValidos = () => {
-    if (tipoComprobante === 'Factura') {
-      return clienteRuc.trim().length >= 8 && clienteRazonSocial.trim() && clienteDireccion.trim();
-    }
-    if (tipoComprobante === 'BoletaDNI') {
-      return dni.trim().length === 8;
-    }
-    return true;
-  };
+  const datosClienteValidos = () => true;
 
   const puedeVender =
     carrito.length > 0 &&
     (metodoPago !== 'Efectivo' || (montoRecibido && parseFloat(montoRecibido) >= total)) &&
-    (metodoPago !== 'Mixto' || (parseFloat(montoYape || 0) + parseFloat(montoEfectivo || 0) >= total)) &&
+    (metodoPago !== 'Yape' || yapeVerificado) &&
     datosClienteValidos();
 
   const resetear = () => {
     setCarrito([]);
-    setCliente(null);
-    setDni('');
     setMontoRecibido('');
-    setMontoYape('');
-    setMontoEfectivo('');
+    setYapeVerificado(false);
     setVentaExitosa(null);
     setBusqueda('');
     setCategoriaFiltro('');
     setPaginaActual(1);
     setCodigoBarras('');
     setError('');
-    setTipoComprobante('Boleta');
-    setClienteRuc('');
-    setClienteRazonSocial('');
-    setClienteDireccion('');
     inputCodigoRef.current?.focus();
   };
 
@@ -437,27 +349,17 @@ export default function VentasPage() {
 
     try {
       const body = {
-        cliente_id: cliente?.id || null,
+        cliente_id: null,
         metodo_pago: metodoPago,
-        monto_recibido: metodoPago === 'Efectivo' ? parseFloat(montoRecibido) : 0,
-        monto_yape: metodoPago === 'Mixto' ? parseFloat(parseFloat(montoYape).toFixed(2)) : null,
-        monto_efectivo: metodoPago === 'Mixto' ? parseFloat(parseFloat(montoEfectivo).toFixed(2)) : null,
+        monto_recibido: metodoPago === 'Efectivo' ? parseFloat(montoRecibido) : null,
+        yape_verificado: metodoPago === 'Yape' ? yapeVerificado : false,
         items: carrito.map((item) => ({
           producto_id: item.id,
           cantidad: item.cantidad,
           precio_unitario: item.precio,
         })),
-        tipo_comprobante: tipoComprobante === 'BoletaDNI' ? 'Boleta' : tipoComprobante,
+        tipo_comprobante: 'Boleta',
       };
-
-      if (tipoComprobante === 'Factura') {
-        body.cliente_ruc = clienteRuc.trim();
-        body.cliente_razon_social = clienteRazonSocial.trim();
-        body.cliente_direccion = clienteDireccion.trim();
-      }
-      if (tipoComprobante === 'BoletaDNI') {
-        body.cliente_dni = dni.trim();
-      }
 
       const { data } = await api.post('/ventas', body);
       setVentaExitosa(data);
@@ -494,97 +396,7 @@ export default function VentasPage() {
 
         {!esSoloLectura && (
           <>
-            <div className="flex flex-wrap items-center gap-4 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
-              <div className="flex items-center gap-4">
-                <label className="flex items-center gap-1.5 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="comprobante"
-                    checked={tipoComprobante === 'Boleta'}
-                    onChange={() => setTipoComprobante('Boleta')}
-                    className="text-indigo-600 focus:ring-indigo-400"
-                  />
-                  <span className="text-sm text-gray-700">Boleta Simple</span>
-                </label>
-                <label className="flex items-center gap-1.5 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="comprobante"
-                    checked={tipoComprobante === 'BoletaDNI'}
-                    onChange={() => { setTipoComprobante('BoletaDNI'); setDni(''); }}
-                    className="text-indigo-600 focus:ring-indigo-400"
-                  />
-                  <span className="text-sm text-gray-700">Boleta con DNI</span>
-                </label>
-                <label className="flex items-center gap-1.5 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="comprobante"
-                    checked={tipoComprobante === 'Factura'}
-                    onChange={() => setTipoComprobante('Factura')}
-                    className="text-indigo-600 focus:ring-indigo-400"
-                  />
-                  <span className="text-sm text-gray-700">Factura</span>
-                </label>
-              </div>
-
-              {tipoComprobante === 'Factura' ? (
-                <div className="flex flex-wrap items-center gap-2 ml-auto">
-                  <input
-                    type="text"
-                    value={clienteRuc}
-                    onChange={(e) => setClienteRuc(e.target.value.replace(/\D/g, ''))}
-                    placeholder="RUC"
-                    maxLength={11}
-                    className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm w-28 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                  />
-                  <input
-                    type="text"
-                    value={clienteRazonSocial}
-                    onChange={(e) => setClienteRazonSocial(e.target.value)}
-                    placeholder="Razón Social"
-                    className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm w-44 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                  />
-                  <input
-                    type="text"
-                    value={clienteDireccion}
-                    onChange={(e) => setClienteDireccion(e.target.value)}
-                    placeholder="Dirección"
-                    className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm w-44 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                  />
-                </div>
-              ) : tipoComprobante === 'BoletaDNI' ? (
-                <div className="flex items-center gap-2 ml-auto">
-                  <div className="relative">
-                    <User className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                    <input
-                      type="text"
-                      value={dni}
-                      onChange={(e) => setDni(e.target.value.replace(/\D/g, ''))}
-                      placeholder="DNI"
-                      maxLength={8}
-                      className="rounded-lg border border-gray-200 px-4 py-1.5 pl-10 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                    />
-                  </div>
-                  <button
-                    onClick={buscarCliente}
-                    className="rounded-lg bg-[#6366f1] px-3 py-1.5 text-sm text-white transition-colors hover:bg-indigo-600"
-                  >
-                    Buscar
-                  </button>
-                  {cliente && (
-                    <span className="flex items-center gap-1 rounded-full bg-indigo-50 px-3 py-1 text-sm text-indigo-700">
-                      {cliente.nombre}
-                      <button onClick={() => setCliente(null)}>
-                        <X className="h-3 w-3" />
-                      </button>
-                    </span>
-                  )}
-                </div>
-              ) : null}
-            </div>
-
-            <div className="relative">
+<div className="relative">
               <ScanLine className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
               <input
                 ref={inputCodigoRef}
@@ -835,73 +647,45 @@ export default function VentasPage() {
 
               <select
                 value={metodoPago}
-                onChange={(e) => setMetodoPago(e.target.value)}
+                onChange={(e) => { setMetodoPago(e.target.value); setYapeVerificado(false); }}
                 className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
               >
                 <option value="Efectivo">Efectivo</option>
                 <option value="Yape">Yape</option>
-                <option value="Mixto">Mixto (Yape + Efectivo)</option>
               </select>
 
               {metodoPago === 'Yape' && (
-                <div className="mt-3 flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-indigo-200 bg-indigo-50 p-4">
-                  <img
-                    src={`/CodigoQrYape.jpg?t=${Date.now()}`}
-                    alt="Código QR Yape"
-                    className="h-48 w-48 rounded-lg border border-indigo-100 bg-white object-contain p-1"
-                  />
-                  <p className="text-center text-xs text-indigo-600">
-                    Escanea el código QR con tu app Yape para pagar
-                  </p>
-                </div>
-              )}
-
-              {metodoPago === 'Mixto' && (
                 <div className="mt-3 space-y-3">
-                  <div className="flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-purple-200 bg-purple-50 p-4">
+                  <div className="flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-indigo-200 bg-indigo-50 p-4">
                     <img
                       src={`/CodigoQrYape.jpg?t=${Date.now()}`}
                       alt="Código QR Yape"
-                      className="h-36 w-36 rounded-lg border border-purple-100 bg-white object-contain p-1"
+                      className="h-48 w-48 rounded-lg border border-indigo-100 bg-white object-contain p-1"
                     />
-                    <p className="text-center text-xs text-purple-600">
-                      Escanea el QR con Yape para pagar una parte
+                    <p className="text-center text-xs text-indigo-600">
+                      Escanea el código QR con tu app Yape para pagar
                     </p>
                   </div>
-                  <div className="space-y-2">
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-purple-600">Yape</span>
-                      <input
-                        type="number"
-                        value={montoYape}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setMontoYape(val);
-                          if (val && total) {
-                            const totalRounded = parseFloat(total.toFixed(2));
-                            const resto = totalRounded - parseFloat(parseFloat(val).toFixed(2));
-                            setMontoEfectivo(resto > 0 ? resto.toFixed(2) : '0.00');
-                          }
-                        }}
-                        placeholder="Monto con Yape"
-                        min={0}
-                        step="0.01"
-                        className="w-full rounded-lg border border-purple-200 px-4 py-2 pl-12 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
-                      />
-                    </div>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-green-600">Efe.</span>
-                      <input
-                        type="number"
-                        value={montoEfectivo}
-                        onChange={(e) => setMontoEfectivo(e.target.value)}
-                        placeholder="Monto en efectivo"
-                        min={0}
-                        step="0.01"
-                        className="w-full rounded-lg border border-green-200 px-4 py-2 pl-12 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
-                      />
-                    </div>
+
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                    <strong>Importante:</strong> Revisa la notificación de Yape en <strong>tu propio celular</strong>.
+                    Confirma el pago solo si ves el monto correcto (<strong>S/. {total.toFixed(2)}</strong>).
                   </div>
+
+                  {!yapeVerificado ? (
+                    <button
+                      onClick={() => setYapeVerificado(true)}
+                      className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-700"
+                    >
+                      <CheckCircle className="h-4 w-4" />
+                      Confirmar Yape recibido en mi celular
+                    </button>
+                  ) : (
+                    <div className="flex items-center gap-2 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                      <CheckCircle className="h-5 w-5 shrink-0 text-emerald-500" />
+                      <span className="font-medium">Yape verificado — Monto: S/. {total.toFixed(2)}</span>
+                    </div>
+                  )}
                 </div>
               )}
 

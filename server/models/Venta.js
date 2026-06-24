@@ -24,7 +24,7 @@ const Venta = sequelize.define('Venta', {
     },
   },
   metodo_pago: {
-    type: DataTypes.ENUM('Efectivo', 'Yape', 'Mixto'),
+    type: DataTypes.ENUM('Efectivo', 'Yape'),
     allowNull: false,
   },
   monto_total: {
@@ -65,6 +65,18 @@ const Venta = sequelize.define('Venta', {
   },
   cliente_direccion: {
     type: DataTypes.STRING,
+    allowNull: true,
+  },
+  yape_verificado: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+  },
+  yape_verificado_por: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
+  yape_verificado_en: {
+    type: DataTypes.DATE,
     allowNull: true,
   },
 }, {

@@ -322,7 +322,7 @@ const crearVentas = async () => {
       }
     }
 
-    // Venta 4: Vendedor Juan, método Plin, items: Yogurt x2 + Coca Cola x4
+    // Venta 4: Vendedor Juan, método Yape, items: Yogurt x2 + Coca Cola x4
     {
       const yogurt = productoMap['Yogurt Gloria Fresa 500ml'];
       const cocaCola = productoMap['Coca Cola 500ml'];
@@ -331,7 +331,7 @@ const crearVentas = async () => {
         const montoTotal = yogurt.precio * 2 + cocaCola.precio * 4;
         const venta = await Venta.create({
           usuario_id: vendedor.id,
-          metodo_pago: 'Plin',
+          metodo_pago: 'Yape',
           monto_total: montoTotal,
           monto_recibido: null,
           vuelto: null,
