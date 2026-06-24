@@ -22,6 +22,8 @@ const presentarVenta = (venta) => ({
   metodo_pago:       venta.metodo_pago,
   monto_total:       venta.monto_total,
   monto_recibido:    venta.monto_recibido,
+  monto_yape:        venta.monto_yape || null,
+  monto_efectivo:    venta.monto_efectivo || null,
   vuelto:            venta.vuelto,
   tipo_comprobante:  venta.tipo_comprobante,
   cliente_dni:       venta.cliente_dni || null,

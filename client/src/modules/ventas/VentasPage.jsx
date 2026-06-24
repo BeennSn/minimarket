@@ -155,7 +155,13 @@ function generarPDF(venta) {
   bold(); sz(esFactura ? 9 : 8);
   txt('MÉTODO DE PAGO', cx, { align: 'center' }); sp(5);
   norm(); sz(esFactura ? 8 : 7);
-  txt(venta.metodo_pago, cx, { align: 'center' }); sp(4);
+
+  if (venta.metodo_pago === 'Mixto') {
+    txt('Yape', tx, { align: 'left' }); txt(`S/ ${Number(venta.monto_yape || 0).toFixed(2)}`, tv, { align: 'right' }); sp(5);
+    txt('Efectivo', tx, { align: 'left' }); txt(`S/ ${Number(venta.monto_efectivo || 0).toFixed(2)}`, tv, { align: 'right' }); sp(4);
+  } else {
+    txt(venta.metodo_pago, cx, { align: 'center' }); sp(4);
+  }
 
   if (esFactura) {
     txt('Contado', cx, { align: 'center' }); sp(4);
@@ -213,13 +219,20 @@ function ModalComprobante({ venta, onCerrar, onDescargarPDF }) {
               ? 'bg-purple-100 text-purple-700'
               : venta.metodo_pago === 'Efectivo'
                 ? 'bg-green-100 text-green-700'
-                : 'bg-gray-100 text-gray-700'
+                : venta.metodo_pago === 'Mixto'
+                  ? 'bg-orange-100 text-orange-700'
+                  : 'bg-gray-100 text-gray-700'
           }`}>
-            {venta.metodo_pago}
+            {venta.metodo_pago === 'Mixto' ? 'Yape + Efectivo' : venta.metodo_pago}
           </span>
         </div>
 
-        {venta?.monto_recibido > 0 && (
+        {venta.metodo_pago === 'Mixto' ? (
+          <div className="mt-2 space-y-1 text-center text-sm text-gray-500">
+            <p>Yape: S/. {Number(venta.monto_yape || 0).toFixed(2)}</p>
+            <p>Efectivo: S/. {Number(venta.monto_efectivo || 0).toFixed(2)}</p>
+          </div>
+        ) : venta?.monto_recibido > 0 && (
           <p className="text-sm text-gray-500 text-center">
             Monto recibido: S/. {Number(venta?.monto_recibido).toFixed(2)}
             {' '}— Vuelto: S/. {Number(venta?.vuelto || 0).toFixed(2)}
@@ -261,6 +274,8 @@ export default function VentasPage() {
   const [dni, setDni] = useState('');
   const [metodoPago, setMetodoPago] = useState('Efectivo');
   const [montoRecibido, setMontoRecibido] = useState('');
+  const [montoYape, setMontoYape] = useState('');
+  const [montoEfectivo, setMontoEfectivo] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [modalComprobante, setModalComprobante] = useState(false);
@@ -393,6 +408,7 @@ export default function VentasPage() {
   const puedeVender =
     carrito.length > 0 &&
     (metodoPago !== 'Efectivo' || (montoRecibido && parseFloat(montoRecibido) >= total)) &&
+    (metodoPago !== 'Mixto' || (parseFloat(montoYape || 0) + parseFloat(montoEfectivo || 0) >= total)) &&
     datosClienteValidos();
 
   const resetear = () => {
@@ -400,6 +416,8 @@ export default function VentasPage() {
     setCliente(null);
     setDni('');
     setMontoRecibido('');
+    setMontoYape('');
+    setMontoEfectivo('');
     setVentaExitosa(null);
     setBusqueda('');
     setCategoriaFiltro('');
@@ -422,6 +440,8 @@ export default function VentasPage() {
         cliente_id: cliente?.id || null,
         metodo_pago: metodoPago,
         monto_recibido: metodoPago === 'Efectivo' ? parseFloat(montoRecibido) : 0,
+        monto_yape: metodoPago === 'Mixto' ? parseFloat(montoYape) : null,
+        monto_efectivo: metodoPago === 'Mixto' ? parseFloat(montoEfectivo) : null,
         items: carrito.map((item) => ({
           producto_id: item.id,
           cantidad: item.cantidad,
@@ -820,6 +840,7 @@ export default function VentasPage() {
               >
                 <option value="Efectivo">Efectivo</option>
                 <option value="Yape">Yape</option>
+                <option value="Mixto">Mixto (Yape + Efectivo)</option>
                 <option value="Plin">Plin</option>
               </select>
 
@@ -833,6 +854,54 @@ export default function VentasPage() {
                   <p className="text-center text-xs text-indigo-600">
                     Escanea el código QR con tu app Yape para pagar
                   </p>
+                </div>
+              )}
+
+              {metodoPago === 'Mixto' && (
+                <div className="mt-3 space-y-3">
+                  <div className="flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-purple-200 bg-purple-50 p-4">
+                    <img
+                      src={`/CodigoQrYape.jpg?t=${Date.now()}`}
+                      alt="Código QR Yape"
+                      className="h-36 w-36 rounded-lg border border-purple-100 bg-white object-contain p-1"
+                    />
+                    <p className="text-center text-xs text-purple-600">
+                      Escanea el QR con Yape para pagar una parte
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-purple-600">Yape</span>
+                      <input
+                        type="number"
+                        value={montoYape}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setMontoYape(val);
+                          if (val && total) {
+                            const resto = total - parseFloat(val);
+                            setMontoEfectivo(resto > 0 ? resto.toFixed(2) : '0.00');
+                          }
+                        }}
+                        placeholder="Monto con Yape"
+                        min={0}
+                        step="0.01"
+                        className="w-full rounded-lg border border-purple-200 px-4 py-2 pl-12 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
+                      />
+                    </div>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-green-600">Efe.</span>
+                      <input
+                        type="number"
+                        value={montoEfectivo}
+                        onChange={(e) => setMontoEfectivo(e.target.value)}
+                        placeholder="Monto en efectivo"
+                        min={0}
+                        step="0.01"
+                        className="w-full rounded-lg border border-green-200 px-4 py-2 pl-12 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+                      />
+                    </div>
+                  </div>
                 </div>
               )}
 

@@ -4,7 +4,7 @@ const { presentarVenta, presentarLista } = require('../presenters/venta.presente
 
 const registrar = async (req, res) => {
   try {
-    const { cliente_id, metodo_pago, monto_recibido, items, tipo_comprobante, cliente_dni, cliente_ruc, cliente_razon_social, cliente_direccion } = req.body;
+    const { cliente_id, metodo_pago, monto_recibido, monto_yape, monto_efectivo, items, tipo_comprobante, cliente_dni, cliente_ruc, cliente_razon_social, cliente_direccion } = req.body;
 
     if (!items || items.length === 0) {
       return res.status(400).json({ mensaje: 'La venta debe tener al menos un producto' });
@@ -42,6 +42,14 @@ const registrar = async (req, res) => {
         throw { status: 400, mensaje: 'Monto recibido insuficiente' };
       }
 
+      if (metodo_pago === 'Mixto') {
+        const yape = parseFloat(monto_yape || 0);
+        const efectivo = parseFloat(monto_efectivo || 0);
+        if (yape + efectivo !== monto_total) {
+          throw { status: 400, mensaje: 'La suma de Yape y Efectivo debe ser igual al total' };
+        }
+      }
+
       const vuelto = metodo_pago === 'Efectivo'
         ? parseFloat(monto_recibido) - monto_total
         : 0;
@@ -52,6 +60,8 @@ const registrar = async (req, res) => {
         metodo_pago,
         monto_total:   monto_total.toFixed(2),
         monto_recibido: metodo_pago === 'Efectivo' ? monto_recibido : null,
+        monto_yape:    metodo_pago === 'Mixto' ? monto_yape : null,
+        monto_efectivo: metodo_pago === 'Mixto' ? monto_efectivo : null,
         vuelto:        vuelto.toFixed(2),
         tipo_comprobante: tipo_comprobante || 'Boleta',
         cliente_dni:   cliente_dni || null,
