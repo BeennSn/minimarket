@@ -93,6 +93,7 @@ const forgotPassword = async (req, res) => {
     }
 
     await LogAcceso.create({
+      usuario_id: usuario.id,
       nombre_usuario: usuario.nombre,
       rol: usuario.rol,
       fecha_hora: new Date(),
