@@ -151,12 +151,14 @@ function generarPDF(venta) {
   sz(esFactura ? 8 : 6); norm();
   txt(numeroALetras(Number(venta.monto_total)), cx, { align: 'center' }); sp(4);
 
+  ln();
+  bold(); sz(esFactura ? 9 : 8);
+  txt('MÉTODO DE PAGO', cx, { align: 'center' }); sp(5);
+  norm(); sz(esFactura ? 8 : 7);
+  txt(venta.metodo_pago, cx, { align: 'center' }); sp(4);
+
   if (esFactura) {
-    ln();
-    bold(); sz(9);
-    txt('CONDICIÓN DE PAGO', cx, { align: 'center' }); sp(5);
-    norm(); sz(8);
-    txt('Contado', cx, { align: 'center' }); sp(5);
+    txt('Contado', cx, { align: 'center' }); sp(4);
   }
   ln();
 
@@ -202,12 +204,23 @@ function ModalComprobante({ venta, onCerrar, onDescargarPDF }) {
           </span>
         </div>
 
-        <p className="mt-2 text-sm text-gray-500">
-          {venta.tipo_comprobante === 'Factura' ? 'Factura' : 'Boleta'} — {venta?.metodo_pago}
-        </p>
+        <div className="mt-2 flex items-center justify-center gap-2">
+          <span className="rounded-full bg-indigo-100 px-3 py-1 text-xs font-semibold text-indigo-700">
+            {venta.tipo_comprobante === 'Factura' ? 'Factura' : 'Boleta'}
+          </span>
+          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
+            venta.metodo_pago === 'Yape'
+              ? 'bg-purple-100 text-purple-700'
+              : venta.metodo_pago === 'Efectivo'
+                ? 'bg-green-100 text-green-700'
+                : 'bg-gray-100 text-gray-700'
+          }`}>
+            {venta.metodo_pago}
+          </span>
+        </div>
 
         {venta?.monto_recibido > 0 && (
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-500 text-center">
             Monto recibido: S/. {Number(venta?.monto_recibido).toFixed(2)}
             {' '}— Vuelto: S/. {Number(venta?.vuelto || 0).toFixed(2)}
           </p>
