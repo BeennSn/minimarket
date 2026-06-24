@@ -841,7 +841,6 @@ export default function VentasPage() {
                 <option value="Efectivo">Efectivo</option>
                 <option value="Yape">Yape</option>
                 <option value="Mixto">Mixto (Yape + Efectivo)</option>
-                <option value="Plin">Plin</option>
               </select>
 
               {metodoPago === 'Yape' && (

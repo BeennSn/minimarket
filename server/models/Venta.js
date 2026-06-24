@@ -24,7 +24,7 @@ const Venta = sequelize.define('Venta', {
     },
   },
   metodo_pago: {
-    type: DataTypes.ENUM('Efectivo', 'Yape', 'Plin', 'Mixto'),
+    type: DataTypes.ENUM('Efectivo', 'Yape', 'Mixto'),
     allowNull: false,
   },
   monto_total: {
