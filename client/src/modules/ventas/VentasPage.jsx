@@ -440,8 +440,8 @@ export default function VentasPage() {
         cliente_id: cliente?.id || null,
         metodo_pago: metodoPago,
         monto_recibido: metodoPago === 'Efectivo' ? parseFloat(montoRecibido) : 0,
-        monto_yape: metodoPago === 'Mixto' ? parseFloat(montoYape) : null,
-        monto_efectivo: metodoPago === 'Mixto' ? parseFloat(montoEfectivo) : null,
+        monto_yape: metodoPago === 'Mixto' ? parseFloat(parseFloat(montoYape).toFixed(2)) : null,
+        monto_efectivo: metodoPago === 'Mixto' ? parseFloat(parseFloat(montoEfectivo).toFixed(2)) : null,
         items: carrito.map((item) => ({
           producto_id: item.id,
           cantidad: item.cantidad,
@@ -878,7 +878,8 @@ export default function VentasPage() {
                           const val = e.target.value;
                           setMontoYape(val);
                           if (val && total) {
-                            const resto = total - parseFloat(val);
+                            const totalRounded = parseFloat(total.toFixed(2));
+                            const resto = totalRounded - parseFloat(parseFloat(val).toFixed(2));
                             setMontoEfectivo(resto > 0 ? resto.toFixed(2) : '0.00');
                           }
                         }}

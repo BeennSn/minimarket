@@ -10,19 +10,39 @@ const registrar = async (req, res) => {
       return res.status(400).json({ mensaje: 'La venta debe tener al menos un producto' });
     }
 
+    // ─── Validaciones previas (fuera de transacción) ──────────────────────────
+    let monto_total_prev = 0;
+    for (const item of items) {
+      const producto = await Producto.findByPk(item.producto_id);
+      if (!producto || !producto.activo) {
+        return res.status(400).json({ mensaje: 'Producto no encontrado o inactivo' });
+      }
+      if (producto.stock < item.cantidad) {
+        return res.status(400).json({ mensaje: `Stock insuficiente para: ${producto.nombre}` });
+      }
+      monto_total_prev += parseFloat(item.cantidad * producto.precio);
+    }
+
+    if (metodo_pago === 'Efectivo' && parseFloat(monto_recibido || 0) < monto_total_prev) {
+      return res.status(400).json({ mensaje: 'Monto recibido insuficiente' });
+    }
+
+    if (metodo_pago === 'Mixto') {
+      const yape = parseFloat(monto_yape || 0);
+      const efectivo = parseFloat(monto_efectivo || 0);
+      const suma = parseFloat((yape + efectivo).toFixed(2));
+      const totalCr = parseFloat(monto_total_prev.toFixed(2));
+      if (Math.abs(suma - totalCr) > 0.01) {
+        return res.status(400).json({ mensaje: 'La suma de Yape y Efectivo debe ser igual al total' });
+      }
+    }
+
     const venta = await sequelize.transaction(async (t) => {
       let monto_total = 0;
       const detallesData = [];
 
       for (const item of items) {
         const producto = await Producto.findByPk(item.producto_id, { transaction: t });
-        if (!producto || !producto.activo) {
-          throw { status: 400, mensaje: 'Producto no encontrado o inactivo' };
-        }
-        if (producto.stock < item.cantidad) {
-          throw { status: 400, mensaje: `Stock insuficiente para: ${producto.nombre}` };
-        }
-
         const subtotal = parseFloat(item.cantidad * producto.precio);
         monto_total += subtotal;
 
@@ -38,18 +58,6 @@ const registrar = async (req, res) => {
         await producto.save({ transaction: t });
       }
 
-      if (metodo_pago === 'Efectivo' && parseFloat(monto_recibido) < monto_total) {
-        throw { status: 400, mensaje: 'Monto recibido insuficiente' };
-      }
-
-      if (metodo_pago === 'Mixto') {
-        const yape = parseFloat(monto_yape || 0);
-        const efectivo = parseFloat(monto_efectivo || 0);
-        if (yape + efectivo !== monto_total) {
-          throw { status: 400, mensaje: 'La suma de Yape y Efectivo debe ser igual al total' };
-        }
-      }
-
       const vuelto = metodo_pago === 'Efectivo'
         ? parseFloat(monto_recibido) - monto_total
         : 0;
@@ -60,8 +68,8 @@ const registrar = async (req, res) => {
         metodo_pago,
         monto_total:   monto_total.toFixed(2),
         monto_recibido: metodo_pago === 'Efectivo' ? monto_recibido : null,
-        monto_yape:    metodo_pago === 'Mixto' ? monto_yape : null,
-        monto_efectivo: metodo_pago === 'Mixto' ? monto_efectivo : null,
+        monto_yape:    metodo_pago === 'Mixto' ? parseFloat((monto_yape || 0).toFixed(2)) : null,
+        monto_efectivo: metodo_pago === 'Mixto' ? parseFloat((monto_efectivo || 0).toFixed(2)) : null,
         vuelto:        vuelto.toFixed(2),
         tipo_comprobante: tipo_comprobante || 'Boleta',
         cliente_dni:   cliente_dni || null,
