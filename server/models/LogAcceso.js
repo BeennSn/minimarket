@@ -27,6 +27,10 @@ const LogAcceso = sequelize.define('LogAcceso', {
     type: DataTypes.DATE,
     defaultValue: DataTypes.NOW,
   },
+  detalle: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
 }, {
   tableName: 'logs_acceso',
   timestamps: false,

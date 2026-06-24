@@ -36,6 +36,18 @@ const Usuario = sequelize.define('Usuario', {
     type: DataTypes.DATE,
     allowNull: true,
   },
+  reset_used: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+  },
+  intentos_fallidos: {
+    type: DataTypes.INTEGER,
+    defaultValue: 0,
+  },
+  bloqueo_hasta: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
 }, {
   tableName: 'usuarios',
   timestamps: true,

@@ -1,45 +1,33 @@
-/**
- * auth.controller.js
- * Controlador de autenticación: login y logout.
- */
-
 const bcrypt = require('bcryptjs');
 const jwt    = require('jsonwebtoken');
 
 const { Usuario, LogAcceso } = require('../models');
 const { presentarLogin }     = require('../presenters/auth.presenter');
+const { enviarCorreo } = require('../services/mail.service');
 
 const JWT_SECRET     = process.env.JWT_SECRET;
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 
-/**
- * POST /api/auth/login
- * Autentica al usuario y devuelve un JWT junto con los datos públicos del usuario.
- */
 const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // 1. Buscar usuario activo
     const usuario = await Usuario.findOne({ where: { email, activo: true } });
     if (!usuario) {
       return res.status(401).json({ mensaje: 'Credenciales incorrectas' });
     }
 
-    // 2. Comparar contraseña
     const passwordValida = await bcrypt.compare(password, usuario.password_hash);
     if (!passwordValida) {
       return res.status(401).json({ mensaje: 'Credenciales incorrectas' });
     }
 
-    // 3. Generar JWT
     const token = jwt.sign(
       { id: usuario.id, rol: usuario.rol },
       JWT_SECRET,
       { expiresIn: JWT_EXPIRES_IN }
     );
 
-    // 4. Registrar log de acceso
     await LogAcceso.create({
       usuario_id:     usuario.id,
       nombre_usuario: usuario.nombre,
@@ -47,7 +35,6 @@ const login = async (req, res) => {
       fecha_hora:     new Date(),
     });
 
-    // 5. Responder
     return res.status(200).json(presentarLogin(token, usuario));
   } catch (err) {
     console.error('Error en login:', err);
@@ -55,25 +42,23 @@ const login = async (req, res) => {
   }
 };
 
-/**
- * POST /api/auth/logout
- * Cierra la sesión del usuario (el cliente debe eliminar el token localmente).
- */
 const logout = (req, res) => {
   return res.status(200).json({ mensaje: 'Sesión cerrada correctamente' });
 };
 
 // ─── Reset de contraseña ─────────────────────────────────────────────────────
 
-const { enviarCorreo } = require('../services/mail.service');
+const validatePassword = (password) => {
+  if (password.length < 7) return 'Debe tener al menos 7 caracteres';
+  if (!/[A-Z]/.test(password)) return 'Debe contener una mayúscula';
+  if (!/[a-z]/.test(password)) return 'Debe contener una minúscula';
+  if (!/\d/.test(password)) return 'Debe contener un dígito';
+  return null;
+};
 
-/**
- * POST /api/auth/reset/solicitar
- * Genera un código de 6 dígitos y lo envía por correo si el email existe.
- */
-const solicitarReset = async (req, res) => {
+const forgotPassword = async (req, res) => {
   try {
-    const { email } = req.body;
+    const email = req.body.email?.trim().toLowerCase();
     const respuesta = { mensaje: 'Si el correo existe recibirás las instrucciones' };
 
     const usuario = await Usuario.findOne({ where: { email, activo: true } });
@@ -81,9 +66,10 @@ const solicitarReset = async (req, res) => {
       return res.status(200).json(respuesta);
     }
 
-    const codigo = Math.floor(100000 + Math.random() * 900000).toString();
+    const codigo = Math.floor(1000 + Math.random() * 9000).toString();
     usuario.reset_code = codigo;
     usuario.reset_expiry = new Date(Date.now() + 15 * 60 * 1000);
+    usuario.reset_used = false;
     await usuario.save();
 
     try {
@@ -91,51 +77,92 @@ const solicitarReset = async (req, res) => {
         para: email,
         asunto: 'Código de recuperación - Minimarket',
         html: `
-          <h2>Recuperación de contraseña</h2>
-          <p>Tu código de verificación es:</p>
-          <h1 style="color: #2563eb; letter-spacing: 8px;">${codigo}</h1>
-          <p>Este código expira en <strong>15 minutos</strong>.</p>
-          <p>Si no solicitaste este cambio, ignora este mensaje.</p>
+          <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
+            <h2 style="color: #6366f1;">Recuperación de contraseña</h2>
+            <p>Usa el siguiente código para restablecer tu contraseña:</p>
+            <div style="font-size: 36px; font-family: monospace; letter-spacing: 8px; color: #6366f1; text-align: center; padding: 16px; background: #f5f3ff; border-radius: 8px; margin: 16px 0;">
+              ${codigo}
+            </div>
+            <p style="color: #666;">Este código expirará en <strong>15 minutos</strong>.</p>
+            <p style="color: #999; font-size: 12px;">Si no solicitaste este cambio, ignora este mensaje.</p>
+          </div>
         `,
       });
     } catch {
       return res.status(500).json({ mensaje: 'Error al enviar el correo' });
     }
 
+    await LogAcceso.create({
+      nombre_usuario: usuario.nombre,
+      rol: usuario.rol,
+      fecha_hora: new Date(),
+      detalle: 'Solicitud de código de recuperación',
+    });
+
     return res.status(200).json(respuesta);
   } catch (err) {
-    console.error('Error en solicitarReset:', err);
+    console.error('Error en forgotPassword:', err);
     return res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
 };
 
-/**
- * POST /api/auth/reset/confirmar
- * Valida el código y actualiza la contraseña.
- */
-const confirmarReset = async (req, res) => {
+const resetPassword = async (req, res) => {
   try {
-    const { email, codigo, password_nueva } = req.body;
+    const email = req.body.email?.trim().toLowerCase();
+    const { codigo, password_nueva } = req.body;
+
+    if (!/^\d{4}$/.test(codigo)) {
+      return res.status(400).json({ mensaje: 'El código debe tener exactamente 4 dígitos' });
+    }
+
+    const passwordError = validatePassword(password_nueva);
+    if (passwordError) {
+      return res.status(400).json({ mensaje: `Contraseña inválida: ${passwordError}` });
+    }
 
     const usuario = await Usuario.findOne({ where: { email, activo: true } });
     if (!usuario) {
       return res.status(400).json({ mensaje: 'Código inválido o expirado' });
     }
 
-    if (usuario.reset_code !== codigo || new Date() > usuario.reset_expiry) {
+    if (usuario.reset_code !== codigo) {
       return res.status(400).json({ mensaje: 'Código inválido o expirado' });
+    }
+
+    if (usuario.reset_used) {
+      return res.status(400).json({ mensaje: 'Este código ya fue utilizado' });
+    }
+
+    if (!usuario.reset_expiry || new Date() > usuario.reset_expiry) {
+      return res.status(400).json({ mensaje: 'El código ha expirado' });
+    }
+
+    const mismaPassword = await bcrypt.compare(password_nueva, usuario.password_hash);
+    if (mismaPassword) {
+      return res.status(400).json({ mensaje: 'La nueva contraseña debe ser diferente a la actual' });
     }
 
     usuario.password_hash = await bcrypt.hash(password_nueva, 10);
     usuario.reset_code = null;
     usuario.reset_expiry = null;
+    usuario.reset_used = false;
+    usuario.intentos_fallidos = 0;
+    usuario.bloqueo_hasta = null;
     await usuario.save();
 
-    return res.status(200).json({ mensaje: 'Contraseña actualizada correctamente' });
+    await LogAcceso.create({
+      usuario_id:     usuario.id,
+      nombre_usuario: usuario.nombre,
+      rol:            usuario.rol,
+      fecha_hora:     new Date(),
+      detalle: 'Contraseña restablecida exitosamente via codigo',
+    });
+
+    return res.status(200).json({ success: true, mensaje: 'Contraseña actualizada correctamente' });
   } catch (err) {
-    console.error('Error en confirmarReset:', err);
+    console.error('Error en resetPassword:', err);
     return res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
 };
 
-module.exports = { login, logout, solicitarReset, confirmarReset };
+module.exports = { login, logout, forgotPassword, resetPassword };

@@ -17,13 +17,21 @@ export default function ResetPasswordPage() {
   const [showPasswordNueva, setShowPasswordNueva] = useState(false);
   const [showPasswordConfirmar, setShowPasswordConfirmar] = useState(false);
 
+  const validatePassword = (pw) => {
+    if (pw.length < 7) return 'Debe tener al menos 7 caracteres';
+    if (!/[A-Z]/.test(pw)) return 'Debe contener una mayúscula';
+    if (!/[a-z]/.test(pw)) return 'Debe contener una minúscula';
+    if (!/\d/.test(pw)) return 'Debe contener un dígito';
+    return null;
+  };
+
   const handleSolicitar = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
     try {
-      await api.post('/auth/reset/solicitar', { email });
+      await api.post('/auth/forgot-password', { email });
       setPaso(2);
     } catch (err) {
       setError(err.response?.data?.mensaje || err.response?.data?.message || 'Error al enviar código');
@@ -41,15 +49,16 @@ export default function ResetPasswordPage() {
       return;
     }
 
-    if (passwordNueva.length < 6) {
-      setError('La contraseña debe tener al menos 6 caracteres');
+    const pwError = validatePassword(passwordNueva);
+    if (pwError) {
+      setError(`Contraseña inválida: ${pwError}`);
       return;
     }
 
     setLoading(true);
 
     try {
-      await api.post('/auth/reset/confirmar', {
+      await api.post('/auth/reset-password', {
         email,
         codigo,
         password_nueva: passwordNueva,
@@ -163,15 +172,15 @@ export default function ResetPasswordPage() {
             <form onSubmit={handleConfirmar} className="space-y-4">
               <div>
                 <label className="mb-1 block text-sm font-medium text-gray-700">
-                  Código de 6 dígitos
+                  Código de 4 dígitos
                 </label>
                 <input
                   type="text"
                   value={codigo}
-                  onChange={(e) => setCodigo(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  onChange={(e) => setCodigo(e.target.value.replace(/\D/g, '').slice(0, 4))}
                   required
-                  maxLength={6}
-                  placeholder="000000"
+                  maxLength={4}
+                  placeholder="0000"
                   className="w-full rounded-lg border border-gray-200 px-4 py-2 text-center text-lg tracking-widest focus:outline-none focus:ring-2 focus:ring-indigo-400"
                 />
               </div>
