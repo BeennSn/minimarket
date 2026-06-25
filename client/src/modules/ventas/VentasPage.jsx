@@ -46,7 +46,10 @@ function numeroALetras(num) {
 
 function generarPDF(venta) {
   const fecha = new Date(venta.createdAt);
-  const numero = `B173-${String(venta.id).padStart(8, '0')}`;
+  const esFactura = venta.tipo_comprobante === 'Factura';
+  const prefijo = esFactura ? 'F' : 'B';
+  const numero = `${prefijo}173-${String(venta.id).padStart(8, '0')}`;
+  const tituloDoc = esFactura ? 'FACTURA ELECTRÓNICA' : 'BOLETA DE VENTA ELECTRÓNICA';
 
   const productosHTML = (venta.detalles || venta.items || []).map(d => {
     const nombre = d.producto?.nombre || d.nombre || '';
@@ -84,7 +87,7 @@ function generarPDF(venta) {
         <div class="text-center slogan bold divider">PARTICIPA EN RÁPIDOS Y TAMBEROS</div>
 
         <div class="text-center info-doc divider">
-            <div>BOLETA DE VENTA ELECTRÓNICA</div>
+            <div>${tituloDoc}</div>
             <div>${numero}</div>
         </div>
 
@@ -93,6 +96,10 @@ function generarPDF(venta) {
                 <td class="text-left">Fecha: ${fecha.toLocaleDateString('es-PE')}</td>
                 <td class="text-right">Hora: ${fecha.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</td>
             </tr>
+            ${venta.cliente_dni ? `<tr><td class="text-left" colspan="2">DNI: ${venta.cliente_dni}</td></tr>` : ''}
+            ${venta.cliente_ruc ? `<tr><td class="text-left" colspan="2">RUC: ${venta.cliente_ruc}</td></tr>` : ''}
+            ${venta.cliente_razon_social ? `<tr><td class="text-left" colspan="2">Razón Social: ${venta.cliente_razon_social}</td></tr>` : ''}
+            ${venta.cliente_direccion ? `<tr><td class="text-left" colspan="2">Dirección: ${venta.cliente_direccion}</td></tr>` : ''}
         </table>
 
         <table class="table-layout divider">
@@ -161,8 +168,20 @@ function ModalComprobante({ venta, onCerrar, onDescargarPDF }) {
           </span>
         </div>
 
-        <div className="mt-2 flex items-center justify-center gap-2">
-          <span className="rounded-full bg-indigo-100 px-3 py-1 text-xs font-semibold text-indigo-700">Boleta</span>
+        <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
+            venta.tipo_comprobante === 'Factura'
+              ? 'bg-amber-100 text-amber-700'
+              : 'bg-indigo-100 text-indigo-700'
+          }`}>
+            {venta.tipo_comprobante === 'Factura' ? 'Factura' : venta.cliente_dni ? 'Boleta con DNI' : 'Boleta Simple'}
+          </span>
+          {venta.cliente_dni && (
+            <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600">DNI: {venta.cliente_dni}</span>
+          )}
+          {venta.cliente_ruc && (
+            <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600">RUC: {venta.cliente_ruc}</span>
+          )}
           <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
             venta.metodo_pago === 'Yape'
               ? 'bg-purple-100 text-purple-700'
@@ -171,6 +190,12 @@ function ModalComprobante({ venta, onCerrar, onDescargarPDF }) {
             {venta.metodo_pago}
           </span>
         </div>
+        {(venta.cliente_razon_social || venta.cliente_direccion) && (
+          <div className="mt-2 text-xs text-gray-500 text-center">
+            {venta.cliente_razon_social && <p>{venta.cliente_razon_social}</p>}
+            {venta.cliente_direccion && <p>{venta.cliente_direccion}</p>}
+          </div>
+        )}
 
         {venta?.monto_recibido > 0 && (
           <p className="text-sm text-gray-500 text-center">
@@ -191,7 +216,7 @@ function ModalComprobante({ venta, onCerrar, onDescargarPDF }) {
           className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-500 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-600"
         >
           <FileText className="h-4 w-4" />
-          Descargar Boleta PDF
+          {venta.tipo_comprobante === 'Factura' ? 'Descargar Factura PDF' : 'Descargar Boleta PDF'}
         </button>
 
         <button
@@ -216,6 +241,13 @@ export default function VentasPage() {
   const [metodoPago, setMetodoPago] = useState('Efectivo');
   const [montoRecibido, setMontoRecibido] = useState('');
   const [yapeVerificado, setYapeVerificado] = useState(false);
+
+  // Tipo de comprobante
+  const [tipoComprobante, setTipoComprobante] = useState('BoletaSimple');
+  const [clienteDni, setClienteDni] = useState('');
+  const [clienteRuc, setClienteRuc] = useState('');
+  const [clienteRazonSocial, setClienteRazonSocial] = useState('');
+  const [clienteDireccion, setClienteDireccion] = useState('');
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -322,7 +354,18 @@ export default function VentasPage() {
   const total = carrito.reduce((sum, item) => sum + item.precio * item.cantidad, 0);
   const vuelto = montoRecibido ? parseFloat(montoRecibido) - total : 0;
 
-  const datosClienteValidos = () => true;
+  const datosClienteValidos = () => {
+    if (tipoComprobante === 'BoletaSimple') return true;
+    if (tipoComprobante === 'BoletaDNI') return /^\d{8}$/.test(clienteDni);
+    if (tipoComprobante === 'Factura') {
+      return (
+        /^\d{11}$/.test(clienteRuc) &&
+        clienteRazonSocial.trim().length >= 3 &&
+        clienteDireccion.trim().length >= 5
+      );
+    }
+    return false;
+  };
 
   const puedeVender =
     carrito.length > 0 &&
@@ -339,12 +382,29 @@ export default function VentasPage() {
     setCategoriaFiltro('');
     setPaginaActual(1);
     setCodigoBarras('');
+    setTipoComprobante('BoletaSimple');
+    setClienteDni('');
+    setClienteRuc('');
+    setClienteRazonSocial('');
+    setClienteDireccion('');
     setError('');
     inputCodigoRef.current?.focus();
   };
 
   const realizarVenta = async () => {
     setError('');
+
+    if (!datosClienteValidos()) {
+      if (tipoComprobante === 'BoletaDNI') {
+        setError('El DNI debe tener exactamente 8 dígitos');
+      } else if (tipoComprobante === 'Factura') {
+        if (!/^\d{11}$/.test(clienteRuc)) setError('El RUC debe tener 11 dígitos');
+        else if (clienteRazonSocial.trim().length < 3) setError('Ingrese una Razón Social válida');
+        else if (clienteDireccion.trim().length < 5) setError('Ingrese una Dirección válida');
+      }
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -358,7 +418,11 @@ export default function VentasPage() {
           cantidad: item.cantidad,
           precio_unitario: item.precio,
         })),
-        tipo_comprobante: 'Boleta',
+        tipo_comprobante: tipoComprobante === 'Factura' ? 'Factura' : 'Boleta',
+        cliente_dni: tipoComprobante === 'BoletaDNI' ? clienteDni : null,
+        cliente_ruc: tipoComprobante === 'Factura' ? clienteRuc : null,
+        cliente_razon_social: tipoComprobante === 'Factura' ? clienteRazonSocial : null,
+        cliente_direccion: tipoComprobante === 'Factura' ? clienteDireccion : null,
       };
 
       const { data } = await api.post('/ventas', body);
@@ -644,6 +708,81 @@ export default function VentasPage() {
               </div>
 
               <hr className="my-3 border-gray-100" />
+
+              <div className="mb-3">
+                <label className="mb-1 block text-sm font-medium text-gray-700">Tipo de comprobante</label>
+                <select
+                  value={tipoComprobante}
+                  onChange={(e) => setTipoComprobante(e.target.value)}
+                  className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                >
+                  <option value="BoletaSimple">Boleta Simple</option>
+                  <option value="BoletaDNI">Boleta con DNI</option>
+                  <option value="Factura">Factura</option>
+                </select>
+              </div>
+
+              {tipoComprobante === 'BoletaDNI' && (
+                <div className="mb-3">
+                  <label className="mb-1 block text-sm font-medium text-gray-700">DNI <span className="text-red-500">*</span></label>
+                  <input
+                    type="text"
+                    value={clienteDni}
+                    onChange={(e) => setClienteDni(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                    placeholder="12345678"
+                    maxLength={8}
+                    className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  />
+                  {clienteDni.length > 0 && clienteDni.length < 8 && (
+                    <p className="mt-1 text-xs text-red-500">El DNI debe tener 8 dígitos</p>
+                  )}
+                </div>
+              )}
+
+              {tipoComprobante === 'Factura' && (
+                <div className="mb-3 space-y-2">
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">RUC <span className="text-red-500">*</span></label>
+                    <input
+                      type="text"
+                      value={clienteRuc}
+                      onChange={(e) => setClienteRuc(e.target.value.replace(/\D/g, '').slice(0, 11))}
+                      placeholder="20123456789"
+                      maxLength={11}
+                      className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    />
+                    {clienteRuc.length > 0 && clienteRuc.length < 11 && (
+                      <p className="mt-1 text-xs text-red-500">El RUC debe tener 11 dígitos</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">Razón Social <span className="text-red-500">*</span></label>
+                    <input
+                      type="text"
+                      value={clienteRazonSocial}
+                      onChange={(e) => setClienteRazonSocial(e.target.value)}
+                      placeholder="Nombre de la empresa"
+                      className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    />
+                    {clienteRazonSocial.length > 0 && clienteRazonSocial.length < 3 && (
+                      <p className="mt-1 text-xs text-red-500">Ingrese una razón social válida</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">Dirección <span className="text-red-500">*</span></label>
+                    <input
+                      type="text"
+                      value={clienteDireccion}
+                      onChange={(e) => setClienteDireccion(e.target.value)}
+                      placeholder="Av. Ejemplo 123"
+                      className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    />
+                    {clienteDireccion.length > 0 && clienteDireccion.length < 5 && (
+                      <p className="mt-1 text-xs text-red-500">Ingrese una dirección válida</p>
+                    )}
+                  </div>
+                </div>
+              )}
 
               <select
                 value={metodoPago}
