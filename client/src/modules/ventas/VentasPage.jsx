@@ -198,7 +198,7 @@ function generarPDF(venta) {
     `;
 
     const opt = {
-      margin: [5, 5, 5, 5],
+      margin: 5,
       filename: `factura_${numero}.pdf`,
       image: { type: 'jpeg', quality: 0.98 },
       html2canvas: { scale: 2 },
@@ -327,7 +327,7 @@ function generarPDF(venta) {
     `;
 
     const opt = {
-      margin: [5, 5, 5, 5],
+      margin: 5,
       filename: `boleta_${numero}.pdf`,
       image: { type: 'jpeg', quality: 0.98 },
       html2canvas: { scale: 2 },
