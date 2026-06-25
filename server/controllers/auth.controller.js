@@ -99,7 +99,7 @@ const forgotPassword = async (req, res) => {
       detalle: 'Solicitud de código de recuperación',
     });
 
-    return res.status(200).json(respuesta);
+    return res.status(200).json({ mensaje: 'Código enviado correctamente' });
   } catch (err) {
     console.error('Error en forgotPassword:', err);
     return res.status(500).json({ mensaje: 'Error interno del servidor' });
