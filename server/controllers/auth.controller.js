@@ -59,11 +59,10 @@ const validatePassword = (password) => {
 const forgotPassword = async (req, res) => {
   try {
     const email = req.body.email?.trim().toLowerCase();
-    const respuesta = { mensaje: 'Si el correo existe recibirás las instrucciones' };
 
     const usuario = await Usuario.findOne({ where: { email, activo: true } });
     if (!usuario) {
-      return res.status(200).json(respuesta);
+      return res.status(404).json({ mensaje: 'No existe un usuario registrado con ese correo electrónico' });
     }
 
     const codigo = Math.floor(1000 + Math.random() * 9000).toString();
