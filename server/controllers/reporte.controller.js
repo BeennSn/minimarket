@@ -49,30 +49,30 @@ const productosTop = async (req, res) => {
   try {
     const { limite } = req.query;
     const whereVenta = armarWhereFecha(req);
-    const includeOpciones = [
-      { model: Producto, as: 'producto', attributes: ['nombre', 'marca'] },
-    ];
 
+    const ventaInclude = {
+      model: Venta,
+      as: 'venta',
+      attributes: [],
+      required: true,
+    };
     if (Object.keys(whereVenta).length > 0) {
-      includeOpciones.push({ association: 'venta', required: true, where: whereVenta, attributes: [] });
+      ventaInclude.where = whereVenta;
     }
 
     const data = await DetalleVenta.findAll({
       attributes: [
         'producto_id',
-        [sequelize.fn('SUM', sequelize.col('cantidad')), 'total_vendido'],
-        [sequelize.fn('SUM', sequelize.col('subtotal')), 'ingreso_total'],
+        [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('cantidad')), 0), 'total_vendido'],
+        [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('subtotal')), 0), 'ingreso_total'],
       ],
-      include: includeOpciones,
-      group: [
-        sequelize.col('DetalleVenta.producto_id'),
-        sequelize.col('producto.id'),
-        sequelize.col('producto.nombre'),
-        sequelize.col('producto.marca'),
+      include: [
+        { model: Producto, as: 'producto', attributes: ['nombre', 'marca'], required: true },
+        ventaInclude,
       ],
+      group: ['DetalleVenta.producto_id', 'producto.id', 'producto.nombre', 'producto.marca'],
       order: [[sequelize.literal('total_vendido'), 'DESC']],
       limit: parseInt(limite) || 10,
-      subQuery: false,
     });
 
     return res.status(200).json(data.map(presentarProductoTop));

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Loader2, CheckCircle, XCircle, PackageCheck, Plus, X, Check } from 'lucide-react';
 import api from '../../utils/axios';
 import { formatFecha } from '../../utils/format';
@@ -266,11 +266,19 @@ function ModalRechazar({ abierto, onCerrar, solicitud, onRechazada }) {
   );
 }
 
+const DIAS_MINIMOS_VENCIMIENTO = 30;
+
 function ModalCompletar({ abierto, onCerrar, solicitud, onCompletada }) {
   const [cantidadRecibida, setCantidadRecibida] = useState('');
   const [fechaVencimiento, setFechaVencimiento] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState('');
+
+  const fechaMinima = useMemo(() => {
+    const f = new Date();
+    f.setDate(f.getDate() + DIAS_MINIMOS_VENCIMIENTO);
+    return f.toISOString().split('T')[0];
+  }, []);
 
   useEffect(() => {
     if (abierto && solicitud) {
@@ -286,6 +294,10 @@ function ModalCompletar({ abierto, onCerrar, solicitud, onCompletada }) {
     e.preventDefault();
     const cr = parseInt(cantidadRecibida, 10);
     if (!cr || cr <= 0) { setError('La cantidad debe ser mayor a 0'); return; }
+    if (fechaVencimiento && fechaVencimiento < fechaMinima) {
+      setError(`La fecha de vencimiento debe ser al menos ${DIAS_MINIMOS_VENCIMIENTO} días a partir de hoy`);
+      return;
+    }
     setEnviando(true);
     setError('');
     try {
@@ -345,6 +357,7 @@ function ModalCompletar({ abierto, onCerrar, solicitud, onCompletada }) {
               type="date"
               value={fechaVencimiento}
               onChange={(e) => setFechaVencimiento(e.target.value)}
+              min={fechaMinima}
               className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
             />
           </div>

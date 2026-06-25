@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   ShoppingCart, DollarSign, TrendingUp, Package,
-  AlertTriangle, ClipboardList, Loader2,
+  AlertTriangle, ClipboardList, Loader2, RefreshCw,
 } from 'lucide-react';
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
@@ -64,31 +64,39 @@ export default function DashboardPage() {
   const [stockCritico, setStockCritico] = useState([]);
   const [productosTop, setProductosTop] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [resVentas, resInventario, resPorDia, resStock, resTop] = await Promise.all([
-          api.get('/reportes/ventas/resumen'),
-          api.get('/reportes/inventario/resumen'),
-          api.get('/reportes/ventas/por-dia'),
-          api.get('/reportes/inventario/stock-critico', { params: { umbral: 5 } }),
-          api.get('/reportes/ventas/productos-top', { params: { limite: 5 } }),
-        ]);
-        setKpis(resVentas.data);
-        setInventario(resInventario.data);
-        setVentasPorDia(Array.isArray(resPorDia.data) ? resPorDia.data : []);
-        setStockCritico(Array.isArray(resStock.data) ? resStock.data : []);
-        setProductosTop(Array.isArray(resTop.data) ? resTop.data : []);
-      } catch (err) {
-        setError(err.response?.data?.mensaje || 'Error al cargar dashboard');
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
+  const fetchData = useCallback(async (esRefresco = false) => {
+    if (esRefresco) setRefreshing(true);
+    try {
+      const [resVentas, resInventario, resPorDia, resStock, resTop] = await Promise.all([
+        api.get('/reportes/ventas/resumen'),
+        api.get('/reportes/inventario/resumen'),
+        api.get('/reportes/ventas/por-dia'),
+        api.get('/reportes/inventario/stock-critico', { params: { umbral: 5 } }),
+        api.get('/reportes/ventas/productos-top', { params: { limite: 5 } }),
+      ]);
+      setKpis(resVentas.data);
+      setInventario(resInventario.data);
+      setVentasPorDia(Array.isArray(resPorDia.data) ? resPorDia.data : []);
+      setStockCritico(Array.isArray(resStock.data) ? resStock.data : []);
+      setProductosTop(Array.isArray(resTop.data) ? resTop.data : []);
+    } catch (err) {
+      setError(err.response?.data?.mensaje || 'Error al cargar dashboard');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }, []);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  useEffect(() => {
+    const refetchOnFocus = () => { fetchData(true); };
+    window.addEventListener('focus', refetchOnFocus);
+    return () => window.removeEventListener('focus', refetchOnFocus);
+  }, [fetchData]);
 
   if (loading) {
     return (
@@ -120,11 +128,21 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <Breadcrumb items={[{ label: 'Inicio', path: '/dashboard' }, { label: 'Dashboard' }]} />
 
-      <div>
-        <h1 className="text-2xl font-bold text-gray-800">Dashboard</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          Bienvenido, {usuario?.nombre} — {fechaActual}
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-800">Dashboard</h1>
+          <p className="mt-1 text-sm text-gray-500">
+            Bienvenido, {usuario?.nombre} — {fechaActual}
+          </p>
+        </div>
+        <button
+          onClick={() => fetchData(true)}
+          disabled={refreshing}
+          className="flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-50"
+        >
+          <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+          Actualizar
+        </button>
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">

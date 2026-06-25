@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Loader2, Filter, X } from 'lucide-react';
 import api from '../../utils/axios';
 import { formatFechaHora } from '../../utils/format';
@@ -6,6 +6,8 @@ import Breadcrumb from '../../components/Breadcrumb';
 import Spinner from '../../components/Spinner';
 import Toast from '../../components/Toast';
 import useToast from '../../hooks/useToast';
+
+const DIAS_MINIMOS_VENCIMIENTO = 30;
 
 export default function InventarioPage() {
   const { toast, mostrarExito, mostrarError, cerrar } = useToast();
@@ -25,6 +27,12 @@ export default function InventarioPage() {
   const [motivo, setMotivo] = useState('');
   const [fechaVencimiento, setFechaVencimiento] = useState('');
   const [enviando, setEnviando] = useState(false);
+
+  const fechaMinima = useMemo(() => {
+    const f = new Date();
+    f.setDate(f.getDate() + DIAS_MINIMOS_VENCIMIENTO);
+    return f.toISOString().split('T')[0];
+  }, []);
 
   // Filtros — Entradas
   const [filtroEntradaDesde, setFiltroEntradaDesde] = useState('');
@@ -121,8 +129,12 @@ export default function InventarioPage() {
 
   const registrarEntrada = async (e) => {
     e.preventDefault();
-    setEnviando(true);
     setError('');
+    if (fechaVencimiento && fechaVencimiento < fechaMinima) {
+      setError(`La fecha de vencimiento debe ser al menos ${DIAS_MINIMOS_VENCIMIENTO} días a partir de hoy`);
+      return;
+    }
+    setEnviando(true);
     try {
       await api.post('/inventario/entradas', {
         producto_id: productoId,
@@ -268,6 +280,7 @@ export default function InventarioPage() {
                     type="date"
                     value={fechaVencimiento}
                     onChange={(e) => setFechaVencimiento(e.target.value)}
+                    min={fechaMinima}
                     className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                   />
                 </div>

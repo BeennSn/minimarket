@@ -7,6 +7,21 @@ const { Op } = require('sequelize');
 const { Producto, Categoria, Proveedor, EntradaMercaderia } = require('../models');
 const { presentarProducto, presentarLista } = require('../presenters/producto.presenter');
 
+const DIAS_MINIMOS_VENCIMIENTO = 30;
+
+const validarFechaVencimiento = (fechaStr) => {
+  if (!fechaStr) return null;
+  const fecha = new Date(fechaStr + 'T00:00:00');
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  const fechaMinima = new Date(hoy);
+  fechaMinima.setDate(fechaMinima.getDate() + DIAS_MINIMOS_VENCIMIENTO);
+  if (isNaN(fecha.getTime())) return 'Fecha de vencimiento inválida';
+  if (fecha < hoy) return 'La fecha de vencimiento no puede ser anterior a hoy';
+  if (fecha < fechaMinima) return `La fecha de vencimiento debe ser al menos ${DIAS_MINIMOS_VENCIMIENTO} días a partir de hoy`;
+  return null;
+};
+
 const INCLUDE = [
   { model: Categoria, as: 'categoria', attributes: ['id', 'nombre'] },
   { model: Proveedor, as: 'proveedor', attributes: ['id', 'nombre', 'ruc'] },
@@ -73,7 +88,10 @@ const obtener = async (req, res) => {
 // ─── Crear un nuevo producto ──────────────────────────────────────────────────
 const crear = async (req, res) => {
   try {
-    const { nombre, marca, categoria_id, proveedor_id, precio, stock, codigo_barras } = req.body;
+    const { nombre, marca, categoria_id, proveedor_id, precio, stock, codigo_barras, fecha_vencimiento } = req.body;
+
+    const errorFecha = validarFechaVencimiento(fecha_vencimiento);
+    if (errorFecha) return res.status(400).json({ mensaje: errorFecha });
 
     if (codigo_barras) {
       const existe = await Producto.findOne({ where: { codigo_barras } });
@@ -109,7 +127,7 @@ const crear = async (req, res) => {
       precio,
       stock: stock || 0,
       codigo_barras: codigo_barras || null,
-      fecha_vencimiento: fvDefecto.toISOString().split('T')[0],
+      fecha_vencimiento: fecha_vencimiento || fvDefecto.toISOString().split('T')[0],
       activo: true,
     });
 
@@ -130,6 +148,11 @@ const actualizar = async (req, res) => {
     }
 
     const { nombre, marca, categoria_id, proveedor_id, precio, codigo_barras, fecha_vencimiento } = req.body;
+
+    if (fecha_vencimiento !== undefined) {
+      const errorFecha = validarFechaVencimiento(fecha_vencimiento);
+      if (errorFecha) return res.status(400).json({ mensaje: errorFecha });
+    }
 
     if (codigo_barras !== undefined) {
       const existe = await Producto.findOne({ where: { codigo_barras, id: { [Op.ne]: producto.id } } });

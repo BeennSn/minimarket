@@ -26,6 +26,7 @@ export default function ReportesPage() {
   const [fechaInicio, setFechaInicio] = useState('');
   const [fechaHasta, setFechaHasta] = useState('');
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [generando, setGenerando] = useState(false);
   const datosRef = useRef(null);
@@ -44,8 +45,9 @@ export default function ReportesPage() {
     return params;
   }, [fechaInicio, fechaHasta]);
 
-  const cargarDatos = useCallback(async () => {
-    setLoading(true);
+  const cargarDatos = useCallback(async (esRefresco = false) => {
+    if (esRefresco) setRefreshing(true);
+    else setLoading(true);
     setError('');
     try {
       const params = buildParams();
@@ -63,6 +65,7 @@ export default function ReportesPage() {
       setError(err.response?.data?.mensaje || 'Error al cargar reportes');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, [buildParams]);
 
@@ -75,7 +78,7 @@ export default function ReportesPage() {
   const cargarStockCritico = useCallback(async (u) => {
     setCargandoStock(true);
     try {
-      const { data } = await api.get('/reportes/stock-critico', { params: { umbral: u } });
+      const { data } = await api.get('/reportes/inventario/stock-critico', { params: { umbral: u } });
       setStockCritico(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Error al cargar stock crítico:', err);
@@ -272,14 +275,17 @@ export default function ReportesPage() {
             />
           </div>
           <button
-            onClick={cargarDatos}
-            className="rounded-lg bg-[#6366f1] px-4 py-2 text-sm text-white transition-colors hover:bg-indigo-600"
+            onClick={() => cargarDatos(true)}
+            disabled={refreshing}
+            className="flex items-center gap-2 rounded-lg bg-[#6366f1] px-4 py-2 text-sm text-white transition-colors hover:bg-indigo-600 disabled:opacity-70"
           >
+            {refreshing && <Loader2 className="h-4 w-4 animate-spin" />}
             Aplicar filtros
           </button>
           <button
-            onClick={() => { setFechaInicio(''); setFechaHasta(''); cargarDatos(); }}
-            className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-500 transition-colors hover:bg-gray-50"
+            onClick={() => { setFechaInicio(''); setFechaHasta(''); cargarDatos(true); }}
+            disabled={refreshing}
+            className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-500 transition-colors hover:bg-gray-50 disabled:opacity-50"
           >
             Limpiar
           </button>

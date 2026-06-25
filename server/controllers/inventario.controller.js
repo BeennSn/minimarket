@@ -10,6 +10,21 @@ const {
 } = require('../models');
 const { presentarEntrada, presentarBaja, presentarSolicitud } = require('../presenters/inventario.presenter');
 
+const DIAS_MINIMOS_VENCIMIENTO = 30;
+
+const validarFechaVencimiento = (fechaStr) => {
+  if (!fechaStr) return null;
+  const fecha = new Date(fechaStr + 'T00:00:00');
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  const fechaMinima = new Date(hoy);
+  fechaMinima.setDate(fechaMinima.getDate() + DIAS_MINIMOS_VENCIMIENTO);
+  if (isNaN(fecha.getTime())) return 'Fecha de vencimiento inválida';
+  if (fecha < hoy) return 'La fecha de vencimiento no puede ser anterior a hoy';
+  if (fecha < fechaMinima) return `La fecha de vencimiento debe ser al menos ${DIAS_MINIMOS_VENCIMIENTO} días a partir de hoy`;
+  return null;
+};
+
 const INCLUDES_ENTRADA = [
   { association: 'producto', attributes: ['id', 'nombre', 'marca'] },
   { association: 'proveedor', attributes: ['id', 'nombre'] },
@@ -26,6 +41,9 @@ const registrarEntrada = async (req, res) => {
     if (!cantidad || cantidad <= 0) {
       return res.status(400).json({ mensaje: 'La cantidad debe ser mayor a 0' });
     }
+
+    const errorFecha = validarFechaVencimiento(fecha_vencimiento);
+    if (errorFecha) return res.status(400).json({ mensaje: errorFecha });
 
     const entrada = await sequelize.transaction(async (t) => {
       const producto = await Producto.findByPk(producto_id, { transaction: t });
@@ -338,6 +356,9 @@ const completarSolicitud = async (req, res) => {
     }
 
     const fechaVencimiento = req.body.fecha_vencimiento || null;
+
+    const errorFecha = validarFechaVencimiento(fechaVencimiento);
+    if (errorFecha) return res.status(400).json({ mensaje: errorFecha });
 
     await sequelize.transaction(async (t) => {
       solicitud.estado = 'Completada';

@@ -404,7 +404,7 @@ export default function VentasPage() {
                 value={codigoBarras}
                 onChange={(e) => setCodigoBarras(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && buscarPorCodigo()}
-                placeholder="Escanea o ingresa el código de barras..."
+                placeholder="Ingresa el código de barras..."
                 autoFocus
                 className="w-full rounded-2xl border-2 border-indigo-200 bg-white px-4 py-3 pl-10 text-base shadow-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
               />

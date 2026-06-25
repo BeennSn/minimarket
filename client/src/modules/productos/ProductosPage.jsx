@@ -9,6 +9,8 @@ import ConfirmDialog from '../../components/ConfirmDialog';
 import Toast from '../../components/Toast';
 import useToast from '../../hooks/useToast';
 
+const DIAS_MINIMOS_VENCIMIENTO = 30;
+
 function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categorias }) {
   const [nombre, setNombre] = useState('');
   const [marca, setMarca] = useState('');
@@ -20,6 +22,12 @@ function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categor
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const esCreacion = !productoEditando;
+
+  const fechaMinima = useMemo(() => {
+    const f = new Date();
+    f.setDate(f.getDate() + DIAS_MINIMOS_VENCIMIENTO);
+    return f.toISOString().split('T')[0];
+  }, []);
 
   useEffect(() => {
     if (abierto) {
@@ -51,6 +59,12 @@ function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categor
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+
+    if (fechaVencimiento && fechaVencimiento < fechaMinima) {
+      setError(`La fecha de vencimiento debe ser al menos ${DIAS_MINIMOS_VENCIMIENTO} días a partir de hoy`);
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -167,6 +181,7 @@ function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categor
               type="date"
               value={fechaVencimiento}
               onChange={(e) => setFechaVencimiento(e.target.value)}
+              min={fechaMinima}
               required
               className="w-full rounded-lg border border-gray-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
             />
