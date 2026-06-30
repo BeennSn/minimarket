@@ -4,7 +4,9 @@ const { presentarProveedor, presentarLista } = require('../presenters/proveedor.
 
 const listar = async (req, res) => {
   try {
-    const proveedores = await Proveedor.findAll();
+    const { soloActivos } = req.query;
+    const where = soloActivos === 'true' ? { activo: true } : {};
+    const proveedores = await Proveedor.findAll({ where, order: [['nombre', 'ASC']] });
     return res.status(200).json(presentarLista(proveedores));
   } catch (err) {
     console.error('Error en listar proveedores:', err);
@@ -33,9 +35,14 @@ const crear = async (req, res) => {
       return res.status(400).json({ mensaje: 'El RUC debe tener 11 dígitos' });
     }
 
-    const existe = await Proveedor.findOne({ where: { ruc } });
-    if (existe) {
+    const porRuc = await Proveedor.findOne({ where: { ruc } });
+    if (porRuc) {
       return res.status(400).json({ mensaje: 'El RUC ya está registrado' });
+    }
+
+    const porNombre = await Proveedor.findOne({ where: { nombre: nombre?.trim() } });
+    if (porNombre) {
+      return res.status(400).json({ mensaje: 'Ya existe un proveedor con ese nombre' });
     }
 
     const nuevo = await Proveedor.create({ nombre, ruc, contacto, activo: true });
@@ -66,7 +73,13 @@ const actualizar = async (req, res) => {
       proveedor.ruc = ruc;
     }
 
-    if (nombre !== undefined) proveedor.nombre = nombre;
+    if (nombre !== undefined && nombre.trim() !== proveedor.nombre) {
+      const porNombre = await Proveedor.findOne({ where: { nombre: nombre.trim(), id: { [Op.ne]: proveedor.id } } });
+      if (porNombre) {
+        return res.status(400).json({ mensaje: 'Ya existe un proveedor con ese nombre' });
+      }
+      proveedor.nombre = nombre.trim();
+    }
     if (contacto !== undefined) proveedor.contacto = contacto;
 
     await proveedor.save();

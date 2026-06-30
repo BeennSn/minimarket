@@ -30,4 +30,10 @@ router.patch(
   ventaController.verificarYape
 );
 
+router.patch(
+  '/:id/anular',
+  verificarRol('Administrador', 'Gerente'),
+  ventaController.anular
+);
+
 module.exports = router;

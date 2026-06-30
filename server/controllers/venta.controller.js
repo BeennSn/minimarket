@@ -1,13 +1,41 @@
 const { Op } = require('sequelize');
-const { sequelize, Venta, DetalleVenta, Producto, Usuario, Cliente } = require('../models');
+const { sequelize, Venta, DetalleVenta, Producto, Usuario, Cliente, Turno, MovimientoCaja } = require('../models');
 const { presentarVenta, presentarLista } = require('../presenters/venta.presenter');
+const { consumirStockFIFO, revertirConsumo } = require('../services/inventario.service');
+
+const INCLUDE_VENTA = [
+  { association: 'usuario', attributes: ['id', 'nombre'] },
+  { association: 'cliente', attributes: ['id', 'nombre', 'dni'] },
+  { association: 'anulador', attributes: ['id', 'nombre'] },
+  {
+    association: 'detalles',
+    include: [{ association: 'producto', attributes: ['id', 'nombre', 'marca'] }],
+  },
+];
 
 const registrar = async (req, res) => {
   try {
-    const { cliente_id, metodo_pago, monto_recibido, items, tipo_comprobante, cliente_dni, cliente_ruc, cliente_razon_social, cliente_direccion, yape_verificado } = req.body;
+    const { cliente_id, metodo_pago, monto_recibido, items, tipo_comprobante, cliente_dni, cliente_ruc, cliente_razon_social, cliente_direccion, yape_verificado, referencia_pago } = req.body;
 
     if (!items || items.length === 0) {
       return res.status(400).json({ mensaje: 'La venta debe tener al menos un producto' });
+    }
+
+    if (!['Efectivo', 'Yape'].includes(metodo_pago)) {
+      return res.status(400).json({ mensaje: 'El método de pago debe ser Efectivo o Yape' });
+    }
+
+    for (const item of items) {
+      if (!item.producto_id || item.producto_id <= 0) {
+        return res.status(400).json({ mensaje: 'Cada item debe tener un producto válido' });
+      }
+      if (!Number.isInteger(Number(item.cantidad)) || Number(item.cantidad) < 1) {
+        return res.status(400).json({ mensaje: 'La cantidad de cada item debe ser un número entero mayor a 0' });
+      }
+    }
+
+    if (tipo_comprobante === 'Factura' && !/^\d{11}$/.test(cliente_ruc)) {
+      return res.status(400).json({ mensaje: 'Para emitir factura se requiere un RUC válido de 11 dígitos' });
     }
 
     // ─── Validaciones previas (fuera de transacción) ──────────────────────────
@@ -32,7 +60,9 @@ const registrar = async (req, res) => {
       const detallesData = [];
 
       for (const item of items) {
-        const producto = await Producto.findByPk(item.producto_id, { transaction: t });
+        const producto = await Producto.findByPk(item.producto_id, { transaction: t, lock: t.LOCK.UPDATE });
+        if (!producto || !producto.activo) throw { status: 400, mensaje: 'Producto no encontrado o inactivo' };
+        if (producto.stock < item.cantidad) throw { status: 400, mensaje: `Stock insuficiente para: ${producto.nombre}` };
         const subtotal = parseFloat(item.cantidad * producto.precio);
         monto_total += subtotal;
 
@@ -42,10 +72,6 @@ const registrar = async (req, res) => {
           precio_unitario: producto.precio,
           subtotal,
         });
-
-        producto.stock -= item.cantidad;
-        if (producto.stock === 0) producto.fecha_vencimiento = null;
-        await producto.save({ transaction: t });
       }
 
       const vuelto = metodo_pago === 'Efectivo'
@@ -70,25 +96,46 @@ const registrar = async (req, res) => {
         yape_verificado: esYapeVerificado,
         yape_verificado_por: esYapeVerificado ? req.usuario.id : null,
         yape_verificado_en: esYapeVerificado ? new Date() : null,
+        referencia_pago: metodo_pago === 'Yape' ? (referencia_pago || null) : null,
       }, { transaction: t });
 
       const detalles = await DetalleVenta.bulkCreate(
         detallesData.map((d) => ({ ...d, venta_id: nuevaVenta.id })),
-        { transaction: t }
+        { transaction: t, returning: true }
       );
+
+      // Descontar stock de los lotes en orden FEFO (primero vence, primero sale)
+      for (const detalle of detalles) {
+        await consumirStockFIFO({
+          producto_id: detalle.producto_id,
+          cantidad:    detalle.cantidad,
+          tipo:        'Venta',
+          referencia:  { detalle_venta_id: detalle.id },
+        }, t);
+      }
+
+      // Registrar movimiento en turno activo si existe (no bloquea la venta si no hay turno)
+      const turnoActivo = await Turno.findOne({
+        where: { usuario_id: req.usuario.id, estado: 'Abierto' },
+        transaction: t,
+      });
+      if (turnoActivo) {
+        await MovimientoCaja.create({
+          turno_id:    turnoActivo.id,
+          tipo:        'Venta',
+          descripcion: `Venta #${nuevaVenta.id}`,
+          metodo:      metodo_pago === 'Efectivo' ? 'Efectivo' : 'Yape',
+          monto:       monto_total.toFixed(2),
+          venta_id:    nuevaVenta.id,
+          usuario_id:  req.usuario.id,
+        }, { transaction: t });
+      }
 
       return { venta: nuevaVenta, detalles };
     });
 
     const ventaCompleta = await Venta.findByPk(venta.venta.id, {
-      include: [
-        { association: 'usuario', attributes: ['id', 'nombre'] },
-        { association: 'cliente', attributes: ['id', 'nombre', 'dni'] },
-        {
-          association: 'detalles',
-          include: [{ association: 'producto', attributes: ['id', 'nombre', 'marca'] }],
-        },
-      ],
+      include: INCLUDE_VENTA,
     });
 
     return res.status(201).json(presentarVenta(ventaCompleta));
@@ -124,14 +171,7 @@ const listar = async (req, res) => {
 
     const { count, rows } = await Venta.findAndCountAll({
       where,
-      include: [
-        { association: 'usuario', attributes: ['id', 'nombre'] },
-        { association: 'cliente', attributes: ['id', 'nombre', 'dni'] },
-        {
-          association: 'detalles',
-          include: [{ association: 'producto', attributes: ['id', 'nombre', 'marca'] }],
-        },
-      ],
+      include: INCLUDE_VENTA,
       order: [['createdAt', 'DESC']],
       limit,
       offset,
@@ -155,14 +195,7 @@ const listar = async (req, res) => {
 const obtener = async (req, res) => {
   try {
     const venta = await Venta.findByPk(req.params.id, {
-      include: [
-        { association: 'usuario', attributes: ['id', 'nombre'] },
-        { association: 'cliente', attributes: ['id', 'nombre', 'dni'] },
-        {
-          association: 'detalles',
-          include: [{ association: 'producto', attributes: ['id', 'nombre', 'marca'] }],
-        },
-      ],
+      include: INCLUDE_VENTA,
     });
 
     if (!venta) {
@@ -198,14 +231,7 @@ const verificarYape = async (req, res) => {
     await venta.save();
 
     const ventaCompleta = await Venta.findByPk(venta.id, {
-      include: [
-        { association: 'usuario', attributes: ['id', 'nombre'] },
-        { association: 'cliente', attributes: ['id', 'nombre', 'dni'] },
-        {
-          association: 'detalles',
-          include: [{ association: 'producto', attributes: ['id', 'nombre', 'marca'] }],
-        },
-      ],
+      include: INCLUDE_VENTA,
     });
 
     return res.status(200).json(presentarVenta(ventaCompleta));
@@ -215,4 +241,65 @@ const verificarYape = async (req, res) => {
   }
 };
 
-module.exports = { registrar, listar, obtener, verificarYape };
+const anular = async (req, res) => {
+  try {
+    const { motivo } = req.body;
+
+    if (!motivo || !motivo.trim()) {
+      return res.status(400).json({ mensaje: 'El motivo de anulación es obligatorio' });
+    }
+
+    const venta = await Venta.findByPk(req.params.id, {
+      include: [{ association: 'detalles' }],
+    });
+    if (!venta) {
+      return res.status(404).json({ mensaje: 'Venta no encontrada' });
+    }
+    if (venta.estado === 'Anulada') {
+      return res.status(400).json({ mensaje: 'La venta ya fue anulada' });
+    }
+
+    const movimientoVenta = await MovimientoCaja.findOne({ where: { venta_id: venta.id, tipo: 'Venta' } });
+    if (!movimientoVenta) {
+      return res.status(400).json({ mensaje: 'No se puede anular: la venta no tiene un turno de caja asociado' });
+    }
+
+    const turno = await Turno.findByPk(movimientoVenta.turno_id);
+    if (!turno || turno.estado !== 'Abierto') {
+      return res.status(400).json({ mensaje: 'Solo se pueden anular ventas del turno de caja actualmente abierto' });
+    }
+
+    await sequelize.transaction(async (t) => {
+      for (const detalle of venta.detalles) {
+        await revertirConsumo({ tipo: 'Venta', referencia_id: detalle.id }, t);
+      }
+
+      venta.estado = 'Anulada';
+      venta.motivo_anulacion = motivo.trim();
+      venta.anulado_por = req.usuario.id;
+      venta.anulado_en = new Date();
+      await venta.save({ transaction: t });
+
+      await MovimientoCaja.create({
+        turno_id:    turno.id,
+        tipo:        'Anulacion',
+        descripcion: `Anulación venta #${venta.id}: ${motivo.trim()}`,
+        metodo:      movimientoVenta.metodo,
+        monto:       movimientoVenta.monto,
+        venta_id:    venta.id,
+        usuario_id:  req.usuario.id,
+      }, { transaction: t });
+    });
+
+    const ventaCompleta = await Venta.findByPk(venta.id, {
+      include: INCLUDE_VENTA,
+    });
+
+    return res.status(200).json(presentarVenta(ventaCompleta));
+  } catch (err) {
+    console.error('Error al anular venta:', err);
+    return res.status(500).json({ mensaje: 'Error interno del servidor' });
+  }
+};
+
+module.exports = { registrar, listar, obtener, verificarYape, anular };

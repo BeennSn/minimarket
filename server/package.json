@@ -6,16 +6,21 @@
   "scripts": {
     "start": "node app.js",
     "dev": "nodemon app.js",
-    "seed:datos": "node seeders/datosPrueba.js"
+    "seed:datos": "node seeders/datosPrueba.js",
+    "db:limpiar": "node scripts/limpiar_bd.js",
+    "db:sembrar": "node scripts/sembrar_datos.js",
+    "db:reset": "node scripts/limpiar_bd.js && node scripts/sembrar_datos.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "axios": "^1.18.1",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "express-rate-limit": "^8.5.2",
     "jsonwebtoken": "^9.0.3",
     "minimarket": "file:..",
     "node-cron": "^4.5.0",

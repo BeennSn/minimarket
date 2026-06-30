@@ -79,6 +79,31 @@ const Venta = sequelize.define('Venta', {
     type: DataTypes.DATE,
     allowNull: true,
   },
+  referencia_pago: {
+    type: DataTypes.STRING(50),
+    allowNull: true,
+  },
+  estado: {
+    type: DataTypes.ENUM('Completada', 'Anulada'),
+    allowNull: false,
+    defaultValue: 'Completada',
+  },
+  motivo_anulacion: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+  },
+  anulado_por: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: 'usuarios',
+      key: 'id',
+    },
+  },
+  anulado_en: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
 }, {
   tableName: 'ventas',
   timestamps: true,

@@ -23,6 +23,7 @@ export default function ReportesPage() {
   const [ventasPorDia, setVentasPorDia] = useState([]);
   const [metodoPago, setMetodoPago] = useState([]);
   const [productosTop, setProductosTop] = useState([]);
+  const [margenProductos, setMargenProductos] = useState([]);
   const [fechaInicio, setFechaInicio] = useState('');
   const [fechaHasta, setFechaHasta] = useState('');
   const [loading, setLoading] = useState(true);
@@ -51,16 +52,18 @@ export default function ReportesPage() {
     setError('');
     try {
       const params = buildParams();
-      const [rRes, rDia, rMet, rTop] = await Promise.all([
+      const [rRes, rDia, rMet, rTop, rMargen] = await Promise.all([
         api.get('/reportes/ventas/resumen', { params }),
         api.get('/reportes/ventas/por-dia', { params }),
         api.get('/reportes/ventas/por-metodo-pago', { params }),
         api.get('/reportes/ventas/productos-top', { params: { ...params, limite: 10 } }),
+        api.get('/reportes/margen/productos', { params }),
       ]);
       setResumen(rRes.data);
       setVentasPorDia(Array.isArray(rDia.data) ? rDia.data : []);
       setMetodoPago(Array.isArray(rMet.data) ? rMet.data : []);
       setProductosTop(Array.isArray(rTop.data) ? rTop.data : []);
+      setMargenProductos(Array.isArray(rMargen.data) ? rMargen.data : []);
     } catch (err) {
       setError(err.response?.data?.mensaje || 'Error al cargar reportes');
     } finally {
@@ -72,8 +75,8 @@ export default function ReportesPage() {
   useEffect(() => { cargarDatos(); }, [cargarDatos]);
 
   useEffect(() => {
-    datosRef.current = { resumen, ventasPorDia, metodoPago, productosTop, fechaInicio, fechaHasta };
-  }, [resumen, ventasPorDia, metodoPago, productosTop, fechaInicio, fechaHasta]);
+    datosRef.current = { resumen, ventasPorDia, metodoPago, productosTop, margenProductos, fechaInicio, fechaHasta };
+  }, [resumen, ventasPorDia, metodoPago, productosTop, margenProductos, fechaInicio, fechaHasta]);
 
   const cargarStockCritico = useCallback(async (u) => {
     setCargandoStock(true);
@@ -196,6 +199,35 @@ export default function ReportesPage() {
           theme: 'striped',
           headStyles: { fillColor: [99, 102, 241] },
           styles: { fontSize: 9 },
+          margin: { left: 14 },
+        });
+        y = doc.lastAutoTable.finalY + 12;
+      }
+
+      // ─── Margen por producto ───────────────────────────────────────────────
+      if (d.margenProductos?.length > 0) {
+        if (y > 220) { doc.addPage(); y = 20; }
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(0);
+        doc.text('Margen por Producto', 14, y);
+        y += 4;
+        autoTable(doc, {
+          startY: y,
+          head: [['Producto', 'Marca', 'Categoría', 'Vendido', 'Ingreso', 'Costo', 'Margen', 'Margen %']],
+          body: d.margenProductos.map((p) => [
+            p.nombre || '',
+            p.marca || '',
+            p.categoria || '—',
+            String(p.total_vendido ?? 0),
+            `S/ ${Number(p.ingreso_total ?? 0).toFixed(2)}`,
+            `S/ ${Number(p.costo_total ?? 0).toFixed(2)}`,
+            `S/ ${Number(p.margen ?? 0).toFixed(2)}`,
+            p.margen_pct != null ? `${Number(p.margen_pct).toFixed(1)}%` : '—',
+          ]),
+          theme: 'striped',
+          headStyles: { fillColor: [16, 185, 129] },
+          styles: { fontSize: 8 },
           margin: { left: 14 },
         });
         y = doc.lastAutoTable.finalY + 12;
@@ -393,6 +425,68 @@ export default function ReportesPage() {
         ) : (
           <div className="flex h-32 items-center justify-center text-sm text-gray-400">
             No hay datos de ventas aún
+          </div>
+        )}
+      </div>
+
+      {/* ─── Margen por Producto ──────────────────────────────────────────────── */}
+      <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h2 className="font-semibold text-gray-700">Margen por Producto</h2>
+            <p className="mt-0.5 text-xs text-gray-400">Solo productos con costo registrado en sus lotes de compra</p>
+          </div>
+          <div className="flex items-center gap-1 text-sm text-gray-400">
+            <FileText className="h-4 w-4" />
+            <span>Se incluirá en el PDF</span>
+          </div>
+        </div>
+        {margenProductos.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="bg-emerald-600 text-white">
+                  <th className="px-4 py-3 font-medium">Producto</th>
+                  <th className="px-4 py-3 font-medium">Marca</th>
+                  <th className="px-4 py-3 font-medium">Categoría</th>
+                  <th className="px-4 py-3 font-medium text-right">Vendido</th>
+                  <th className="px-4 py-3 font-medium text-right">Ingreso</th>
+                  <th className="px-4 py-3 font-medium text-right">Costo</th>
+                  <th className="px-4 py-3 font-medium text-right">Margen S/.</th>
+                  <th className="px-4 py-3 font-medium text-right">Margen %</th>
+                </tr>
+              </thead>
+              <tbody>
+                {margenProductos.map((p, i) => {
+                  const positivo = (p.margen ?? 0) > 0;
+                  return (
+                    <tr key={p.producto_id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                      <td className="px-4 py-3 font-medium text-gray-800">{p.nombre}</td>
+                      <td className="px-4 py-3 text-gray-500">{p.marca}</td>
+                      <td className="px-4 py-3 text-gray-500">{p.categoria || '—'}</td>
+                      <td className="px-4 py-3 text-right text-gray-600">{p.total_vendido}</td>
+                      <td className="px-4 py-3 text-right text-gray-800">S/ {Number(p.ingreso_total).toFixed(2)}</td>
+                      <td className="px-4 py-3 text-right text-gray-500">S/ {Number(p.costo_total).toFixed(2)}</td>
+                      <td className={`px-4 py-3 text-right font-semibold ${positivo ? 'text-emerald-600' : 'text-red-600'}`}>
+                        S/ {Number(p.margen).toFixed(2)}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        {p.margen_pct != null ? (
+                          <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold ${positivo ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                            {Number(p.margen_pct).toFixed(1)}%
+                          </span>
+                        ) : '—'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="flex h-32 flex-col items-center justify-center gap-2 text-sm text-gray-400">
+            <span>Sin datos de costo en el período.</span>
+            <span className="text-xs">Registra el costo unitario al ingresar mercadería para ver el margen.</span>
           </div>
         )}
       </div>

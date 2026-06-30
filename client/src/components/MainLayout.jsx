@@ -11,9 +11,13 @@ import {
   ClipboardList,
   BarChart2,
   Clock,
+  Settings,
   LogOut,
   ChevronLeft,
   ChevronRight,
+  Wallet,
+  History,
+  UserCheck,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -25,9 +29,13 @@ const NAV_ITEMS = [
   { to: '/proveedores', icon: Truck, label: 'Proveedores', roles: ['Administrador', 'Almacenero'] },
   { to: '/ventas', icon: ShoppingCart, label: 'Ventas', roles: ['Vendedor', 'Administrador', 'Gerente'] },
   { to: '/ventas/historial', icon: Clock, label: 'Historial Ventas', roles: ['Vendedor', 'Administrador', 'Gerente'] },
+  { to: '/caja',           icon: Wallet,  label: 'Mi Caja',         roles: ['Vendedor', 'Administrador'] },
+  { to: '/caja/historial', icon: History, label: 'Historial Caja',  roles: ['Administrador', 'Gerente'] },
   { to: '/inventario', icon: Warehouse, label: 'Inventario', roles: ['Almacenero', 'Administrador'] },
   { to: '/solicitudes', icon: ClipboardList, label: 'Solicitudes', roles: ['Almacenero', 'Administrador', 'Gerente'] },
+  { to: '/clientes', icon: UserCheck, label: 'Clientes', roles: ['Administrador', 'Gerente'] },
   { to: '/reportes', icon: BarChart2, label: 'Reportes', roles: ['Gerente', 'Administrador'] },
+  { to: '/configuracion', icon: Settings, label: 'Configuración', roles: ['Administrador'] },
 ];
 
 const PAGE_TITLES = {
@@ -38,9 +46,13 @@ const PAGE_TITLES = {
   '/proveedores': 'Proveedores',
   '/ventas': 'Ventas',
   '/ventas/historial': 'Historial de Ventas',
+  '/caja':           'Mi Caja',
+  '/caja/historial': 'Historial de Caja',
   '/inventario': 'Inventario',
   '/solicitudes': 'Solicitudes',
+  '/clientes': 'Clientes',
   '/reportes': 'Reportes',
+  '/configuracion': 'Configuración',
 };
 
 export default function MainLayout() {
@@ -75,7 +87,7 @@ export default function MainLayout() {
           {!collapsed && <span className="text-lg font-bold">Minimarket</span>}
         </div>
 
-        <nav className="flex-1 space-y-1 px-3 py-4">
+        <nav className="flex-1 overflow-y-auto space-y-1 px-3 py-4">
           {filteredNav.map((item) => (
             <NavLink
               key={item.to}

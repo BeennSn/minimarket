@@ -15,6 +15,9 @@ const Proveedor = sequelize.define('Proveedor', {
     type: DataTypes.STRING(11),
     unique: true,
     allowNull: false,
+    validate: {
+      is: { args: /^\d{11}$/, msg: 'El RUC debe tener 11 dígitos numéricos' },
+    },
   },
   contacto: {
     type: DataTypes.STRING,

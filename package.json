@@ -5,7 +5,10 @@
   "scripts": {
     "dev": "concurrently \"npm run dev --prefix server\" \"npm run dev --prefix client\"",
     "start": "npm run start --prefix server",
-    "build": "cd client && npm run build"
+    "build": "cd client && npm run build",
+    "db:limpiar": "npm run db:limpiar --prefix server",
+    "db:sembrar": "npm run db:sembrar --prefix server",
+    "db:reset": "npm run db:limpiar --prefix server && npm run db:sembrar --prefix server"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

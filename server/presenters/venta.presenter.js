@@ -33,6 +33,13 @@ const presentarVenta = (venta) => ({
   yape_verificado:     venta.yape_verificado || false,
   yape_verificado_por: venta.yape_verificado_por || null,
   yape_verificado_en:  venta.yape_verificado_en || null,
+  referencia_pago:     venta.referencia_pago || null,
+  estado:              venta.estado || 'Completada',
+  motivo_anulacion:    venta.motivo_anulacion || null,
+  anulado_por:         venta.anulador
+    ? { id: venta.anulador.id, nombre: venta.anulador.nombre }
+    : null,
+  anulado_en:          venta.anulado_en || null,
   createdAt:           venta.createdAt,
   detalles:            venta.detalles.map(presentarDetalle),
 });

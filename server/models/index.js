@@ -12,6 +12,10 @@ const EntradaMercaderia  = require('./EntradaMercaderia');
 const BajaInventario     = require('./BajaInventario');
 const SolicitudReposicion = require('./SolicitudReposicion');
 const LogAcceso          = require('./LogAcceso');
+const Configuracion      = require('./Configuracion');
+const Turno              = require('./Turno');
+const MovimientoCaja     = require('./MovimientoCaja');
+const ConsumoLote        = require('./ConsumoLote');
 
 // ─── Asociaciones ─────────────────────────────────────────────────────────────
 
@@ -30,6 +34,9 @@ Usuario.hasMany(Venta,   { foreignKey: 'usuario_id', as: 'ventas' });
 // Venta → Cliente
 Venta.belongsTo(Cliente, { foreignKey: 'cliente_id', as: 'cliente' });
 Cliente.hasMany(Venta,   { foreignKey: 'cliente_id', as: 'ventas' });
+
+// Venta → Usuario (quien anuló)
+Venta.belongsTo(Usuario, { foreignKey: 'anulado_por', as: 'anulador' });
 
 // DetalleVenta → Venta
 DetalleVenta.belongsTo(Venta, { foreignKey: 'venta_id', as: 'venta' });
@@ -54,6 +61,18 @@ Usuario.hasMany(EntradaMercaderia,   { foreignKey: 'usuario_id', as: 'entradas' 
 // EntradaMercaderia → SolicitudReposicion
 EntradaMercaderia.belongsTo(SolicitudReposicion, { foreignKey: 'solicitud_id', as: 'solicitud' });
 SolicitudReposicion.hasMany(EntradaMercaderia,   { foreignKey: 'solicitud_id', as: 'entradas' });
+
+// ConsumoLote → EntradaMercaderia (lote)
+ConsumoLote.belongsTo(EntradaMercaderia, { foreignKey: 'entrada_id', as: 'lote' });
+EntradaMercaderia.hasMany(ConsumoLote,   { foreignKey: 'entrada_id', as: 'consumos' });
+
+// ConsumoLote → DetalleVenta
+ConsumoLote.belongsTo(DetalleVenta, { foreignKey: 'detalle_venta_id', as: 'detalleVenta' });
+DetalleVenta.hasMany(ConsumoLote,   { foreignKey: 'detalle_venta_id', as: 'consumos' });
+
+// ConsumoLote → BajaInventario
+ConsumoLote.belongsTo(BajaInventario, { foreignKey: 'baja_id', as: 'baja' });
+BajaInventario.hasMany(ConsumoLote,   { foreignKey: 'baja_id', as: 'consumos' });
 
 // BajaInventario → Producto
 BajaInventario.belongsTo(Producto, { foreignKey: 'producto_id', as: 'producto' });
@@ -95,6 +114,25 @@ Usuario.hasMany(SolicitudReposicion, {
 LogAcceso.belongsTo(Usuario, { foreignKey: 'usuario_id', as: 'usuario' });
 Usuario.hasMany(LogAcceso,   { foreignKey: 'usuario_id', as: 'logs' });
 
+// Turno → Usuario (cajero)
+Turno.belongsTo(Usuario, { foreignKey: 'usuario_id', as: 'cajero' });
+Usuario.hasMany(Turno,   { foreignKey: 'usuario_id', as: 'turnos' });
+
+// Turno → Usuario (aprobador)
+Turno.belongsTo(Usuario, { foreignKey: 'aprobado_por', as: 'aprobador' });
+
+// MovimientoCaja → Turno
+MovimientoCaja.belongsTo(Turno, { foreignKey: 'turno_id', as: 'turno' });
+Turno.hasMany(MovimientoCaja,   { foreignKey: 'turno_id', as: 'movimientos' });
+
+// MovimientoCaja → Venta
+MovimientoCaja.belongsTo(Venta, { foreignKey: 'venta_id', as: 'venta' });
+Venta.hasOne(MovimientoCaja,    { foreignKey: 'venta_id', as: 'movimiento_caja' });
+
+// MovimientoCaja → Usuario
+MovimientoCaja.belongsTo(Usuario, { foreignKey: 'usuario_id', as: 'usuario' });
+Usuario.hasMany(MovimientoCaja,   { foreignKey: 'usuario_id', as: 'movimientos_caja' });
+
 // ─── Exportar ─────────────────────────────────────────────────────────────────
 module.exports = {
   sequelize,
@@ -109,4 +147,8 @@ module.exports = {
   BajaInventario,
   SolicitudReposicion,
   LogAcceso,
+  Configuracion,
+  Turno,
+  MovimientoCaja,
+  ConsumoLote,
 };

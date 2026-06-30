@@ -3,19 +3,13 @@ import html2pdf from 'html2pdf.js';
 import {
   Search, User, X, Trash2, Minus, Plus, Banknote,
   CheckCircle, Loader2, ShoppingCart, ChevronLeft, ChevronRight,
-  ScanLine, ChevronDown, ChevronUp, FileText,
+  ScanLine, ChevronDown, ChevronUp, FileText, Camera, QrCode,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useConfiguracion } from '../../hooks/useConfiguracion';
 import api from '../../utils/axios';
 
 const ITEMS_PER_PAGE = 25;
-const IGV = 0.18;
-const EMPRESA = {
-  nombre: 'MiniMarket',
-  ruc: '20100123456',
-  direccion: 'Av. España 250, Trujillo',
-  telefono: '044-123456',
-};
 
 function numeroALetras(num) {
   const u = ['', 'UN', 'DOS', 'TRES', 'CUATRO', 'CINCO', 'SEIS', 'SIETE', 'OCHO', 'NUEVE',
@@ -42,7 +36,7 @@ function numeroALetras(num) {
   return `SON: ${letras} CON ${String(decimal).padStart(2, '0')}/100 SOLES`;
 }
 
-function generarPDF(venta) {
+function generarPDF(venta, empresa, igvRate) {
   const fecha = new Date(venta.createdAt);
   const esFactura = venta.tipo_comprobante === 'Factura';
   const prefijo = esFactura ? 'F' : 'B';
@@ -60,7 +54,7 @@ function generarPDF(venta) {
   });
 
   const subtotalCalc = filasProductos.reduce((s, f) => s + f.precioUnitario * f.cantidad, 0);
-  const igv = subtotalCalc * IGV;
+  const montoIgv = subtotalCalc * igvRate;
 
   if (esFactura) {
     const productosHTML = filasProductos.map(f => `
@@ -92,14 +86,14 @@ function generarPDF(venta) {
         <table>
           <tr>
             <td style="width:55%;">
-              <div style="font-size:14px;font-weight:bold;margin-bottom:4px;">${EMPRESA.nombre.toUpperCase()}</div>
-              <div style="font-size:9px;color:#333;">${EMPRESA.direccion}</div>
+              <div style="font-size:14px;font-weight:bold;margin-bottom:4px;">${empresa.nombre.toUpperCase()}</div>
+              <div style="font-size:9px;color:#333;">${empresa.direccion}</div>
               <div style="font-size:9px;color:#333;">Trujillo - La Libertad</div>
             </td>
             <td style="width:45%;">
               <div class="b-blue center" style="float:right;width:240px;">
                 <div style="font-size:10px;font-weight:bold;">FACTURA ELECTRÓNICA</div>
-                <div style="font-size:11px;font-weight:bold;margin-top:2px;">RUC ${EMPRESA.ruc}</div>
+                <div style="font-size:11px;font-weight:bold;margin-top:2px;">RUC ${empresa.ruc}</div>
                 <div style="font-size:13px;color:#1a5fb4;font-weight:bold;margin-top:4px;">${numero}</div>
               </div>
             </td>
@@ -179,8 +173,8 @@ function generarPDF(venta) {
                   <td style="padding:3px 6px;border:1px solid #999;font-size:9px;text-align:right;background:#f5f5f5;">${subtotalCalc.toFixed(2)}</td>
                 </tr>
                 <tr>
-                  <td style="padding:3px 6px;border:1px solid #999;font-size:9px;text-align:right;">IGV (${(IGV * 100).toFixed(0)}%):</td>
-                  <td style="padding:3px 6px;border:1px solid #999;font-size:9px;text-align:right;background:#f5f5f5;">${igv.toFixed(2)}</td>
+                  <td style="padding:3px 6px;border:1px solid #999;font-size:9px;text-align:right;">IGV (${(igvRate * 100).toFixed(0)}%):</td>
+                  <td style="padding:3px 6px;border:1px solid #999;font-size:9px;text-align:right;background:#f5f5f5;">${montoIgv.toFixed(2)}</td>
                 </tr>
                 <tr>
                   <td style="padding:3px 6px;border:1px solid #999;font-size:9px;text-align:right;font-weight:bold;">Importe Total:</td>
@@ -192,7 +186,7 @@ function generarPDF(venta) {
         </table>
 
         <div style="margin-top:10px;border-top:1px solid #999;padding-top:6px;font-size:7px;color:#666;text-align:center;">
-          ${EMPRESA.nombre} | ${EMPRESA.direccion} | RUC ${EMPRESA.ruc} | ${EMPRESA.telefono}
+          ${empresa.nombre} | ${empresa.direccion} | RUC ${empresa.ruc} | ${empresa.telefono}
         </div>
       </div>
     `;
@@ -238,11 +232,11 @@ function generarPDF(venta) {
               <div style="display:flex;align-items:center;gap:6px;">
                 <div style="width:32px;height:32px;border:1px solid #999;display:flex;align-items:center;justify-content:center;font-size:6px;color:#999;">LOGO</div>
                 <div>
-                  <div style="font-size:16px;font-weight:bold;">${EMPRESA.nombre}</div>
+                  <div style="font-size:16px;font-weight:bold;">${empresa.nombre}</div>
                   <div style="font-size:8px;color:#333;line-height:1.3;">
-                    ${EMPRESA.nombre} S.A.C.<br>
-                    ${EMPRESA.direccion}<br>
-                    Tel: ${EMPRESA.telefono}<br>
+                    ${empresa.nombre} S.A.C.<br>
+                    ${empresa.direccion}<br>
+                    Tel: ${empresa.telefono}<br>
                     Trujillo - La Libertad
                   </div>
                 </div>
@@ -250,7 +244,7 @@ function generarPDF(venta) {
             </td>
             <td style="width:50%;">
               <div style="border:2px solid #000;padding:6px 10px;text-align:center;float:right;width:200px;">
-                <div style="font-size:9px;">RUC ${EMPRESA.ruc}</div>
+                <div style="font-size:9px;">RUC ${empresa.ruc}</div>
                 <div style="font-size:12px;font-weight:bold;margin:3px 0;">BOLETA DE VENTA</div>
                 <div style="font-size:10px;font-weight:bold;">${numero}</div>
               </div>
@@ -301,8 +295,8 @@ function generarPDF(venta) {
             <td style="width:40%;vertical-align:bottom;font-size:8px;">
               <div style="border:1px solid #999;padding:4px;display:inline-block;font-size:7px;">
                 AUT. IMPRENTA: 12345678<br>
-                RUC: ${EMPRESA.ruc}<br>
-                ${EMPRESA.nombre.toUpperCase()} S.A.C.
+                RUC: ${empresa.ruc}<br>
+                ${empresa.nombre.toUpperCase()} S.A.C.
               </div>
             </td>
             <td style="width:20%;text-align:center;vertical-align:bottom;">
@@ -321,7 +315,7 @@ function generarPDF(venta) {
         </table>
 
         <div style="margin-top:10px;border-top:1px solid #999;padding-top:6px;font-size:7px;color:#666;text-align:center;">
-          ${EMPRESA.nombre} | ${EMPRESA.direccion} | Tel: ${EMPRESA.telefono}
+          ${empresa.nombre} | ${empresa.direccion} | Tel: ${empresa.telefono}
         </div>
       </div>
     `;
@@ -409,6 +403,7 @@ function ModalComprobante({ venta, onCerrar, onDescargarPDF }) {
           <p className="text-center text-xs text-emerald-600">
             <CheckCircle className="mr-1 inline h-3 w-3" />
             Yape verificado — S/. {Number(venta?.monto_total || 0).toFixed(2)}
+            {venta?.referencia_pago && ` — N° operación: ${venta.referencia_pago}`}
           </p>
         )}
 
@@ -433,6 +428,7 @@ function ModalComprobante({ venta, onCerrar, onDescargarPDF }) {
 
 export default function VentasPage() {
   const { usuario } = useAuth();
+  const { empresa, igv } = useConfiguracion();
   const esSoloLectura = usuario?.rol === 'Gerente';
   const [productos, setProductos] = useState([]);
   const [carrito, setCarrito] = useState([]);
@@ -442,6 +438,10 @@ export default function VentasPage() {
   const [metodoPago, setMetodoPago] = useState('Efectivo');
   const [montoRecibido, setMontoRecibido] = useState('');
   const [yapeVerificado, setYapeVerificado] = useState(false);
+
+  // Cobro Yape/Plin vía IziPay (POS físico, manual)
+  const [pasoYape, setPasoYape] = useState('inicio'); // inicio|mostrando
+  const [referenciaPago, setReferenciaPago] = useState('');
 
   // Tipo de comprobante
   const [tipoComprobante, setTipoComprobante] = useState('BoletaSimple');
@@ -457,7 +457,18 @@ export default function VentasPage() {
   const [codigoBarras, setCodigoBarras] = useState('');
   const [buscandoCodigo, setBuscandoCodigo] = useState(false);
   const [mostrarLista, setMostrarLista] = useState(false);
+  const [barcodeFocused, setBarcodeFocused] = useState(false);
+  const [showCamera, setShowCamera] = useState(false);
   const inputCodigoRef = useRef(null);
+  const scannerRef = useRef(null);
+  const buscarRef = useRef(null);
+
+  const [buscandoDni, setBuscandoDni] = useState(false);
+  const [buscandoRuc, setBuscandoRuc] = useState(false);
+  const [nombreDni, setNombreDni] = useState('');
+  const [rucValidado, setRucValidado] = useState(false);
+  const [rucInfo, setRucInfo] = useState(null);
+  const [clienteId, setClienteId] = useState(null);
 
   const cargarProductos = () => {
     api.get('/productos/activos').then(({ data }) => {
@@ -469,8 +480,71 @@ export default function VentasPage() {
 
   useEffect(() => { cargarProductos(); }, []);
 
-  const buscarPorCodigo = async () => {
-    const codigo = codigoBarras.trim();
+  // Mantiene buscarRef siempre actualizado para usarlo desde el scanner sin closures stale
+  useEffect(() => { buscarRef.current = buscarPorCodigo; });
+
+  // Inicia/detiene la cámara cuando se abre/cierra el modal
+  useEffect(() => {
+    if (!showCamera) return;
+    let controls;
+
+    Promise.all([
+      import('@zxing/browser'),
+      import('@zxing/library'),
+    ]).then(([{ BrowserMultiFormatReader }, { BarcodeFormat, DecodeHintType }]) => {
+      const hints = new Map();
+      hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+        BarcodeFormat.EAN_13,
+        BarcodeFormat.EAN_8,
+        BarcodeFormat.CODE_128,
+        BarcodeFormat.UPC_A,
+        BarcodeFormat.UPC_E,
+      ]);
+      hints.set(DecodeHintType.TRY_HARDER, true);
+
+      const reader = new BrowserMultiFormatReader(hints);
+      reader
+        .decodeFromConstraints(
+          { video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } } },
+          'barcode-video',
+          (result, err) => {
+            if (result) {
+              controls?.stop();
+              setShowCamera(false);
+              buscarRef.current(result.getText());
+            }
+          }
+        )
+        .then((c) => { controls = c; scannerRef.current = c; })
+        .catch(() => setShowCamera(false));
+    });
+
+    return () => {
+      controls?.stop();
+      scannerRef.current = null;
+    };
+  }, [showCamera]);
+
+  // Devuelve el foco al campo de barras cuando el usuario hace clic fuera de un input
+  useEffect(() => {
+    if (esSoloLectura) return;
+    const handler = (e) => {
+      const tag = e.target.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      setTimeout(() => {
+        const active = document.activeElement;
+        const activeTag = active?.tagName;
+        if (!active || (activeTag !== 'INPUT' && activeTag !== 'TEXTAREA' && activeTag !== 'SELECT')) {
+          inputCodigoRef.current?.focus();
+        }
+      }, 120);
+    };
+    document.addEventListener('click', handler);
+    return () => document.removeEventListener('click', handler);
+  }, [esSoloLectura]);
+
+  const buscarPorCodigo = async (codigoParam = null) => {
+    const codigo = (codigoParam !== null ? codigoParam : codigoBarras).trim();
     if (!codigo) return;
     setBuscandoCodigo(true);
     setError('');
@@ -491,6 +565,7 @@ export default function VentasPage() {
       }
     } finally {
       setBuscandoCodigo(false);
+      inputCodigoRef.current?.focus();
     }
   };
 
@@ -559,11 +634,7 @@ export default function VentasPage() {
     if (tipoComprobante === 'BoletaSimple') return true;
     if (tipoComprobante === 'BoletaDNI') return /^\d{8}$/.test(clienteDni);
     if (tipoComprobante === 'Factura') {
-      return (
-        /^\d{11}$/.test(clienteRuc) &&
-        clienteRazonSocial.trim().length >= 3 &&
-        clienteDireccion.trim().length >= 5
-      );
+      return /^\d{11}$/.test(clienteRuc) && rucValidado;
     }
     return false;
   };
@@ -588,8 +659,70 @@ export default function VentasPage() {
     setClienteRuc('');
     setClienteRazonSocial('');
     setClienteDireccion('');
+    setNombreDni('');
+    setRucValidado(false);
+    setRucInfo(null);
+    setClienteId(null);
     setError('');
+    setPasoYape('inicio');
+    setReferenciaPago('');
     inputCodigoRef.current?.focus();
+  };
+
+  const buscarDni = async () => {
+    if (clienteDni.length !== 8) return;
+    setBuscandoDni(true);
+    setError('');
+    try {
+      const { data } = await api.get(`/consulta/dni/${clienteDni}`);
+      setNombreDni(data.nombre_completo);
+      try {
+        const { data: cliente } = await api.post('/clientes/buscar-o-crear', {
+          nombre: data.nombre_completo,
+          dni: clienteDni,
+        });
+        setClienteId(cliente.id);
+      } catch {
+        // no bloquea la venta si falla el registro del cliente
+      }
+    } catch (err) {
+      setNombreDni('');
+      setError(err.response?.data?.mensaje || 'No se encontró información para ese DNI');
+    } finally {
+      setBuscandoDni(false);
+    }
+  };
+
+  const buscarRuc = async (rucValue) => {
+    const ruc = rucValue ?? clienteRuc;
+    if (ruc.length !== 11) return;
+    setBuscandoRuc(true);
+    setRucValidado(false);
+    setRucInfo(null);
+    setClienteRazonSocial('');
+    setClienteDireccion('');
+    setError('');
+    try {
+      const { data } = await api.get(`/consulta/ruc/${ruc}`);
+
+      if (data.estado && data.estado.toUpperCase() !== 'ACTIVO') {
+        setError(`RUC dado de baja en SUNAT (estado: ${data.estado})`);
+        return;
+      }
+      if (data.condicion && data.condicion.toUpperCase() !== 'HABIDO') {
+        setError(`RUC con domicilio no habido en SUNAT (condición: ${data.condicion})`);
+        return;
+      }
+
+      if (data.razon_social) setClienteRazonSocial(data.razon_social);
+      if (data.direccion) setClienteDireccion(data.direccion);
+      setRucValidado(true);
+      setRucInfo({ razon_social: data.razon_social, condicion: data.condicion, estado: data.estado });
+    } catch (err) {
+      setError(err.response?.data?.mensaje || 'No se encontró información para ese RUC en SUNAT');
+    } finally {
+      setBuscandoRuc(false);
+    }
   };
 
   const realizarVenta = async () => {
@@ -599,10 +732,14 @@ export default function VentasPage() {
       if (tipoComprobante === 'BoletaDNI') {
         setError('El DNI debe tener exactamente 8 dígitos');
       } else if (tipoComprobante === 'Factura') {
-        if (!/^\d{11}$/.test(clienteRuc)) setError('El RUC debe tener 11 dígitos');
-        else if (clienteRazonSocial.trim().length < 3) setError('Ingrese una Razón Social válida');
-        else if (clienteDireccion.trim().length < 5) setError('Ingrese una Dirección válida');
+        setError('El RUC debe tener 11 dígitos');
       }
+      return;
+    }
+
+    const itemSinStock = carrito.find((i) => i.cantidad > i.stock);
+    if (itemSinStock) {
+      setError(`Stock insuficiente para "${itemSinStock.nombre}". Disponible: ${itemSinStock.stock}`);
       return;
     }
 
@@ -610,10 +747,11 @@ export default function VentasPage() {
 
     try {
       const body = {
-        cliente_id: null,
+        cliente_id: tipoComprobante === 'BoletaDNI' ? clienteId : null,
         metodo_pago: metodoPago,
         monto_recibido: metodoPago === 'Efectivo' ? parseFloat(montoRecibido) : null,
         yape_verificado: metodoPago === 'Yape' ? yapeVerificado : false,
+        referencia_pago: metodoPago === 'Yape' ? (referenciaPago.trim() || null) : null,
         items: carrito.map((item) => ({
           producto_id: item.id,
           cantidad: item.cantidad,
@@ -629,17 +767,21 @@ export default function VentasPage() {
       const { data } = await api.post('/ventas', body);
       setVentaExitosa(data);
       setModalComprobante(true);
-      generarPDF(data);
+      generarPDF(data, empresa, igv);
       cargarProductos();
     } catch (err) {
-      setError(err.response?.data?.mensaje || err.response?.data?.message || 'Error al realizar venta');
+      if (!err.response) {
+        setError('Sin respuesta del servidor. Verifique si la venta fue registrada antes de reintentar.');
+      } else {
+        setError(err.response?.data?.mensaje || err.response?.data?.message || 'Error al realizar venta');
+      }
     } finally {
       setLoading(false);
     }
   };
 
   const descargarPDF = () => {
-    if (ventaExitosa) generarPDF(ventaExitosa);
+    if (ventaExitosa) generarPDF(ventaExitosa, empresa, igv);
   };
 
   const cerrarComprobante = () => {
@@ -661,21 +803,42 @@ export default function VentasPage() {
 
         {!esSoloLectura && (
           <>
-<div className="relative">
-              <ScanLine className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
-              <input
-                ref={inputCodigoRef}
-                type="text"
-                value={codigoBarras}
-                onChange={(e) => setCodigoBarras(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && buscarPorCodigo()}
-                placeholder="Ingresa el código de barras..."
-                autoFocus
-                className="w-full rounded-2xl border-2 border-indigo-200 bg-white px-4 py-3 pl-10 text-base shadow-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
-              />
-              {buscandoCodigo && (
-                <Loader2 className="absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 animate-spin text-indigo-500" />
-              )}
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <ScanLine className={`absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 transition-colors ${barcodeFocused ? 'text-green-500' : 'text-gray-400'}`} />
+                <input
+                  ref={inputCodigoRef}
+                  type="text"
+                  value={codigoBarras}
+                  onChange={(e) => setCodigoBarras(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && buscarPorCodigo()}
+                  onFocus={() => setBarcodeFocused(true)}
+                  onBlur={() => setBarcodeFocused(false)}
+                  placeholder={barcodeFocused ? 'Escanea o escribe el código...' : 'Haz clic aquí para escanear un producto'}
+                  autoFocus
+                  className={`w-full rounded-2xl border-2 bg-white px-4 py-3 pl-10 pr-36 text-base shadow-sm focus:outline-none focus:ring-2 transition-colors ${
+                    barcodeFocused
+                      ? 'border-green-400 focus:ring-green-100'
+                      : 'border-indigo-200 focus:border-indigo-400 focus:ring-indigo-100'
+                  }`}
+                />
+                {barcodeFocused && !buscandoCodigo && (
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-xs text-green-600 pointer-events-none">
+                    <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                    Listo para escanear
+                  </span>
+                )}
+                {buscandoCodigo && (
+                  <Loader2 className="absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 animate-spin text-indigo-500" />
+                )}
+              </div>
+              <button
+                onClick={() => setShowCamera(true)}
+                title="Escanear con cámara"
+                className="flex items-center justify-center rounded-2xl border-2 border-indigo-200 bg-white px-4 text-gray-500 shadow-sm transition-colors hover:border-indigo-400 hover:text-indigo-600"
+              >
+                <Camera className="h-5 w-5" />
+              </button>
             </div>
           </>
         )}
@@ -926,16 +1089,31 @@ export default function VentasPage() {
               {tipoComprobante === 'BoletaDNI' && (
                 <div className="mb-3">
                   <label className="mb-1 block text-sm font-medium text-gray-700">DNI <span className="text-red-500">*</span></label>
-                  <input
-                    type="text"
-                    value={clienteDni}
-                    onChange={(e) => setClienteDni(e.target.value.replace(/\D/g, '').slice(0, 8))}
-                    placeholder="12345678"
-                    maxLength={8}
-                    className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                  />
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={clienteDni}
+                      onChange={(e) => { setClienteDni(e.target.value.replace(/\D/g, '').slice(0, 8)); setNombreDni(''); }}
+                      onKeyDown={(e) => e.key === 'Enter' && buscarDni()}
+                      placeholder="12345678"
+                      maxLength={8}
+                      className="flex-1 rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    />
+                    <button
+                      type="button"
+                      onClick={buscarDni}
+                      disabled={clienteDni.length !== 8 || buscandoDni}
+                      title="Consultar RENIEC"
+                      className="rounded-lg bg-indigo-500 px-3 py-2 text-white transition-colors hover:bg-indigo-600 disabled:opacity-50"
+                    >
+                      {buscandoDni ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                    </button>
+                  </div>
                   {clienteDni.length > 0 && clienteDni.length < 8 && (
                     <p className="mt-1 text-xs text-red-500">El DNI debe tener 8 dígitos</p>
+                  )}
+                  {nombreDni && (
+                    <p className="mt-1 text-xs font-medium text-emerald-600">{nombreDni}</p>
                   )}
                 </div>
               )}
@@ -944,16 +1122,39 @@ export default function VentasPage() {
                 <div className="mb-3 space-y-2">
                   <div>
                     <label className="mb-1 block text-sm font-medium text-gray-700">RUC <span className="text-red-500">*</span></label>
-                    <input
-                      type="text"
-                      value={clienteRuc}
-                      onChange={(e) => setClienteRuc(e.target.value.replace(/\D/g, '').slice(0, 11))}
-                      placeholder="20123456789"
-                      maxLength={11}
-                      className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                    />
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={clienteRuc}
+                        onChange={(e) => {
+                          const val = e.target.value.replace(/\D/g, '').slice(0, 11);
+                          setClienteRuc(val);
+                          setRucValidado(false);
+                          setRucInfo(null);
+                          if (val.length === 11) buscarRuc(val);
+                        }}
+                        onKeyDown={(e) => e.key === 'Enter' && buscarRuc()}
+                        placeholder="20123456789"
+                        maxLength={11}
+                        className="flex-1 rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                      />
+                      <button
+                        type="button"
+                        onClick={buscarRuc}
+                        disabled={clienteRuc.length !== 11 || buscandoRuc}
+                        title="Consultar SUNAT"
+                        className="rounded-lg bg-indigo-500 px-3 py-2 text-white transition-colors hover:bg-indigo-600 disabled:opacity-50"
+                      >
+                        {buscandoRuc ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                      </button>
+                    </div>
                     {clienteRuc.length > 0 && clienteRuc.length < 11 && (
                       <p className="mt-1 text-xs text-red-500">El RUC debe tener 11 dígitos</p>
+                    )}
+                    {rucValidado && rucInfo && (
+                      <p className="mt-1 text-xs font-medium text-emerald-600">
+                        ✓ {rucInfo.razon_social} — {rucInfo.estado} / {rucInfo.condicion}
+                      </p>
                     )}
                   </div>
                   <div>
@@ -965,9 +1166,6 @@ export default function VentasPage() {
                       placeholder="Nombre de la empresa"
                       className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                     />
-                    {clienteRazonSocial.length > 0 && clienteRazonSocial.length < 3 && (
-                      <p className="mt-1 text-xs text-red-500">Ingrese una razón social válida</p>
-                    )}
                   </div>
                   <div>
                     <label className="mb-1 block text-sm font-medium text-gray-700">Dirección <span className="text-red-500">*</span></label>
@@ -978,16 +1176,13 @@ export default function VentasPage() {
                       placeholder="Av. Ejemplo 123"
                       className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                     />
-                    {clienteDireccion.length > 0 && clienteDireccion.length < 5 && (
-                      <p className="mt-1 text-xs text-red-500">Ingrese una dirección válida</p>
-                    )}
                   </div>
                 </div>
               )}
 
               <select
                 value={metodoPago}
-                onChange={(e) => { setMetodoPago(e.target.value); setYapeVerificado(false); }}
+                onChange={(e) => { setMetodoPago(e.target.value); setYapeVerificado(false); setPasoYape('inicio'); setReferenciaPago(''); }}
                 className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
               >
                 <option value="Efectivo">Efectivo</option>
@@ -996,34 +1191,70 @@ export default function VentasPage() {
 
               {metodoPago === 'Yape' && (
                 <div className="mt-3 space-y-3">
-                  <div className="flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-indigo-200 bg-indigo-50 p-4">
-                    <img
-                      src={`/CodigoQrYape.jpg?t=${Date.now()}`}
-                      alt="Código QR Yape"
-                      className="h-48 w-48 rounded-lg border border-indigo-100 bg-white object-contain p-1"
-                    />
-                    <p className="text-center text-xs text-indigo-600">
-                      Escanea el código QR con tu app Yape para pagar
-                    </p>
-                  </div>
-
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                    <strong>Importante:</strong> Revisa la notificación de Yape en <strong>tu propio celular</strong>.
-                    Confirma el pago solo si ves el monto correcto (<strong>S/. {total.toFixed(2)}</strong>).
-                  </div>
-
-                  {!yapeVerificado ? (
-                    <button
-                      onClick={() => setYapeVerificado(true)}
-                      className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-700"
-                    >
-                      <CheckCircle className="h-4 w-4" />
-                      Confirmar Yape recibido en mi celular
-                    </button>
-                  ) : (
+                  {yapeVerificado ? (
                     <div className="flex items-center gap-2 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
                       <CheckCircle className="h-5 w-5 shrink-0 text-emerald-500" />
-                      <span className="font-medium">Yape verificado — Monto: S/. {total.toFixed(2)}</span>
+                      <div>
+                        <p className="font-medium">Pago Yape/Plin confirmado — S/. {total.toFixed(2)}</p>
+                        {referenciaPago.trim() && (
+                          <p className="text-xs text-emerald-600">N° operación: {referenciaPago.trim()}</p>
+                        )}
+                      </div>
+                    </div>
+                  ) : pasoYape === 'inicio' ? (
+                    <div className="space-y-3 rounded-xl border-2 border-dashed border-violet-200 bg-violet-50 p-4">
+                      <div className="flex items-center gap-2 text-violet-700">
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-violet-600 text-[11px] font-bold text-white">1</span>
+                        <span className="text-sm font-semibold">Generar cobro en IziPay</span>
+                      </div>
+                      <p className="text-sm text-gray-600">
+                        Abre la app <strong>IziPay</strong> en el POS, ingresa el monto exacto y genera el QR de cobro.
+                      </p>
+                      <div className="rounded-lg bg-white px-4 py-3 text-center">
+                        <p className="text-xs text-gray-500">Monto a ingresar en IziPay</p>
+                        <p className="text-2xl font-bold text-violet-700">S/. {total.toFixed(2)}</p>
+                      </div>
+                      <button
+                        onClick={() => setPasoYape('mostrando')}
+                        className="flex w-full items-center justify-center gap-2 rounded-lg bg-violet-600 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-violet-700"
+                      >
+                        <QrCode className="h-4 w-4" />
+                        Ya generé el cobro en IziPay
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-3 rounded-xl border-2 border-dashed border-violet-200 bg-violet-50 p-4">
+                      <div className="flex items-center gap-2 text-violet-700">
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-violet-600 text-[11px] font-bold text-white">2</span>
+                        <span className="text-sm font-semibold">Cliente escanea y paga</span>
+                      </div>
+                      <p className="text-sm text-gray-600">
+                        Muestra la pantalla de IziPay al cliente para que escanee con Yape o Plin y pague <strong>S/. {total.toFixed(2)}</strong>. Verifica en la app que el pago se haya completado antes de confirmar.
+                      </p>
+                      <div>
+                        <label className="mb-1 block text-xs text-gray-500">N° de operación (opcional)</label>
+                        <input
+                          type="text"
+                          value={referenciaPago}
+                          onChange={(e) => setReferenciaPago(e.target.value)}
+                          placeholder="Ej. 00123456"
+                          className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400"
+                        />
+                      </div>
+                      <button
+                        onClick={() => setYapeVerificado(true)}
+                        className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-700"
+                      >
+                        <CheckCircle className="h-4 w-4" />
+                        Pago confirmado en IziPay
+                      </button>
+                      <button
+                        onClick={() => setPasoYape('inicio')}
+                        className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 py-2 text-sm text-gray-600 transition-colors hover:bg-gray-50"
+                      >
+                        <X className="h-4 w-4" />
+                        Volver
+                      </button>
                     </div>
                   )}
                 </div>
@@ -1044,14 +1275,17 @@ export default function VentasPage() {
                     />
                   </div>
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-500">Vuelto</span>
-                    <span
-                      className={`font-medium ${
-                        vuelto >= 0 ? 'text-green-600' : 'text-red-600'
-                      }`}
-                    >
-                      S/. {vuelto.toFixed(2)}
-                    </span>
+                    {vuelto >= 0 ? (
+                      <>
+                        <span className="text-gray-500">Vuelto</span>
+                        <span className="font-medium text-green-600">S/. {vuelto.toFixed(2)}</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="font-medium text-red-500">Faltan</span>
+                        <span className="font-bold text-red-500">S/. {Math.abs(vuelto).toFixed(2)}</span>
+                      </>
+                    )}
                   </div>
                 </div>
               )}
@@ -1090,6 +1324,31 @@ export default function VentasPage() {
       )}
       {modalComprobante && ventaExitosa && (
         <ModalComprobante venta={ventaExitosa} onCerrar={cerrarComprobante} onDescargarPDF={descargarPDF} />
+      )}
+
+      {showCamera && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
+          <div className="relative mx-4 w-full max-w-sm rounded-2xl bg-white p-4 shadow-xl">
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="font-semibold text-gray-800">Escanear código de barras</h3>
+              <button
+                onClick={() => setShowCamera(false)}
+                className="rounded-full p-1 text-gray-500 hover:bg-gray-100"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <p className="mb-3 text-center text-xs text-gray-500">
+              Centra el código de barras dentro del encuadre
+            </p>
+            <div className="relative overflow-hidden rounded-xl bg-black">
+              <video id="barcode-video" className="w-full" autoPlay muted playsInline />
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                <div className="h-20 w-72 rounded border-2 border-green-400 opacity-80" />
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

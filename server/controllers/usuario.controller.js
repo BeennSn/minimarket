@@ -1,13 +1,11 @@
-/**
- * usuario.controller.js
- * Controlador CRUD para la gestión de usuarios.
- */
-
 const bcrypt = require('bcryptjs');
 const { Op }  = require('sequelize');
 
 const { Usuario }                          = require('../models');
 const { presentarUsuario, presentarLista } = require('../presenters/usuario.presenter');
+const { validatePassword }                 = require('./auth.controller');
+
+const ROLES_VALIDOS = ['Administrador', 'Vendedor', 'Almacenero', 'Gerente'];
 
 // ─── Listar todos los usuarios ────────────────────────────────────────────────
 const listar = async (req, res) => {
@@ -38,6 +36,23 @@ const obtener = async (req, res) => {
 const crear = async (req, res) => {
   try {
     const { nombre, email, password, rol } = req.body;
+
+    if (!nombre || !nombre.trim()) {
+      return res.status(400).json({ mensaje: 'El nombre es requerido' });
+    }
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ mensaje: 'El email no es válido' });
+    }
+    if (!password) {
+      return res.status(400).json({ mensaje: 'La contraseña es requerida' });
+    }
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+      return res.status(400).json({ mensaje: `Contraseña inválida: ${passwordError}` });
+    }
+    if (!ROLES_VALIDOS.includes(rol)) {
+      return res.status(400).json({ mensaje: `El rol debe ser uno de: ${ROLES_VALIDOS.join(', ')}` });
+    }
 
     // Verificar email duplicado
     const existe = await Usuario.findOne({ where: { email } });
@@ -71,6 +86,20 @@ const actualizar = async (req, res) => {
     }
 
     const { nombre, email, rol } = req.body;
+
+    if (email !== undefined && email !== usuario.email) {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return res.status(400).json({ mensaje: 'El email no es válido' });
+      }
+      const emailEnUso = await Usuario.findOne({ where: { email, id: { [Op.ne]: usuario.id } } });
+      if (emailEnUso) {
+        return res.status(400).json({ mensaje: 'El email ya está en uso por otro usuario' });
+      }
+    }
+
+    if (rol !== undefined && !ROLES_VALIDOS.includes(rol)) {
+      return res.status(400).json({ mensaje: `El rol debe ser uno de: ${ROLES_VALIDOS.join(', ')}` });
+    }
 
     // Actualizar solo los campos que vienen en el body
     if (nombre !== undefined) usuario.nombre = nombre;

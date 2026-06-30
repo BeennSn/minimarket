@@ -1,8 +1,4 @@
-/**
- * categoria.controller.js
- * Controlador CRUD para la gestión de categorías.
- */
-
+const { Op } = require('sequelize');
 const { Categoria, Producto } = require('../models');
 const { presentarCategoria, presentarLista } = require('../presenters/categoria.presenter');
 
@@ -45,6 +41,14 @@ const actualizar = async (req, res) => {
     }
 
     const { nombre } = req.body;
+
+    if (nombre !== undefined) {
+      const existe = await Categoria.findOne({ where: { nombre, id: { [Op.ne]: categoria.id } } });
+      if (existe) {
+        return res.status(400).json({ mensaje: 'Ya existe una categoría con ese nombre' });
+      }
+    }
+
     await categoria.update({ nombre });
     return res.status(200).json(presentarCategoria(categoria));
   } catch (err) {

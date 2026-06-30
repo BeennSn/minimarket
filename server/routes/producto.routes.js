@@ -29,6 +29,13 @@ router.get('/vencer', productoController.listarProximosVencer);
 // GET  /api/productos/codigo/:codigo → cualquier rol autenticado (para escáner)
 router.get('/codigo/:codigo', productoController.buscarPorCodigo);
 
+// GET  /api/productos/buscar-codigo/:codigo → Administrador, Almacenero (autocompletar registro vía APIs externas)
+router.get(
+  '/buscar-codigo/:codigo',
+  verificarRol('Administrador', 'Almacenero'),
+  productoController.buscarInfoExterna
+);
+
 // GET  /api/productos/:id     → cualquier rol autenticado
 router.get('/:id', productoController.obtener);
 

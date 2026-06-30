@@ -18,3 +18,17 @@ Thumbs.db
 # ─── Build / dist ─────────────────────────────────────────────────────────────
 dist/
 build/
+
+# ─── Documentación interna / Claude ────────────────────────────────────────────
+CLAUDE.md
+AUDITORIA_FALLOS.md
+PLAN_IMPLEMENTACION.md
+PLAN_MEJORAS_VENTAS_INVENTARIO.md
+.claude/
+.mcp.json
+.playwright-mcp/
+
+# ─── Screenshots de verificación ───────────────────────────────────────────────
+*.png
+*.jpg
+!public/**

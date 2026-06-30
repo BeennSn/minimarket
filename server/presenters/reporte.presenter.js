@@ -28,4 +28,21 @@ const presentarMetodoPago = (data) => ({
   monto_total:   parseFloat(data.monto_total) || 0,
 });
 
-module.exports = { presentarResumenVentas, presentarProductoTop, presentarVentasPorDia, presentarMetodoPago };
+const presentarMargenProducto = (row) => {
+  const ingreso = parseFloat(row.ingreso_total) || 0;
+  const costo   = parseFloat(row.costo_total)   || 0;
+  const margen  = ingreso - costo;
+  return {
+    producto_id:   row.id,
+    nombre:        row.nombre,
+    marca:         row.marca,
+    categoria:     row.categoria || null,
+    total_vendido: parseInt(row.total_vendido) || 0,
+    ingreso_total: ingreso,
+    costo_total:   costo,
+    margen,
+    margen_pct:    costo > 0 ? parseFloat(((margen / costo) * 100).toFixed(2)) : null,
+  };
+};
+
+module.exports = { presentarResumenVentas, presentarProductoTop, presentarVentasPorDia, presentarMetodoPago, presentarMargenProducto };

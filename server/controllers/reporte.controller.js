@@ -1,10 +1,11 @@
-const { Op } = require('sequelize');
+const { Op, QueryTypes } = require('sequelize');
 const { sequelize, Venta, DetalleVenta, Producto, Categoria, Proveedor, SolicitudReposicion } = require('../models');
 const {
   presentarResumenVentas,
   presentarProductoTop,
   presentarVentasPorDia,
   presentarMetodoPago,
+  presentarMargenProducto,
 } = require('../presenters/reporte.presenter');
 
 const armarWhereFecha = (req) => {
@@ -26,7 +27,7 @@ const armarWhereFecha = (req) => {
 
 const resumenVentas = async (req, res) => {
   try {
-    const whereVenta = armarWhereFecha(req);
+    const whereVenta = { ...armarWhereFecha(req), estado: 'Completada' };
 
     const data = await Venta.findAll({
       where: whereVenta,
@@ -48,17 +49,15 @@ const resumenVentas = async (req, res) => {
 const productosTop = async (req, res) => {
   try {
     const { limite } = req.query;
-    const whereVenta = armarWhereFecha(req);
+    const whereVenta = { ...armarWhereFecha(req), estado: 'Completada' };
 
     const ventaInclude = {
       model: Venta,
       as: 'venta',
       attributes: [],
       required: true,
+      where: whereVenta,
     };
-    if (Object.keys(whereVenta).length > 0) {
-      ventaInclude.where = whereVenta;
-    }
 
     const data = await DetalleVenta.findAll({
       attributes: [
@@ -84,7 +83,7 @@ const productosTop = async (req, res) => {
 
 const ventasPorDia = async (req, res) => {
   try {
-    const whereVenta = armarWhereFecha(req);
+    const whereVenta = { ...armarWhereFecha(req), estado: 'Completada' };
 
     const data = await Venta.findAll({
       where: whereVenta,
@@ -107,7 +106,7 @@ const ventasPorDia = async (req, res) => {
 
 const ventasPorMetodoPago = async (req, res) => {
   try {
-    const whereVenta = armarWhereFecha(req);
+    const whereVenta = { ...armarWhereFecha(req), estado: 'Completada' };
 
     const data = await Venta.findAll({
       where: whereVenta,
@@ -186,6 +185,63 @@ const resumenInventario = async (req, res) => {
   }
 };
 
+const margenProductos = async (req, res) => {
+  try {
+    const { fecha_inicio, fecha_hasta } = req.query;
+
+    let condicionFecha = '';
+    const reemplazos = {};
+
+    if (fecha_inicio && fecha_hasta) {
+      const hasta = new Date(fecha_hasta);
+      hasta.setDate(hasta.getDate() + 1);
+      condicionFecha = 'AND v."createdAt" >= :desde AND v."createdAt" < :hasta';
+      reemplazos.desde = new Date(fecha_inicio);
+      reemplazos.hasta = hasta;
+    } else if (fecha_inicio) {
+      condicionFecha = 'AND v."createdAt" >= :desde';
+      reemplazos.desde = new Date(fecha_inicio);
+    } else if (fecha_hasta) {
+      const hasta = new Date(fecha_hasta);
+      hasta.setDate(hasta.getDate() + 1);
+      condicionFecha = 'AND v."createdAt" < :hasta';
+      reemplazos.hasta = hasta;
+    }
+
+    const sql = `
+      SELECT
+        p.id,
+        p.nombre,
+        p.marca,
+        cat.nombre AS categoria,
+        CAST(SUM(dv.cantidad) AS INTEGER) AS total_vendido,
+        SUM(dv.subtotal) AS ingreso_total,
+        SUM(cl.cantidad * em.costo_unitario) AS costo_total
+      FROM detalle_ventas dv
+      JOIN ventas v ON v.id = dv.venta_id
+        AND v.estado = 'Completada'
+        ${condicionFecha}
+      JOIN consumos_lote cl ON cl.detalle_venta_id = dv.id AND cl.tipo = 'Venta'
+      JOIN entradas_mercaderia em ON em.id = cl.entrada_id
+        AND em.costo_unitario IS NOT NULL
+      JOIN productos p ON p.id = dv.producto_id
+      LEFT JOIN categorias cat ON cat.id = p.categoria_id
+      GROUP BY p.id, p.nombre, p.marca, cat.nombre
+      ORDER BY (SUM(dv.subtotal) - SUM(cl.cantidad * em.costo_unitario)) DESC
+    `;
+
+    const rows = await sequelize.query(sql, {
+      replacements: reemplazos,
+      type: QueryTypes.SELECT,
+    });
+
+    return res.status(200).json(rows.map(presentarMargenProducto));
+  } catch (err) {
+    console.error('Error en margenProductos:', err);
+    return res.status(500).json({ mensaje: 'Error interno del servidor' });
+  }
+};
+
 module.exports = {
   resumenVentas,
   productosTop,
@@ -193,4 +249,5 @@ module.exports = {
   ventasPorMetodoPago,
   stockCritico,
   resumenInventario,
+  margenProductos,
 };

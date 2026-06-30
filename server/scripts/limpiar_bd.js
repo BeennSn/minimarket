@@ -1,49 +1,50 @@
-require('dotenv').config();
-const { Sequelize } = require('sequelize');
+/**
+ * limpiar_bd.js
+ * Elimina todos los datos excepto usuarios y resetea los auto-incrementos.
+ * Uso: node server/scripts/limpiar_bd.js   (desde la raíz del proyecto)
+ */
 
-const seq = new Sequelize(process.env.DATABASE_URL, {
-  dialect: 'postgres',
-  dialectOptions: {
-    ssl: { require: true, rejectUnauthorized: false },
-  },
-  logging: false,
-});
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
 
-const TABLAS_EN_ORDEN = [
+const { sequelize } = require('../models');
+
+// Orden: hijos antes que padres (respeta FK constraints)
+const TABLAS = [
+  'consumos_lote',
+  'movimientos_caja',
   'detalle_ventas',
   'ventas',
   'entradas_mercaderia',
   'bajas_inventario',
+  'turnos',
   'solicitudes_reposicion',
   'logs_acceso',
+  'clientes',
   'productos',
   'categorias',
   'proveedores',
-  'clientes',
 ];
 
 async function limpiar() {
   try {
-    await seq.authenticate();
-    console.log('Conectado a la base de datos\n');
+    await sequelize.authenticate();
+    console.log('✅ Conectado a la base de datos\n');
 
-    for (const tabla of TABLAS_EN_ORDEN) {
-      await seq.query(`DELETE FROM "${tabla}"`);
-      console.log(`  ✓ ${tabla} limpiada`);
-    }
-
-    console.log('\nReseteando sequences...');
-    for (const tabla of TABLAS_EN_ORDEN) {
-      await seq.query(
-        `SELECT setval(pg_get_serial_sequence('"${tabla}"', 'id'), COALESCE(MAX(id), 0) + 1, false) FROM "${tabla}"`
+    for (const tabla of TABLAS) {
+      await sequelize.query(`DELETE FROM "${tabla}"`);
+      await sequelize.query(
+        `SELECT setval(pg_get_serial_sequence('"${tabla}"', 'id'), 1, false)`
       );
+      console.log(`  ✓ ${tabla}`);
     }
 
-    console.log('\nBase de datos limpiada exitosamente (usuarios intactos)');
+    console.log('\n🎉 Base de datos limpiada. Usuarios y sus contraseñas intactos.');
   } catch (err) {
-    console.error('Error:', err);
+    console.error('❌ Error:', err.message);
+    process.exit(1);
   } finally {
-    await seq.close();
+    await sequelize.close();
   }
 }
 

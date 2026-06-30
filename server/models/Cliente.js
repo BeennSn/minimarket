@@ -15,6 +15,9 @@ const Cliente = sequelize.define('Cliente', {
     type: DataTypes.STRING(8),
     unique: true,
     allowNull: true,
+    validate: {
+      is: { args: /^\d{8}$/, msg: 'El DNI debe tener 8 dígitos numéricos' },
+    },
   },
   email: {
     type: DataTypes.STRING,

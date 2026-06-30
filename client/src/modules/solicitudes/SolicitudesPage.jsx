@@ -411,7 +411,7 @@ export default function SolicitudesPage() {
       const [rS, rP, rProv] = await Promise.all([
         api.get('/inventario/solicitudes'),
         api.get('/productos/activos'),
-        api.get('/proveedores'),
+        api.get('/proveedores?soloActivos=true'),
       ]);
       setSolicitudes(Array.isArray(rS.data) ? rS.data : []);
       setProductos(Array.isArray(rP.data) ? rP.data : []);

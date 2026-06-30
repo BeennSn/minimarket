@@ -14,4 +14,10 @@ router.post(
   clienteController.buscarOCrear
 );
 
+router.put(
+  '/:id',
+  verificarRol('Administrador'),
+  clienteController.actualizar
+);
+
 module.exports = router;

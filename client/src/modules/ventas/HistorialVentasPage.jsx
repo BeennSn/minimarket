@@ -1,9 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Search, X, ChevronLeft, ChevronRight, Download, Eye, FileText, CheckCircle, XCircle, Banknote, Smartphone, Loader2 } from 'lucide-react';
+import { Search, X, ChevronLeft, ChevronRight, Download, Eye, FileText, CheckCircle, XCircle, Banknote, Smartphone, Loader2, Ban } from 'lucide-react';
 import api from '../../utils/axios';
 import Breadcrumb from '../../components/Breadcrumb';
+import Toast from '../../components/Toast';
+import useToast from '../../hooks/useToast';
+import { useAuth } from '../../context/AuthContext';
 
 export default function HistorialVentasPage() {
+  const { usuario } = useAuth();
+  const puedeAnular = usuario?.rol === 'Administrador' || usuario?.rol === 'Gerente';
+  const { toast, mostrarExito, mostrarError, cerrar } = useToast();
+
   const [ventas, setVentas] = useState([]);
   const [pagination, setPagination] = useState({ total: 0, pagina: 1, limite: 25, totalPaginas: 0 });
   const [loading, setLoading] = useState(true);
@@ -14,6 +21,9 @@ export default function HistorialVentasPage() {
   const [paginaActual, setPaginaActual] = useState(1);
   const [detalleVenta, setDetalleVenta] = useState(null);
   const [exportando, setExportando] = useState(false);
+  const [ventaAAnular, setVentaAAnular] = useState(null);
+  const [motivoAnular, setMotivoAnular] = useState('');
+  const [anulando, setAnulando] = useState(false);
 
   const cargarVentas = useCallback(async () => {
     setLoading(true);
@@ -87,6 +97,25 @@ export default function HistorialVentasPage() {
       setDetalleVenta(data);
     } catch (err) {
       setError('Error al carrar detalle de venta');
+    }
+  };
+
+  const confirmarAnular = async () => {
+    if (!motivoAnular.trim()) {
+      mostrarError('Debes indicar un motivo de anulación');
+      return;
+    }
+    setAnulando(true);
+    try {
+      await api.patch(`/ventas/${ventaAAnular.id}/anular`, { motivo: motivoAnular.trim() });
+      mostrarExito(`Venta #${String(ventaAAnular.id).padStart(6, '0')} anulada`);
+      setVentaAAnular(null);
+      setMotivoAnular('');
+      cargarVentas();
+    } catch (err) {
+      mostrarError(err.response?.data?.mensaje || 'Error al anular la venta');
+    } finally {
+      setAnulando(false);
     }
   };
 
@@ -174,6 +203,7 @@ export default function HistorialVentasPage() {
                     <th className="px-4 py-3 text-left font-semibold text-gray-600">Método</th>
                     <th className="px-4 py-3 text-right font-semibold text-gray-600">Monto</th>
                     <th className="px-4 py-3 text-center font-semibold text-gray-600">Yape Verif.</th>
+                    <th className="px-4 py-3 text-center font-semibold text-gray-600">Estado</th>
                     <th className="px-4 py-3 text-center font-semibold text-gray-600">Acción</th>
                   </tr>
                 </thead>
@@ -196,7 +226,7 @@ export default function HistorialVentasPage() {
                           {v.metodo_pago}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-right font-medium text-gray-800">S/. {Number(v.monto_total).toFixed(2)}</td>
+                      <td className={`px-4 py-3 text-right font-medium ${v.estado === 'Anulada' ? 'text-gray-400 line-through' : 'text-gray-800'}`}>S/. {Number(v.monto_total).toFixed(2)}</td>
                       <td className="px-4 py-3 text-center">
                         {v.metodo_pago === 'Yape' ? (
                           v.yape_verificado ? (
@@ -215,13 +245,39 @@ export default function HistorialVentasPage() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-center">
-                        <button
-                          onClick={() => verDetalle(v.id)}
-                          className="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium text-indigo-600 transition-colors hover:bg-indigo-50"
-                        >
-                          <Eye className="h-3.5 w-3.5" />
-                          Detalle
-                        </button>
+                        {v.estado === 'Anulada' ? (
+                          <span
+                            className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-700"
+                            title={v.motivo_anulacion || ''}
+                          >
+                            <Ban className="h-3 w-3" />
+                            Anulada
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-700">
+                            Completada
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            onClick={() => verDetalle(v.id)}
+                            className="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium text-indigo-600 transition-colors hover:bg-indigo-50"
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                            Detalle
+                          </button>
+                          {puedeAnular && v.estado !== 'Anulada' && (
+                            <button
+                              onClick={() => setVentaAAnular(v)}
+                              className="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50"
+                            >
+                              <Ban className="h-3.5 w-3.5" />
+                              Anular
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -270,6 +326,16 @@ export default function HistorialVentasPage() {
             </div>
 
             <div className="space-y-3 text-sm">
+              {detalleVenta.estado === 'Anulada' && (
+                <div className="rounded-lg bg-red-50 p-3 text-red-700">
+                  <p className="text-xs font-semibold uppercase tracking-wide">Venta anulada</p>
+                  <p className="mt-1">{detalleVenta.motivo_anulacion}</p>
+                  <p className="mt-1 text-xs text-red-500">
+                    Por {detalleVenta.anulado_por?.nombre || '-'}
+                    {detalleVenta.anulado_en ? ` el ${new Date(detalleVenta.anulado_en).toLocaleString('es-PE')}` : ''}
+                  </p>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-3 rounded-lg bg-gray-50 p-3">
                 <div>
                   <span className="text-xs text-gray-500">Fecha</span>
@@ -309,6 +375,12 @@ export default function HistorialVentasPage() {
                         <p className="font-medium">{new Date(detalleVenta.yape_verificado_en).toLocaleString('es-PE')}</p>
                       </div>
                     )}
+                    {detalleVenta.referencia_pago && (
+                      <div className="col-span-2">
+                        <span className="text-xs text-gray-500">N° de operación IziPay</span>
+                        <p className="font-medium">{detalleVenta.referencia_pago}</p>
+                      </div>
+                    )}
                   </>
                 )}
                 {detalleVenta.metodo_pago === 'Efectivo' && (
@@ -341,6 +413,51 @@ export default function HistorialVentasPage() {
           </div>
         </div>
       )}
+
+      {/* Modal anular venta */}
+      {ventaAAnular && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onClick={() => { if (!anulando) { setVentaAAnular(null); setMotivoAnular(''); } }}
+        >
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h2 className="mb-2 text-lg font-bold text-gray-800">
+              Anular venta #{String(ventaAAnular.id).padStart(6, '0')}
+            </h2>
+            <p className="mb-4 text-sm text-gray-500">
+              Se repondrá el stock vendido y se ajustará el monto en la caja del turno abierto. Esta acción no se puede deshacer.
+            </p>
+            <label className="mb-1 block text-xs font-medium text-gray-500">Motivo de anulación</label>
+            <textarea
+              value={motivoAnular}
+              onChange={(e) => setMotivoAnular(e.target.value)}
+              rows={3}
+              autoFocus
+              className="mb-4 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400"
+              placeholder="Ej: producto incorrecto, cliente se arrepintió, error de cobro..."
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => { setVentaAAnular(null); setMotivoAnular(''); }}
+                disabled={anulando}
+                className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmarAnular}
+                disabled={anulando}
+                className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-50"
+              >
+                {anulando && <Loader2 className="h-4 w-4 animate-spin" />}
+                Confirmar anulación
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <Toast mensaje={toast.mensaje} tipo={toast.tipo} visible={toast.visible} onCerrar={cerrar} />
     </div>
   );
 }

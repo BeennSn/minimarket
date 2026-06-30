@@ -10,10 +10,16 @@ const Producto = sequelize.define('Producto', {
   nombre: {
     type: DataTypes.STRING,
     allowNull: false,
+    validate: {
+      notEmpty: { msg: 'El nombre no puede estar vacío' },
+    },
   },
   marca: {
     type: DataTypes.STRING,
     allowNull: false,
+    validate: {
+      notEmpty: { msg: 'La marca no puede estar vacía' },
+    },
   },
   categoria_id: {
     type: DataTypes.INTEGER,
@@ -33,6 +39,9 @@ const Producto = sequelize.define('Producto', {
   stock: {
     type: DataTypes.INTEGER,
     defaultValue: 0,
+    validate: {
+      min: { args: [0], msg: 'El stock no puede ser negativo' },
+    },
   },
   proveedor_id: {
     type: DataTypes.INTEGER,
@@ -47,13 +56,13 @@ const Producto = sequelize.define('Producto', {
     unique: true,
     allowNull: true,
   },
-  fecha_vencimiento: {
-    type: DataTypes.DATEONLY,
-    allowNull: true,
-  },
   activo: {
     type: DataTypes.BOOLEAN,
     defaultValue: true,
+  },
+  costo_promedio: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: true,
   },
 }, {
   tableName: 'productos',

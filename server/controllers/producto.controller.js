@@ -4,21 +4,18 @@
  */
 
 const { Op } = require('sequelize');
-const { Producto, Categoria, Proveedor, EntradaMercaderia } = require('../models');
+const { sequelize, Producto, Categoria, Proveedor, EntradaMercaderia } = require('../models');
 const { presentarProducto, presentarLista } = require('../presenters/producto.presenter');
-
-const DIAS_MINIMOS_VENCIMIENTO = 30;
+const { buscarEnApisExternas } = require('../services/barcodeService');
+const { crearLote } = require('../services/inventario.service');
 
 const validarFechaVencimiento = (fechaStr) => {
   if (!fechaStr) return null;
   const fecha = new Date(fechaStr + 'T00:00:00');
   const hoy = new Date();
   hoy.setHours(0, 0, 0, 0);
-  const fechaMinima = new Date(hoy);
-  fechaMinima.setDate(fechaMinima.getDate() + DIAS_MINIMOS_VENCIMIENTO);
   if (isNaN(fecha.getTime())) return 'Fecha de vencimiento inválida';
   if (fecha < hoy) return 'La fecha de vencimiento no puede ser anterior a hoy';
-  if (fecha < fechaMinima) return `La fecha de vencimiento debe ser al menos ${DIAS_MINIMOS_VENCIMIENTO} días a partir de hoy`;
   return null;
 };
 
@@ -27,10 +24,40 @@ const INCLUDE = [
   { model: Proveedor, as: 'proveedor', attributes: ['id', 'nombre', 'ruc'] },
 ];
 
+// Calcula, para cada producto, la fecha de vencimiento más próxima entre sus
+// lotes con stock restante (la columna Producto.fecha_vencimiento ya no existe:
+// el vencimiento se deriva siempre de EntradaMercaderia).
+const obtenerProximasFechasVencimiento = async (productoIds) => {
+  if (!productoIds.length) return new Map();
+  const filas = await EntradaMercaderia.findAll({
+    attributes: [
+      'producto_id',
+      [sequelize.fn('MIN', sequelize.col('fecha_vencimiento')), 'proxima_fecha_vencimiento'],
+    ],
+    where: {
+      producto_id: { [Op.in]: productoIds },
+      cantidad_restante: { [Op.gt]: 0 },
+      fecha_vencimiento: { [Op.ne]: null },
+    },
+    group: ['producto_id'],
+    raw: true,
+  });
+  return new Map(filas.map((f) => [f.producto_id, f.proxima_fecha_vencimiento]));
+};
+
+const adjuntarProximasFechas = async (productos) => {
+  const fechas = await obtenerProximasFechasVencimiento(productos.map((p) => p.id));
+  for (const p of productos) {
+    p.proxima_fecha_vencimiento = fechas.get(p.id) || null;
+  }
+  return productos;
+};
+
 // ─── Listar todos los productos ───────────────────────────────────────────────
 const listar = async (req, res) => {
   try {
     const productos = await Producto.findAll({ include: INCLUDE });
+    await adjuntarProximasFechas(productos);
     return res.status(200).json(presentarLista(productos));
   } catch (err) {
     console.error('Error en listar productos:', err);
@@ -45,6 +72,7 @@ const listarActivos = async (req, res) => {
       where: { activo: true },
       include: INCLUDE,
     });
+    await adjuntarProximasFechas(productos);
     return res.status(200).json(presentarLista(productos));
   } catch (err) {
     console.error('Error en listar productos activos:', err);
@@ -62,9 +90,59 @@ const buscarPorCodigo = async (req, res) => {
     if (!producto) {
       return res.status(404).json({ mensaje: 'Producto no encontrado para ese código de barras' });
     }
+    await adjuntarProximasFechas([producto]);
     return res.status(200).json(presentarProducto(producto));
   } catch (err) {
     console.error('Error en buscarPorCodigo:', err);
+    return res.status(500).json({ mensaje: 'Error interno del servidor' });
+  }
+};
+
+// ─── Buscar info de producto en APIs externas (autocompletar registro) ────────
+const buscarInfoExterna = async (req, res) => {
+  try {
+    const { codigo } = req.params;
+    if (!codigo || !/^\d{6,14}$/.test(codigo)) {
+      return res.status(400).json({ mensaje: 'Código de barras inválido' });
+    }
+
+    const existente = await Producto.findOne({ where: { codigo_barras: codigo }, include: INCLUDE });
+    if (existente) {
+      await adjuntarProximasFechas([existente]);
+      return res.status(200).json({ ya_existe: true, producto: presentarProducto(existente) });
+    }
+
+    const resultado = await buscarEnApisExternas(codigo);
+
+    if (!resultado.encontrado) {
+      return res.status(200).json({
+        ya_existe: false,
+        encontrado: false,
+        nombre: null,
+        marca: null,
+        categoria_id_sugerido: null,
+        imagen_url: null,
+      });
+    }
+
+    let categoria_id_sugerido = null;
+    if (resultado.data.categorias_texto) {
+      const categorias = await Categoria.findAll();
+      const texto = resultado.data.categorias_texto.toLowerCase();
+      const match = categorias.find((c) => texto.includes(c.nombre.toLowerCase()));
+      if (match) categoria_id_sugerido = match.id;
+    }
+
+    return res.status(200).json({
+      ya_existe: false,
+      encontrado: true,
+      nombre: resultado.data.nombre,
+      marca: resultado.data.marca,
+      categoria_id_sugerido,
+      imagen_url: resultado.data.imagen_url,
+    });
+  } catch (err) {
+    console.error('Error en buscarInfoExterna:', err);
     return res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
 };
@@ -78,6 +156,7 @@ const obtener = async (req, res) => {
     if (!producto) {
       return res.status(404).json({ mensaje: 'Producto no encontrado' });
     }
+    await adjuntarProximasFechas([producto]);
     return res.status(200).json(presentarProducto(producto));
   } catch (err) {
     console.error('Error en obtener producto:', err);
@@ -90,8 +169,32 @@ const crear = async (req, res) => {
   try {
     const { nombre, marca, categoria_id, proveedor_id, precio, stock, codigo_barras, fecha_vencimiento } = req.body;
 
+    if (!nombre || !nombre.trim()) {
+      return res.status(400).json({ mensaje: 'El nombre del producto es requerido' });
+    }
+    if (!marca || !marca.trim()) {
+      return res.status(400).json({ mensaje: 'La marca es requerida' });
+    }
+    if (precio === undefined || precio === null || parseFloat(precio) <= 0) {
+      return res.status(400).json({ mensaje: 'El precio debe ser mayor a 0' });
+    }
+    if (stock !== undefined && stock !== null && (isNaN(parseInt(stock, 10)) || parseInt(stock, 10) < 0)) {
+      return res.status(400).json({ mensaje: 'El stock no puede ser negativo' });
+    }
+
+    const cantidadInicial = stock ? parseInt(stock, 10) : 0;
+
+    if (cantidadInicial > 0 && !proveedor_id) {
+      return res.status(400).json({ mensaje: 'Selecciona un proveedor para registrar el stock inicial' });
+    }
+
     const errorFecha = validarFechaVencimiento(fecha_vencimiento);
     if (errorFecha) return res.status(400).json({ mensaje: errorFecha });
+
+    const duplicado = await Producto.findOne({ where: { nombre: nombre.trim(), marca: marca.trim() } });
+    if (duplicado) {
+      return res.status(400).json({ mensaje: 'Ya existe un producto con ese nombre y marca' });
+    }
 
     if (codigo_barras) {
       const existe = await Producto.findOne({ where: { codigo_barras } });
@@ -116,24 +219,38 @@ const crear = async (req, res) => {
       }
     }
 
-    const fvDefecto = new Date();
-    fvDefecto.setFullYear(fvDefecto.getFullYear() + 2);
+    const nuevo = await sequelize.transaction(async (t) => {
+      const productoCreado = await Producto.create({
+        nombre,
+        marca,
+        categoria_id,
+        proveedor_id: proveedor_id || null,
+        precio,
+        stock: 0,
+        codigo_barras: codigo_barras || null,
+        activo: true,
+      }, { transaction: t });
 
-    const nuevo = await Producto.create({
-      nombre,
-      marca,
-      categoria_id,
-      proveedor_id: proveedor_id || null,
-      precio,
-      stock: stock || 0,
-      codigo_barras: codigo_barras || null,
-      fecha_vencimiento: fecha_vencimiento || fvDefecto.toISOString().split('T')[0],
-      activo: true,
+      if (cantidadInicial > 0) {
+        await crearLote({
+          producto_id: productoCreado.id,
+          proveedor_id,
+          cantidad: cantidadInicial,
+          fecha_vencimiento: fecha_vencimiento || null,
+          usuario_id: req.usuario.id,
+        }, t);
+      }
+
+      return productoCreado;
     });
 
     const productoCreado = await Producto.findByPk(nuevo.id, { include: INCLUDE });
+    await adjuntarProximasFechas([productoCreado]);
     return res.status(201).json(presentarProducto(productoCreado));
   } catch (err) {
+    if (err.status && err.mensaje) {
+      return res.status(err.status).json({ mensaje: err.mensaje });
+    }
     console.error('Error en crear producto:', err);
     return res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
@@ -147,11 +264,17 @@ const actualizar = async (req, res) => {
       return res.status(404).json({ mensaje: 'Producto no encontrado' });
     }
 
-    const { nombre, marca, categoria_id, proveedor_id, precio, codigo_barras, fecha_vencimiento } = req.body;
+    const { nombre, marca, categoria_id, proveedor_id, precio, codigo_barras } = req.body;
 
-    if (fecha_vencimiento !== undefined) {
-      const errorFecha = validarFechaVencimiento(fecha_vencimiento);
-      if (errorFecha) return res.status(400).json({ mensaje: errorFecha });
+    const nombreFinal = nombre !== undefined ? nombre.trim() : producto.nombre;
+    const marcaFinal  = marca  !== undefined ? marca.trim()  : producto.marca;
+    if (nombre !== undefined || marca !== undefined) {
+      const duplicado = await Producto.findOne({
+        where: { nombre: nombreFinal, marca: marcaFinal, id: { [Op.ne]: producto.id } },
+      });
+      if (duplicado) {
+        return res.status(400).json({ mensaje: 'Ya existe un producto con ese nombre y marca' });
+      }
     }
 
     if (codigo_barras !== undefined) {
@@ -186,11 +309,11 @@ const actualizar = async (req, res) => {
     if (categoria_id !== undefined) producto.categoria_id = categoria_id;
     if (precio !== undefined) producto.precio = precio;
     if (codigo_barras !== undefined) producto.codigo_barras = codigo_barras || null;
-    if (fecha_vencimiento !== undefined) producto.fecha_vencimiento = fecha_vencimiento || null;
 
     await producto.save();
 
     const productoActualizado = await Producto.findByPk(producto.id, { include: INCLUDE });
+    await adjuntarProximasFechas([productoActualizado]);
     return res.status(200).json(presentarProducto(productoActualizado));
   } catch (err) {
     console.error('Error en actualizar producto:', err);
@@ -241,6 +364,7 @@ const listarProximosVencer = async (req, res) => {
     const entradas = await EntradaMercaderia.findAll({
       where: {
         fecha_vencimiento: { [Op.ne]: null },
+        cantidad_restante: { [Op.gt]: 0 },
       },
       include: [
         { association: 'producto', attributes: ['id', 'nombre', 'marca'] },
@@ -264,9 +388,9 @@ const listarProximosVencer = async (req, res) => {
         };
       }
       if (fv < hoy) {
-        mapa[e.producto_id].stock_vencido += e.cantidad;
+        mapa[e.producto_id].stock_vencido += e.cantidad_restante;
       } else if (fv <= fechaLimite) {
-        mapa[e.producto_id].stock_por_vencer += e.cantidad;
+        mapa[e.producto_id].stock_por_vencer += e.cantidad_restante;
         const d = fv.toISOString().split('T')[0];
         if (!mapa[e.producto_id].proxima_fecha || d < mapa[e.producto_id].proxima_fecha) {
           mapa[e.producto_id].proxima_fecha = d;
@@ -282,4 +406,4 @@ const listarProximosVencer = async (req, res) => {
   }
 };
 
-module.exports = { listar, listarActivos, buscarPorCodigo, obtener, crear, actualizar, desactivar, reactivar, listarProximosVencer };
+module.exports = { listar, listarActivos, buscarPorCodigo, buscarInfoExterna, obtener, crear, actualizar, desactivar, reactivar, listarProximosVencer };

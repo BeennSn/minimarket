@@ -9,6 +9,7 @@ const {
   Usuario,
 } = require('../models');
 const { presentarEntrada, presentarBaja, presentarSolicitud } = require('../presenters/inventario.presenter');
+const { crearLote, consumirStockFIFO } = require('../services/inventario.service');
 
 const DIAS_MINIMOS_VENCIMIENTO = 30;
 
@@ -36,14 +37,18 @@ const INCLUDES_ENTRADA = [
 
 const registrarEntrada = async (req, res) => {
   try {
-    const { producto_id, proveedor_id, cantidad, fecha_vencimiento } = req.body;
+    const { producto_id, proveedor_id, cantidad, fecha_vencimiento, costo_unitario } = req.body;
 
-    if (!cantidad || cantidad <= 0) {
-      return res.status(400).json({ mensaje: 'La cantidad debe ser mayor a 0' });
+    if (!Number.isInteger(Number(cantidad)) || Number(cantidad) < 1) {
+      return res.status(400).json({ mensaje: 'La cantidad debe ser un número entero mayor a 0' });
     }
 
     const errorFecha = validarFechaVencimiento(fecha_vencimiento);
     if (errorFecha) return res.status(400).json({ mensaje: errorFecha });
+
+    if (costo_unitario != null && (isNaN(Number(costo_unitario)) || Number(costo_unitario) <= 0)) {
+      return res.status(400).json({ mensaje: 'El costo unitario debe ser mayor a 0' });
+    }
 
     const entrada = await sequelize.transaction(async (t) => {
       const producto = await Producto.findByPk(producto_id, { transaction: t });
@@ -56,18 +61,14 @@ const registrarEntrada = async (req, res) => {
         throw { status: 404, mensaje: 'Proveedor no encontrado o inactivo' };
       }
 
-      const entradaCreada = await EntradaMercaderia.create({
+      return crearLote({
         producto_id,
         proveedor_id,
         cantidad,
-        usuario_id: req.usuario.id,
         fecha_vencimiento: fecha_vencimiento || null,
-      }, { transaction: t });
-
-      producto.stock += cantidad;
-      await producto.save({ transaction: t });
-
-      return entradaCreada;
+        usuario_id: req.usuario.id,
+        costo_unitario: costo_unitario != null ? Number(costo_unitario) : null,
+      }, t);
     });
 
     const entradaCompleta = await EntradaMercaderia.findByPk(entrada.id, {
@@ -120,8 +121,12 @@ const registrarBaja = async (req, res) => {
   try {
     const { producto_id, cantidad, motivo } = req.body;
 
-    if (!cantidad || cantidad <= 0) {
-      return res.status(400).json({ mensaje: 'La cantidad debe ser mayor a 0' });
+    if (!Number.isInteger(Number(cantidad)) || Number(cantidad) < 1) {
+      return res.status(400).json({ mensaje: 'La cantidad debe ser un número entero mayor a 0' });
+    }
+
+    if (!motivo || !motivo.trim()) {
+      return res.status(400).json({ mensaje: 'El motivo de baja es requerido' });
     }
 
     const baja = await sequelize.transaction(async (t) => {
@@ -141,9 +146,12 @@ const registrarBaja = async (req, res) => {
         usuario_id: req.usuario.id,
       }, { transaction: t });
 
-      producto.stock -= cantidad;
-      if (producto.stock === 0) producto.fecha_vencimiento = null;
-      await producto.save({ transaction: t });
+      await consumirStockFIFO({
+        producto_id,
+        cantidad,
+        tipo: 'Baja',
+        referencia: { baja_id: bajaCreada.id },
+      }, t);
 
       return bajaCreada;
     });
@@ -200,6 +208,13 @@ const listarBajas = async (req, res) => {
 
 // ─── Solicitudes ──────────────────────────────────────────────────────────────
 
+const INCLUDE_SOLICITUD = [
+  { association: 'producto', attributes: ['id', 'nombre', 'marca'] },
+  { association: 'proveedor', attributes: ['id', 'nombre'] },
+  { association: 'solicitante', attributes: ['id', 'nombre'] },
+  { association: 'aprobador', attributes: ['id', 'nombre'] },
+];
+
 const crearSolicitud = async (req, res) => {
   try {
     const { producto_id, cantidad, proveedor_id } = req.body;
@@ -211,6 +226,13 @@ const crearSolicitud = async (req, res) => {
     const producto = await Producto.findByPk(producto_id);
     if (!producto) {
       return res.status(404).json({ mensaje: 'Producto no encontrado' });
+    }
+
+    const solicitudActiva = await SolicitudReposicion.findOne({
+      where: { producto_id, estado: { [Op.in]: ['Pendiente', 'Aprobada'] } },
+    });
+    if (solicitudActiva) {
+      return res.status(400).json({ mensaje: 'Ya existe una solicitud pendiente o aprobada para este producto' });
     }
 
     const solicitud = await SolicitudReposicion.create({
@@ -323,13 +345,6 @@ const rechazarSolicitud = async (req, res) => {
   }
 };
 
-const INCLUDE_SOLICITUD = [
-  { association: 'producto', attributes: ['id', 'nombre', 'marca'] },
-  { association: 'proveedor', attributes: ['id', 'nombre'] },
-  { association: 'solicitante', attributes: ['id', 'nombre'] },
-  { association: 'aprobador', attributes: ['id', 'nombre'] },
-];
-
 const completarSolicitud = async (req, res) => {
   try {
     const solicitud = await SolicitudReposicion.findByPk(req.params.id, {
@@ -364,19 +379,14 @@ const completarSolicitud = async (req, res) => {
       solicitud.estado = 'Completada';
       await solicitud.save({ transaction: t });
 
-      await EntradaMercaderia.create({
+      await crearLote({
         producto_id: solicitud.producto_id,
         proveedor_id: solicitud.proveedor_id,
         cantidad: cantidadRecibida,
+        fecha_vencimiento: fechaVencimiento,
         usuario_id: req.usuario.id,
         solicitud_id: solicitud.id,
-        fecha_vencimiento: fechaVencimiento,
-      }, { transaction: t });
-
-      const producto = await Producto.findByPk(solicitud.producto_id, { transaction: t });
-      if (!producto) throw { status: 404, mensaje: 'Producto no encontrado' };
-      producto.stock += cantidadRecibida;
-      await producto.save({ transaction: t });
+      }, t);
     });
 
     const solicitudCompleta = await SolicitudReposicion.findByPk(solicitud.id, {

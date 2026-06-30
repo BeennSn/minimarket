@@ -26,6 +26,7 @@ export default function InventarioPage() {
   const [cantidad, setCantidad] = useState('');
   const [motivo, setMotivo] = useState('');
   const [fechaVencimiento, setFechaVencimiento] = useState('');
+  const [costoUnitario, setCostoUnitario] = useState('');
   const [enviando, setEnviando] = useState(false);
 
   const fechaMinima = useMemo(() => {
@@ -54,7 +55,7 @@ export default function InventarioPage() {
     try {
       const [rP, rProv, rE, rB] = await Promise.all([
         api.get('/productos/activos'),
-        api.get('/proveedores'),
+        api.get('/proveedores?soloActivos=true'),
         api.get('/inventario/entradas'),
         api.get('/inventario/bajas'),
       ]);
@@ -141,12 +142,14 @@ export default function InventarioPage() {
         proveedor_id: proveedorId,
         cantidad: parseInt(cantidad, 10),
         fecha_vencimiento: fechaVencimiento || null,
+        costo_unitario: costoUnitario ? parseFloat(costoUnitario) : null,
       });
       mostrarExito('Entrada registrada correctamente');
       setProductoId('');
       setProveedorId('');
       setCantidad('');
       setFechaVencimiento('');
+      setCostoUnitario('');
       const [rP, rE] = await Promise.all([
         api.get('/productos/activos'),
         api.get('/inventario/entradas'),
@@ -284,6 +287,21 @@ export default function InventarioPage() {
                     className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                   />
                 </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                    Costo Unitario (S/.)
+                    <span className="ml-1 text-xs font-normal text-gray-400">(opcional)</span>
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    value={costoUnitario}
+                    onChange={(e) => setCostoUnitario(e.target.value)}
+                    placeholder="0.00"
+                    className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  />
+                </div>
               </div>
               {error && (
                 <div className="rounded-lg bg-red-50 px-4 py-2 text-sm text-red-600">{error}</div>
@@ -375,6 +393,7 @@ export default function InventarioPage() {
                       <th className="px-4 py-3 font-medium">Producto</th>
                       <th className="px-4 py-3 font-medium">Proveedor</th>
                       <th className="px-4 py-3 font-medium">Cantidad</th>
+                      <th className="px-4 py-3 font-medium">Costo Unit.</th>
                       <th className="px-4 py-3 font-medium">Vencimiento</th>
                       <th className="px-4 py-3 font-medium">Registrado por</th>
                       <th className="px-4 py-3 font-medium">Fecha</th>
@@ -398,6 +417,11 @@ export default function InventarioPage() {
                           <span className="inline-block rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-700">
                             +{e.cantidad} und(s)
                           </span>
+                        </td>
+                        <td className="px-4 py-3 text-gray-500">
+                          {e.costo_unitario != null
+                            ? `S/. ${parseFloat(e.costo_unitario).toFixed(2)}`
+                            : <span className="text-gray-300">—</span>}
                         </td>
                         <td className="px-4 py-3 text-gray-500">
                           {e.fecha_vencimiento || <span className="text-gray-300">—</span>}

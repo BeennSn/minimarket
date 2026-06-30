@@ -8,6 +8,9 @@ const { enviarCorreo } = require('../services/mail.service');
 const JWT_SECRET     = process.env.JWT_SECRET;
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 
+const INTENTOS_MAX     = 5;
+const BLOQUEO_MINUTOS  = 15;
+
 const login = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -17,10 +20,27 @@ const login = async (req, res) => {
       return res.status(401).json({ mensaje: 'Credenciales incorrectas' });
     }
 
+    if (usuario.bloqueo_hasta && new Date() < new Date(usuario.bloqueo_hasta)) {
+      const minutosRestantes = Math.ceil((new Date(usuario.bloqueo_hasta) - new Date()) / 60000);
+      return res.status(401).json({
+        mensaje: `Cuenta bloqueada temporalmente. Intente en ${minutosRestantes} minuto${minutosRestantes !== 1 ? 's' : ''}.`,
+      });
+    }
+
     const passwordValida = await bcrypt.compare(password, usuario.password_hash);
     if (!passwordValida) {
+      usuario.intentos_fallidos = (usuario.intentos_fallidos || 0) + 1;
+      if (usuario.intentos_fallidos >= INTENTOS_MAX) {
+        usuario.bloqueo_hasta = new Date(Date.now() + BLOQUEO_MINUTOS * 60 * 1000);
+        usuario.intentos_fallidos = 0;
+      }
+      await usuario.save();
       return res.status(401).json({ mensaje: 'Credenciales incorrectas' });
     }
+
+    usuario.intentos_fallidos = 0;
+    usuario.bloqueo_hasta = null;
+    await usuario.save();
 
     const token = jwt.sign(
       { id: usuario.id, rol: usuario.rol },
@@ -66,10 +86,6 @@ const forgotPassword = async (req, res) => {
     }
 
     const codigo = Math.floor(1000 + Math.random() * 9000).toString();
-    usuario.reset_code = codigo;
-    usuario.reset_expiry = new Date(Date.now() + 15 * 60 * 1000);
-    usuario.reset_used = false;
-    await usuario.save();
 
     try {
       await enviarCorreo({
@@ -90,6 +106,11 @@ const forgotPassword = async (req, res) => {
     } catch {
       return res.status(500).json({ mensaje: 'Error al enviar el correo' });
     }
+
+    usuario.reset_code = codigo;
+    usuario.reset_expiry = new Date(Date.now() + 15 * 60 * 1000);
+    usuario.reset_used = false;
+    await usuario.save();
 
     await LogAcceso.create({
       usuario_id: usuario.id,
@@ -165,4 +186,4 @@ const resetPassword = async (req, res) => {
   }
 };
 
-module.exports = { login, logout, forgotPassword, resetPassword };
+module.exports = { login, logout, forgotPassword, resetPassword, validatePassword };

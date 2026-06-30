@@ -1,4 +1,4 @@
-const { Cliente } = require('../models');
+const { Cliente, Venta } = require('../models');
 
 const buscarOCrear = async (req, res) => {
   try {
@@ -22,9 +22,18 @@ const buscarOCrear = async (req, res) => {
 
 const listar = async (req, res) => {
   try {
-    const clientes = await Cliente.findAll({ order: [['nombre', 'ASC']] });
+    const clientes = await Cliente.findAll({
+      include: [{ model: Venta, as: 'ventas', attributes: ['id'] }],
+      order: [['nombre', 'ASC']],
+    });
     return res.status(200).json(
-      clientes.map((c) => ({ id: c.id, nombre: c.nombre, dni: c.dni, email: c.email }))
+      clientes.map((c) => ({
+        id: c.id,
+        nombre: c.nombre,
+        dni: c.dni,
+        email: c.email,
+        total_compras: c.ventas.length,
+      }))
     );
   } catch (err) {
     console.error('Error en listar clientes:', err);
@@ -32,4 +41,25 @@ const listar = async (req, res) => {
   }
 };
 
-module.exports = { buscarOCrear, listar };
+const actualizar = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { email } = req.body;
+
+    const cliente = await Cliente.findByPk(id);
+    if (!cliente) return res.status(404).json({ mensaje: 'Cliente no encontrado' });
+
+    await cliente.update({ email: email || null });
+    return res.status(200).json({
+      id: cliente.id,
+      nombre: cliente.nombre,
+      dni: cliente.dni,
+      email: cliente.email,
+    });
+  } catch (err) {
+    console.error('Error en actualizar cliente:', err);
+    return res.status(500).json({ mensaje: 'Error interno del servidor' });
+  }
+};
+
+module.exports = { buscarOCrear, listar, actualizar };

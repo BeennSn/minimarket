@@ -9,6 +9,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@zxing/browser": "^0.2.0",
+    "@zxing/library": "^0.22.0",
     "axios": "^1.7.4",
     "html2pdf.js": "^0.14.0",
     "jspdf": "^4.2.1",

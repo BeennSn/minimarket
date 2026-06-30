@@ -14,6 +14,10 @@ import HistorialVentasPage from './modules/ventas/HistorialVentasPage';
 import InventarioPage from './modules/inventario/InventarioPage';
 import SolicitudesPage from './modules/solicitudes/SolicitudesPage';
 import ReportesPage from './modules/reportes/ReportesPage';
+import ConfiguracionPage from './modules/configuracion/ConfiguracionPage';
+import CajaPage from './modules/caja/CajaPage';
+import HistorialCajaPage from './modules/caja/HistorialCajaPage';
+import ClientesPage from './modules/clientes/ClientesPage';
 
 function HomeRedirect() {
   return <Navigate to="/dashboard" replace />;
@@ -106,6 +110,38 @@ export default function App() {
               element={
                 <PrivateRoute roles={['Gerente', 'Administrador']}>
                   <ReportesPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="configuracion"
+              element={
+                <PrivateRoute roles={['Administrador']}>
+                  <ConfiguracionPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="caja"
+              element={
+                <PrivateRoute roles={['Vendedor', 'Administrador']}>
+                  <CajaPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="caja/historial"
+              element={
+                <PrivateRoute roles={['Administrador', 'Gerente']}>
+                  <HistorialCajaPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="clientes"
+              element={
+                <PrivateRoute roles={['Administrador', 'Gerente']}>
+                  <ClientesPage />
                 </PrivateRoute>
               }
             />

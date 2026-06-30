@@ -58,7 +58,7 @@ function ModalUsuario({ abierto, onCerrar, onGuardar, usuarioEditando }) {
       } else {
         await api.put(`/usuarios/${usuarioEditando.id}`, payload);
       }
-      onGuardar();
+      onGuardar({ rolCambio: !esCreacion && rol !== usuarioEditando?.rol });
     } catch (err) {
       setError(err.response?.data?.mensaje || err.response?.data?.message || 'Error al guardar');
     } finally {
@@ -201,10 +201,15 @@ export default function UsuariosPage() {
     setModalAbierto(true);
   };
 
-  const handleGuardar = () => {
+  const handleGuardar = ({ rolCambio } = {}) => {
     setModalAbierto(false);
     setUsuarioEditando(null);
     cargarUsuarios();
+    if (rolCambio) {
+      mostrarExito('Rol actualizado. El cambio será efectivo en el próximo inicio de sesión del usuario.');
+    } else {
+      mostrarExito('Usuario guardado correctamente');
+    }
   };
 
   const esActivo = (u) => u.activo === true || u.activo == null;

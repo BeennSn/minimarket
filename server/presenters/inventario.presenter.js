@@ -10,6 +10,7 @@ const presentarEntrada = (entrada) => ({
     nombre: entrada.proveedor.nombre,
   },
   cantidad: entrada.cantidad,
+  cantidad_restante: entrada.cantidad_restante,
   usuario: {
     id:     entrada.usuario.id,
     nombre: entrada.usuario.nombre,
@@ -19,6 +20,7 @@ const presentarEntrada = (entrada) => ({
     ? { id: entrada.solicitud.id }
     : null,
   fecha_vencimiento: entrada.fecha_vencimiento || null,
+  costo_unitario: entrada.costo_unitario ?? null,
   createdAt: entrada.createdAt,
 });
 

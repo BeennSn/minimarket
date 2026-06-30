@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo } from 'react';
-import { Plus, Search, Pencil, EyeOff, Eye, X, Trash2, AlertTriangle, Loader2, Package } from 'lucide-react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { Plus, Search, Pencil, EyeOff, Eye, X, Trash2, AlertTriangle, Loader2, Package, ScanLine } from 'lucide-react';
 import api from '../../utils/axios';
 import { formatMoneda, formatStock, formatFecha } from '../../utils/format';
 import { useAuth } from '../../context/AuthContext';
@@ -9,9 +9,7 @@ import ConfirmDialog from '../../components/ConfirmDialog';
 import Toast from '../../components/Toast';
 import useToast from '../../hooks/useToast';
 
-const DIAS_MINIMOS_VENCIMIENTO = 30;
-
-function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categorias }) {
+function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categorias, proveedores, onProductoExistente }) {
   const [nombre, setNombre] = useState('');
   const [marca, setMarca] = useState('');
   const [categoriaId, setCategoriaId] = useState('');
@@ -19,15 +17,26 @@ function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categor
   const [stock, setStock] = useState('');
   const [codigoBarras, setCodigoBarras] = useState('');
   const [fechaVencimiento, setFechaVencimiento] = useState('');
+  const [proveedorId, setProveedorId] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [buscandoCodigo, setBuscandoCodigo] = useState(false);
+  const [barcodeFocused, setBarcodeFocused] = useState(false);
+  const [yaExiste, setYaExiste] = useState(null);
+  const [imagenPreview, setImagenPreview] = useState(null);
+  const [autocompletado, setAutocompletado] = useState(false);
+  const [mensajeBusqueda, setMensajeBusqueda] = useState(null);
+  const inputCodigoRef = useRef(null);
   const esCreacion = !productoEditando;
 
-  const fechaMinima = useMemo(() => {
-    const f = new Date();
-    f.setDate(f.getDate() + DIAS_MINIMOS_VENCIMIENTO);
-    return f.toISOString().split('T')[0];
-  }, []);
+  const fechaMinima = useMemo(() => new Date().toISOString().split('T')[0], []);
+
+  const diasRestantesVenc = useMemo(() => {
+    if (!fechaVencimiento) return null;
+    return Math.ceil((new Date(fechaVencimiento + 'T00:00:00') - new Date()) / 86400000);
+  }, [fechaVencimiento]);
+
+  const requiereProveedor = esCreacion && parseInt(stock, 10) > 0;
 
   useEffect(() => {
     if (abierto) {
@@ -38,38 +47,66 @@ function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categor
         setPrecio(productoEditando.precio ?? '');
         setStock(productoEditando.stock ?? '');
         setCodigoBarras(productoEditando.codigo_barras ?? '');
-        setFechaVencimiento(productoEditando.fecha_vencimiento ?? '');
       } else {
-        const fv = new Date();
-        fv.setFullYear(fv.getFullYear() + 2);
         setNombre('');
         setMarca('');
         setCategoriaId(categorias.length > 0 ? categorias[0].id : '');
         setPrecio('');
         setStock('');
         setCodigoBarras('');
-        setFechaVencimiento(fv.toISOString().split('T')[0]);
+        setProveedorId('');
       }
+      setFechaVencimiento('');
       setError('');
+      setBuscandoCodigo(false);
+      setYaExiste(null);
+      setImagenPreview(null);
+      setAutocompletado(false);
+      setMensajeBusqueda(null);
     }
   }, [abierto, productoEditando, categorias]);
 
   if (!abierto) return null;
 
+  const handleBuscarCodigo = async () => {
+    const codigo = codigoBarras.trim();
+    if (!codigo || buscandoCodigo) return;
+    setBuscandoCodigo(true);
+    setYaExiste(null);
+    setMensajeBusqueda(null);
+    try {
+      const { data } = await api.get(`/productos/buscar-codigo/${encodeURIComponent(codigo)}`);
+      if (data.ya_existe) {
+        setYaExiste(data.producto);
+      } else if (data.encontrado) {
+        if (data.nombre) setNombre(data.nombre);
+        if (data.marca) setMarca(data.marca);
+        if (data.categoria_id_sugerido) setCategoriaId(String(data.categoria_id_sugerido));
+        setImagenPreview(data.imagen_url || null);
+        setAutocompletado(true);
+        setMensajeBusqueda({ tipo: 'exito', texto: 'Datos completados automáticamente. Verifica antes de guardar.' });
+      } else {
+        setMensajeBusqueda({ tipo: 'info', texto: 'No se encontró información para este código. Completa los datos manualmente.' });
+      }
+    } catch {
+      setMensajeBusqueda({ tipo: 'info', texto: 'No se pudo consultar el código de barras. Completa los datos manualmente.' });
+    } finally {
+      setBuscandoCodigo(false);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-
-    if (fechaVencimiento && fechaVencimiento < fechaMinima) {
-      setError(`La fecha de vencimiento debe ser al menos ${DIAS_MINIMOS_VENCIMIENTO} días a partir de hoy`);
-      return;
-    }
-
     setLoading(true);
 
     try {
-      const payload = { nombre, marca, categoria_id: categoriaId, precio: parseFloat(precio), codigo_barras: codigoBarras || null, fecha_vencimiento: fechaVencimiento || null };
-      if (esCreacion) payload.stock = parseInt(stock, 10) || 0;
+      const payload = { nombre, marca, categoria_id: categoriaId, precio: parseFloat(precio), codigo_barras: codigoBarras || null };
+      if (esCreacion) {
+        payload.stock = parseInt(stock, 10) || 0;
+        payload.fecha_vencimiento = fechaVencimiento || null;
+        if (requiereProveedor) payload.proveedor_id = proveedorId;
+      }
 
       if (esCreacion) {
         await api.post('/productos', payload);
@@ -85,9 +122,9 @@ function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categor
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-        <div className="mb-4 flex items-center justify-between">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="flex max-h-[90vh] w-full max-w-md flex-col rounded-2xl bg-white shadow-xl">
+        <div className="flex items-center justify-between border-b border-gray-100 p-6 pb-4">
           <h2 className="text-lg font-bold text-gray-800">
             {esCreacion ? 'Nuevo Producto' : 'Editar Producto'}
           </h2>
@@ -96,15 +133,94 @@ function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categor
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+        <div className="space-y-4 overflow-y-auto p-6">
+          {esCreacion ? (
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Código de Barras</label>
+              <div className="relative">
+                <ScanLine className={`absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 transition-colors ${barcodeFocused ? 'text-green-500' : 'text-gray-400'}`} />
+                <input
+                  ref={inputCodigoRef}
+                  type="text"
+                  value={codigoBarras}
+                  onChange={(e) => setCodigoBarras(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleBuscarCodigo())}
+                  onFocus={() => setBarcodeFocused(true)}
+                  onBlur={() => setBarcodeFocused(false)}
+                  placeholder={barcodeFocused ? 'Escanea o escribe el código...' : 'Haz clic aquí para escanear'}
+                  autoFocus
+                  className={`w-full rounded-lg border-2 px-4 py-2 pl-10 pr-32 focus:outline-none focus:ring-2 transition-colors ${
+                    barcodeFocused ? 'border-green-400 focus:ring-green-100' : 'border-gray-200 focus:border-indigo-400 focus:ring-indigo-100'
+                  }`}
+                />
+                {buscandoCodigo ? (
+                  <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-indigo-500" />
+                ) : barcodeFocused && (
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-xs text-green-600 pointer-events-none">
+                    <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                    Listo para escanear
+                  </span>
+                )}
+              </div>
+              {imagenPreview && (
+                <div className="mt-2 flex items-center gap-2">
+                  <img src={imagenPreview} alt="Vista previa" className="h-14 w-14 rounded-lg border border-gray-200 object-cover" />
+                  <span className="text-xs text-gray-400">Vista previa (no se guarda)</span>
+                </div>
+              )}
+              {mensajeBusqueda && (
+                <p className={`mt-1 text-xs ${mensajeBusqueda.tipo === 'exito' ? 'text-emerald-600' : 'text-gray-500'}`}>
+                  {mensajeBusqueda.texto}
+                </p>
+              )}
+              {yaExiste && (
+                <div className="mt-2 space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm">
+                  <p className="text-amber-800">
+                    Este producto ya está registrado: <span className="font-medium">{yaExiste.nombre} - {yaExiste.marca}</span> (Stock: {yaExiste.stock})
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onProductoExistente?.(yaExiste)}
+                      className="rounded-lg bg-amber-500 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-amber-600"
+                    >
+                      Editar producto existente
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setYaExiste(null); setCodigoBarras(''); inputCodigoRef.current?.focus(); }}
+                      className="rounded-lg border border-amber-300 px-3 py-1 text-xs font-medium text-amber-700 transition-colors hover:bg-amber-100"
+                    >
+                      Escanear otro código
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Código de Barras</label>
+              <input
+                type="text"
+                value={codigoBarras}
+                onChange={(e) => setCodigoBarras(e.target.value)}
+                placeholder="Opcional"
+                className="w-full rounded-lg border border-gray-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              />
+            </div>
+          )}
+
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">Nombre</label>
             <input
               type="text"
               value={nombre}
-              onChange={(e) => setNombre(e.target.value)}
+              onChange={(e) => { setNombre(e.target.value); setAutocompletado(false); }}
               required
-              className="w-full rounded-lg border border-gray-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              className={`w-full rounded-lg border px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 ${
+                autocompletado ? 'border-l-4 border-l-emerald-400 border-gray-200' : 'border-gray-200'
+              }`}
             />
           </div>
 
@@ -113,10 +229,15 @@ function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categor
             <input
               type="text"
               value={marca}
-              onChange={(e) => setMarca(e.target.value)}
+              onChange={(e) => { setMarca(e.target.value); setAutocompletado(false); }}
               required
-              className="w-full rounded-lg border border-gray-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              className={`w-full rounded-lg border px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 ${
+                autocompletado ? 'border-l-4 border-l-emerald-400 border-gray-200' : 'border-gray-200'
+              }`}
             />
+            {autocompletado && (
+              <p className="mt-1 text-xs text-emerald-600">Verifica que estos datos sean correctos</p>
+            )}
           </div>
 
           <div>
@@ -150,20 +271,9 @@ function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categor
             </div>
           </div>
 
-        <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">Código de Barras</label>
-          <input
-            type="text"
-            value={codigoBarras}
-            onChange={(e) => setCodigoBarras(e.target.value)}
-            placeholder="Opcional"
-            className="w-full rounded-lg border border-gray-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-          />
-        </div>
-
         {esCreacion && (
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">Stock</label>
+            <label className="mb-1 block text-sm font-medium text-gray-700">Stock inicial</label>
               <input
                 type="number"
                 min="0"
@@ -172,29 +282,49 @@ function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categor
                 required
                 className="w-full rounded-lg border border-gray-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
               />
+              <p className="mt-1 text-xs text-gray-400">Si ingresas stock, se crea un lote de inventario con ese vencimiento y proveedor.</p>
             </div>
           )}
 
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">Fecha de Vencimiento</label>
-            <input
-              type="date"
-              value={fechaVencimiento}
-              onChange={(e) => setFechaVencimiento(e.target.value)}
-              min={fechaMinima}
-              required
-              className="w-full rounded-lg border border-gray-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-            />
-            {esCreacion && (
-              <p className="mt-1 text-xs text-gray-400">Prellenado con +2 años por defecto</p>
-            )}
-          </div>
+          {requiereProveedor && (
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Proveedor del lote inicial</label>
+              <select
+                value={proveedorId}
+                onChange={(e) => setProveedorId(e.target.value)}
+                required
+                className="w-full rounded-lg border border-gray-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              >
+                <option value="">Seleccionar...</option>
+                {proveedores.map((p) => (
+                  <option key={p.id} value={p.id}>{p.nombre}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {requiereProveedor && (
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Fecha de Vencimiento (opcional)</label>
+              <input
+                type="date"
+                value={fechaVencimiento}
+                onChange={(e) => setFechaVencimiento(e.target.value)}
+                min={fechaMinima}
+                className="w-full rounded-lg border border-gray-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              />
+              {diasRestantesVenc !== null && diasRestantesVenc < 30 && (
+                <p className="mt-1 text-xs text-orange-500">⚠ Este lote vence en {diasRestantesVenc} día{diasRestantesVenc !== 1 ? 's' : ''}</p>
+              )}
+            </div>
+          )}
 
           {error && (
             <div className="rounded-lg bg-red-50 px-4 py-2 text-sm text-red-600">{error}</div>
           )}
+        </div>
 
-          <div className="flex justify-end gap-3">
+          <div className="flex justify-end gap-3 border-t border-gray-100 p-6 pt-4">
             <button
               type="button"
               onClick={onCerrar}
@@ -449,7 +579,7 @@ export default function ProductosPage() {
         api.get('/productos'),
         api.get('/categorias'),
         api.get('/productos/vencer?dias=30').catch(() => ({ data: [] })),
-        api.get('/proveedores').catch(() => ({ data: [] })),
+        api.get('/proveedores?soloActivos=true').catch(() => ({ data: [] })),
       ]);
       setProductos(Array.isArray(resProductos.data) ? resProductos.data : []);
       setCategorias(Array.isArray(resCategorias.data) ? resCategorias.data : []);
@@ -502,8 +632,8 @@ export default function ProductosPage() {
     const idsVencProducto = new Set();
     const idsPorVencerProducto = new Set();
     for (const p of productos) {
-      if (!p.fecha_vencimiento) continue;
-      const fv = new Date(p.fecha_vencimiento + 'T00:00:00');
+      if (!p.proxima_fecha_vencimiento) continue;
+      const fv = new Date(p.proxima_fecha_vencimiento + 'T00:00:00');
       if (fv < hoy) idsVencProducto.add(p.id);
       else if (fv <= limite) idsPorVencerProducto.add(p.id);
     }
@@ -519,7 +649,7 @@ export default function ProductosPage() {
     hoy.setHours(0, 0, 0, 0);
     const limite = new Date(hoy);
     limite.setDate(limite.getDate() + 30);
-    const fvProd = p.fecha_vencimiento ? new Date(p.fecha_vencimiento + 'T00:00:00') : null;
+    const fvProd = p.proxima_fecha_vencimiento ? new Date(p.proxima_fecha_vencimiento + 'T00:00:00') : null;
 
     const coincideTexto =
       p.nombre?.toLowerCase().includes(busqueda.toLowerCase()) ||
@@ -692,7 +822,7 @@ export default function ProductosPage() {
                     </td>
                     <td className="px-4 py-3 text-gray-800">{formatMoneda(p.precio)}</td>
                     <td className="px-4 py-3 text-gray-600">{formatStock(p.stock)}</td>
-                    <td className="px-4 py-3 text-gray-600">{p.fecha_vencimiento ? formatFecha(p.fecha_vencimiento) : '-'}</td>
+                    <td className="px-4 py-3 text-gray-600">{p.proxima_fecha_vencimiento ? formatFecha(p.proxima_fecha_vencimiento) : '-'}</td>
                     <td className="px-4 py-3">
                       <span
                         className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${
@@ -801,6 +931,8 @@ export default function ProductosPage() {
         onGuardar={handleGuardar}
         productoEditando={productoEditando}
         categorias={categorias}
+        proveedores={proveedores}
+        onProductoExistente={abrirEditar}
       />
 
       <ModalBaja

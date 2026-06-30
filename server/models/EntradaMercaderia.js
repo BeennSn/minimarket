@@ -27,6 +27,10 @@ const EntradaMercaderia = sequelize.define('EntradaMercaderia', {
     type: DataTypes.INTEGER,
     allowNull: false,
   },
+  cantidad_restante: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+  },
   usuario_id: {
     type: DataTypes.INTEGER,
     allowNull: false,
@@ -45,6 +49,10 @@ const EntradaMercaderia = sequelize.define('EntradaMercaderia', {
   },
   fecha_vencimiento: {
     type: DataTypes.DATEONLY,
+    allowNull: true,
+  },
+  costo_unitario: {
+    type: DataTypes.DECIMAL(10, 2),
     allowNull: true,
   },
 }, {
