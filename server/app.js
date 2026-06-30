@@ -51,23 +51,25 @@ app.get('/', (req, res) => {
   res.json({ status: 'ok', message: 'Minimarket API running' });
 });
 
-// ─── Solo arrancar servidor si NO estamos en Vercel ──────────────────────────
+// ─── Sincronizar BD (siempre, para crear tablas nuevas en prod) ──────────────
+const dbReady = sequelize
+  .sync({ alter: true })
+  .then(async () => {
+    console.log('✅ Tablas sincronizadas correctamente');
+    await seedAdmin();
+  })
+  .catch((err) => {
+    console.error('❌ Unable to sync database:', err);
+  });
+
+// ─── Arrancar servidor HTTP solo fuera de Vercel ─────────────────────────────
 if (!process.env.VERCEL) {
   const PORT = process.env.PORT || 3000;
-
-  sequelize
-    .sync(process.env.NODE_ENV === 'production' ? { force: false } : { alter: true })
-    .then(async () => {
-      console.log('✅ Tablas sincronizadas correctamente');
-      await seedAdmin();
-      app.listen(PORT, () => {
-        console.log(`🚀 Server listening on port ${PORT}`);
-      });
-    })
-    .catch((err) => {
-      console.error('❌ Unable to sync database:', err);
-      process.exit(1);
+  dbReady.then(() => {
+    app.listen(PORT, () => {
+      console.log(`🚀 Server listening on port ${PORT}`);
     });
+  });
 }
 
 module.exports = app;
