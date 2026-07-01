@@ -9,12 +9,17 @@ import ConfirmDialog from '../../components/ConfirmDialog';
 import Toast from '../../components/Toast';
 import useToast from '../../hooks/useToast';
 
+const UNIDADES_COMPRA = ['Unidad', 'Caja', 'Paquete', 'Docena', 'Otro'];
+
 function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categorias, proveedores, onProductoExistente }) {
   const [nombre, setNombre] = useState('');
   const [marca, setMarca] = useState('');
   const [categoriaId, setCategoriaId] = useState('');
   const [precio, setPrecio] = useState('');
   const [stock, setStock] = useState('');
+  const [stockMinimo, setStockMinimo] = useState('');
+  const [unidadCompra, setUnidadCompra] = useState('Unidad');
+  const [factorConversion, setFactorConversion] = useState('1');
   const [codigoBarras, setCodigoBarras] = useState('');
   const [fechaVencimiento, setFechaVencimiento] = useState('');
   const [proveedorId, setProveedorId] = useState('');
@@ -46,6 +51,9 @@ function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categor
         setCategoriaId(productoEditando.categoria?.id ?? productoEditando.categoria_id ?? productoEditando.categoriaId ?? '');
         setPrecio(productoEditando.precio ?? '');
         setStock(productoEditando.stock ?? '');
+        setStockMinimo(productoEditando.stock_minimo ?? '');
+        setUnidadCompra(productoEditando.unidad_compra || 'Unidad');
+        setFactorConversion(String(productoEditando.factor_conversion ?? 1));
         setCodigoBarras(productoEditando.codigo_barras ?? '');
       } else {
         setNombre('');
@@ -53,6 +61,9 @@ function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categor
         setCategoriaId(categorias.length > 0 ? categorias[0].id : '');
         setPrecio('');
         setStock('');
+        setStockMinimo('');
+        setUnidadCompra('Unidad');
+        setFactorConversion('1');
         setCodigoBarras('');
         setProveedorId('');
       }
@@ -101,7 +112,12 @@ function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categor
     setLoading(true);
 
     try {
-      const payload = { nombre, marca, categoria_id: categoriaId, precio: parseFloat(precio), codigo_barras: codigoBarras || null };
+      const payload = {
+        nombre, marca, categoria_id: categoriaId, precio: parseFloat(precio), codigo_barras: codigoBarras || null,
+        stock_minimo: stockMinimo !== '' ? parseInt(stockMinimo, 10) : null,
+        unidad_compra: unidadCompra,
+        factor_conversion: factorConversion !== '' ? parseInt(factorConversion, 10) : 1,
+      };
       if (esCreacion) {
         payload.stock = parseInt(stock, 10) || 0;
         payload.fecha_vencimiento = fechaVencimiento || null;
@@ -271,6 +287,34 @@ function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categor
             </div>
           </div>
 
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">Unidad de Compra</label>
+            <select
+              value={unidadCompra}
+              onChange={(e) => setUnidadCompra(e.target.value)}
+              className="w-full rounded-lg border border-gray-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            >
+              {UNIDADES_COMPRA.map((u) => (
+                <option key={u} value={u}>{u}</option>
+              ))}
+            </select>
+          </div>
+
+          {unidadCompra !== 'Unidad' && (
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Factor de Conversión</label>
+              <input
+                type="number"
+                min="1"
+                value={factorConversion}
+                onChange={(e) => setFactorConversion(e.target.value)}
+                required
+                className="w-full rounded-lg border border-gray-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              />
+              <p className="mt-1 text-xs text-gray-400">¿Cuántas unidades de venta trae 1 {unidadCompra.toLowerCase()}?</p>
+            </div>
+          )}
+
         {esCreacion && (
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">Stock inicial</label>
@@ -285,6 +329,21 @@ function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categor
               <p className="mt-1 text-xs text-gray-400">Si ingresas stock, se crea un lote de inventario con ese vencimiento y proveedor.</p>
             </div>
           )}
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Stock Mínimo <span className="text-gray-400 text-xs">(opcional)</span>
+            </label>
+            <input
+              type="number"
+              min="0"
+              value={stockMinimo}
+              onChange={(e) => setStockMinimo(e.target.value)}
+              placeholder="Umbral global si se deja vacío"
+              className="w-full rounded-lg border border-gray-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            />
+            <p className="mt-1 text-xs text-gray-400">Punto de reorden propio de este producto para el reporte de Stock Crítico.</p>
+          </div>
 
           {requiereProveedor && (
             <div>
@@ -432,9 +491,12 @@ function ModalSolicitud({ abierto, onCerrar, producto, proveedores, onCreada }) 
   );
 }
 
+const MOTIVOS_BAJA = ['Vencido', 'Dañado', 'Robo o faltante', 'Consumo interno', 'Error de registro', 'Otro'];
+
 function ModalBaja({ abierto, onCerrar, producto, onRegistrada }) {
   const [cantidad, setCantidad] = useState('');
   const [motivo, setMotivo] = useState('Vencido');
+  const [motivoDetalle, setMotivoDetalle] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState('');
 
@@ -442,6 +504,7 @@ function ModalBaja({ abierto, onCerrar, producto, onRegistrada }) {
     if (abierto && producto) {
       setCantidad('1');
       setMotivo('Vencido');
+      setMotivoDetalle('');
       setError('');
     }
   }, [abierto, producto]);
@@ -460,6 +523,7 @@ function ModalBaja({ abierto, onCerrar, producto, onRegistrada }) {
         producto_id: producto.id,
         cantidad: c,
         motivo,
+        motivo_detalle: motivoDetalle || null,
       });
       onRegistrada();
     } catch (err) {
@@ -515,12 +579,23 @@ function ModalBaja({ abierto, onCerrar, producto, onRegistrada }) {
               required
               className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
             >
-              <option value="Vencido">Vencido</option>
-              <option value="Dañado">Dañado</option>
-              <option value="Rotura">Rotura</option>
-              <option value="Caducado">Caducado</option>
-              <option value="Otro">Otro</option>
+              {MOTIVOS_BAJA.map((m) => (
+                <option key={m} value={m}>{m}</option>
+              ))}
             </select>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Detalle <span className="text-gray-400 text-xs">(opcional)</span>
+            </label>
+            <input
+              type="text"
+              value={motivoDetalle}
+              onChange={(e) => setMotivoDetalle(e.target.value)}
+              placeholder="Ej: Lote vencido el 15/06"
+              className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            />
           </div>
 
           {error && <div className="rounded-lg bg-red-50 px-4 py-2 text-sm text-red-600">{error}</div>}
@@ -807,6 +882,8 @@ export default function ProductosPage() {
                   <th className="px-4 py-3 font-medium">Categoría</th>
                   <th className="px-4 py-3 font-medium">Precio</th>
                   <th className="px-4 py-3 font-medium">Stock</th>
+                  <th className="px-4 py-3 font-medium">Stock Mín.</th>
+                  <th className="px-4 py-3 font-medium">Unidad Compra</th>
                   <th className="px-4 py-3 font-medium">Vencimiento</th>
                   <th className="px-4 py-3 font-medium">Estado</th>
                   <th className="px-4 py-3 font-medium">Acciones</th>
@@ -822,6 +899,12 @@ export default function ProductosPage() {
                     </td>
                     <td className="px-4 py-3 text-gray-800">{formatMoneda(p.precio)}</td>
                     <td className="px-4 py-3 text-gray-600">{formatStock(p.stock)}</td>
+                    <td className="px-4 py-3 text-gray-600">{p.stock_minimo != null ? p.stock_minimo : '—'}</td>
+                    <td className="px-4 py-3 text-gray-600">
+                      {p.unidad_compra && p.unidad_compra !== 'Unidad'
+                        ? `${p.unidad_compra} (x${p.factor_conversion})`
+                        : '—'}
+                    </td>
                     <td className="px-4 py-3 text-gray-600">{p.proxima_fecha_vencimiento ? formatFecha(p.proxima_fecha_vencimiento) : '-'}</td>
                     <td className="px-4 py-3">
                       <span

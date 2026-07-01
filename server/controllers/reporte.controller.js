@@ -6,6 +6,7 @@ const {
   presentarVentasPorDia,
   presentarMetodoPago,
   presentarMargenProducto,
+  presentarMerma,
 } = require('../presenters/reporte.presenter');
 
 const armarWhereFecha = (req) => {
@@ -133,8 +134,14 @@ const stockCritico = async (req, res) => {
 
     const productos = await Producto.findAll({
       where: {
-        stock: { [Op.lte]: limite },
         activo: true,
+        [Op.and]: [
+          sequelize.where(
+            sequelize.col('Producto.stock'),
+            Op.lte,
+            sequelize.fn('COALESCE', sequelize.col('Producto.stock_minimo'), limite)
+          ),
+        ],
       },
       include: { association: 'categoria', attributes: ['id', 'nombre'] },
     });
@@ -145,6 +152,8 @@ const stockCritico = async (req, res) => {
         nombre: p.nombre,
         marca: p.marca,
         stock: p.stock,
+        stock_minimo: p.stock_minimo ?? null,
+        umbral_aplicado: p.stock_minimo ?? limite,
         categoria: p.categoria
           ? { id: p.categoria.id, nombre: p.categoria.nombre }
           : null,
@@ -242,6 +251,57 @@ const margenProductos = async (req, res) => {
   }
 };
 
+const mermasPorMotivo = async (req, res) => {
+  try {
+    const { fecha_inicio, fecha_hasta } = req.query;
+
+    let condicionFecha = '';
+    const reemplazos = {};
+
+    if (fecha_inicio && fecha_hasta) {
+      const hasta = new Date(fecha_hasta);
+      hasta.setDate(hasta.getDate() + 1);
+      condicionFecha = 'AND b."createdAt" >= :desde AND b."createdAt" < :hasta';
+      reemplazos.desde = new Date(fecha_inicio);
+      reemplazos.hasta = hasta;
+    } else if (fecha_inicio) {
+      condicionFecha = 'AND b."createdAt" >= :desde';
+      reemplazos.desde = new Date(fecha_inicio);
+    } else if (fecha_hasta) {
+      const hasta = new Date(fecha_hasta);
+      hasta.setDate(hasta.getDate() + 1);
+      condicionFecha = 'AND b."createdAt" < :hasta';
+      reemplazos.hasta = hasta;
+    }
+
+    const sql = `
+      SELECT
+        b.motivo,
+        CAST(COUNT(*) AS INTEGER) AS num_bajas,
+        CAST(SUM(b.cantidad) AS INTEGER) AS cantidad_total,
+        SUM(cl.cantidad * COALESCE(em.costo_unitario, p.costo_promedio, 0)) AS costo_valorizado
+      FROM bajas_inventario b
+      JOIN consumos_lote cl        ON cl.baja_id = b.id AND cl.tipo = 'Baja'
+      JOIN entradas_mercaderia em  ON em.id = cl.entrada_id
+      JOIN productos p             ON p.id = b.producto_id
+      WHERE 1=1
+        ${condicionFecha}
+      GROUP BY b.motivo
+      ORDER BY cantidad_total DESC
+    `;
+
+    const rows = await sequelize.query(sql, {
+      replacements: reemplazos,
+      type: QueryTypes.SELECT,
+    });
+
+    return res.status(200).json(rows.map(presentarMerma));
+  } catch (err) {
+    console.error('Error en mermasPorMotivo:', err);
+    return res.status(500).json({ mensaje: 'Error interno del servidor' });
+  }
+};
+
 module.exports = {
   resumenVentas,
   productosTop,
@@ -250,4 +310,5 @@ module.exports = {
   stockCritico,
   resumenInventario,
   margenProductos,
+  mermasPorMotivo,
 };

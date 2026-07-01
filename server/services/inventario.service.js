@@ -2,16 +2,19 @@ const { Op } = require('sequelize');
 const { EntradaMercaderia, ConsumoLote, Producto } = require('../models');
 
 // ─── Crear lote (entrada de mercadería) ───────────────────────────────────────
-const crearLote = async ({ producto_id, proveedor_id, cantidad, fecha_vencimiento, usuario_id, solicitud_id, costo_unitario }, t) => {
+const crearLote = async ({ producto_id, proveedor_id, cantidad, fecha_vencimiento, usuario_id, solicitud_id, costo_unitario, ajuste_id, cantidad_unidad_compra, unidad_compra_snapshot }, t) => {
   const lote = await EntradaMercaderia.create({
     producto_id,
-    proveedor_id,
+    proveedor_id: proveedor_id || null,
     cantidad,
     cantidad_restante: cantidad,
     usuario_id,
     solicitud_id: solicitud_id || null,
+    ajuste_id: ajuste_id || null,
     fecha_vencimiento: fecha_vencimiento || null,
     costo_unitario: costo_unitario ?? null,
+    cantidad_unidad_compra: cantidad_unidad_compra ?? null,
+    unidad_compra_snapshot: unidad_compra_snapshot ?? null,
   }, { transaction: t });
 
   const producto = await Producto.findByPk(producto_id, { transaction: t, lock: t.LOCK.UPDATE });
@@ -56,6 +59,7 @@ const consumirStockFIFO = async ({ producto_id, cantidad, tipo, referencia = {} 
       tipo,
       detalle_venta_id: referencia.detalle_venta_id || null,
       baja_id: referencia.baja_id || null,
+      ajuste_id: referencia.ajuste_id || null,
     });
     restante -= tomar;
   }

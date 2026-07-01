@@ -7,8 +7,9 @@ const {
   BajaInventario,
   SolicitudReposicion,
   Usuario,
+  AjusteInventario,
 } = require('../models');
-const { presentarEntrada, presentarBaja, presentarSolicitud } = require('../presenters/inventario.presenter');
+const { presentarEntrada, presentarBaja, presentarSolicitud, presentarAjuste } = require('../presenters/inventario.presenter');
 const { crearLote, consumirStockFIFO } = require('../services/inventario.service');
 
 const DIAS_MINIMOS_VENCIMIENTO = 30;
@@ -31,6 +32,7 @@ const INCLUDES_ENTRADA = [
   { association: 'proveedor', attributes: ['id', 'nombre'] },
   { association: 'usuario', attributes: ['id', 'nombre'] },
   { association: 'solicitud', attributes: ['id'] },
+  { association: 'ajuste', attributes: ['id'] },
 ];
 
 // ─── Entradas ─────────────────────────────────────────────────────────────────
@@ -61,13 +63,17 @@ const registrarEntrada = async (req, res) => {
         throw { status: 404, mensaje: 'Proveedor no encontrado o inactivo' };
       }
 
+      const cantidadUnidadesVenta = Number(cantidad) * producto.factor_conversion;
+
       return crearLote({
         producto_id,
         proveedor_id,
-        cantidad,
+        cantidad: cantidadUnidadesVenta,
         fecha_vencimiento: fecha_vencimiento || null,
         usuario_id: req.usuario.id,
         costo_unitario: costo_unitario != null ? Number(costo_unitario) : null,
+        cantidad_unidad_compra: Number(cantidad),
+        unidad_compra_snapshot: producto.unidad_compra,
       }, t);
     });
 
@@ -117,16 +123,18 @@ const listarEntradas = async (req, res) => {
 
 // ─── Bajas ────────────────────────────────────────────────────────────────────
 
+const MOTIVOS_BAJA = ['Vencido', 'Dañado', 'Robo o faltante', 'Consumo interno', 'Error de registro', 'Otro'];
+
 const registrarBaja = async (req, res) => {
   try {
-    const { producto_id, cantidad, motivo } = req.body;
+    const { producto_id, cantidad, motivo, motivo_detalle } = req.body;
 
     if (!Number.isInteger(Number(cantidad)) || Number(cantidad) < 1) {
       return res.status(400).json({ mensaje: 'La cantidad debe ser un número entero mayor a 0' });
     }
 
-    if (!motivo || !motivo.trim()) {
-      return res.status(400).json({ mensaje: 'El motivo de baja es requerido' });
+    if (!motivo || !MOTIVOS_BAJA.includes(motivo)) {
+      return res.status(400).json({ mensaje: 'El motivo de baja no es válido' });
     }
 
     const baja = await sequelize.transaction(async (t) => {
@@ -143,6 +151,7 @@ const registrarBaja = async (req, res) => {
         producto_id,
         cantidad,
         motivo,
+        motivo_detalle: motivo_detalle || null,
         usuario_id: req.usuario.id,
       }, { transaction: t });
 
@@ -202,6 +211,110 @@ const listarBajas = async (req, res) => {
     return res.status(200).json(bajas.map(presentarBaja));
   } catch (err) {
     console.error('Error en listarBajas:', err);
+    return res.status(500).json({ mensaje: 'Error interno del servidor' });
+  }
+};
+
+// ─── Ajustes (conteo físico) ────────────────────────────────────────────────────
+
+const registrarAjuste = async (req, res) => {
+  try {
+    const { producto_id, cantidad_contada, observaciones } = req.body;
+
+    if (!Number.isInteger(Number(cantidad_contada)) || Number(cantidad_contada) < 0) {
+      return res.status(400).json({ mensaje: 'La cantidad contada debe ser un número entero mayor o igual a 0' });
+    }
+
+    const ajuste = await sequelize.transaction(async (t) => {
+      const producto = await Producto.findByPk(producto_id, { transaction: t, lock: t.LOCK.UPDATE });
+      if (!producto || !producto.activo) {
+        throw { status: 404, mensaje: 'Producto no encontrado o inactivo' };
+      }
+
+      const cantidadSistema = producto.stock;
+      const cantidadContada = Number(cantidad_contada);
+      const diferencia = cantidadContada - cantidadSistema;
+
+      if (diferencia === 0) {
+        throw { status: 400, mensaje: 'El conteo coincide con el stock del sistema; no se requiere ajuste' };
+      }
+
+      const ajusteCreado = await AjusteInventario.create({
+        producto_id,
+        cantidad_sistema: cantidadSistema,
+        cantidad_contada: cantidadContada,
+        diferencia,
+        observaciones: observaciones || null,
+        usuario_id: req.usuario.id,
+      }, { transaction: t });
+
+      if (diferencia > 0) {
+        await crearLote({
+          producto_id,
+          proveedor_id: null,
+          cantidad: diferencia,
+          fecha_vencimiento: null,
+          usuario_id: req.usuario.id,
+          ajuste_id: ajusteCreado.id,
+        }, t);
+      } else {
+        await consumirStockFIFO({
+          producto_id,
+          cantidad: Math.abs(diferencia),
+          tipo: 'Ajuste',
+          referencia: { ajuste_id: ajusteCreado.id },
+        }, t);
+      }
+
+      return ajusteCreado;
+    });
+
+    const ajusteCompleto = await AjusteInventario.findByPk(ajuste.id, {
+      include: [
+        { association: 'producto', attributes: ['id', 'nombre', 'marca'] },
+        { association: 'usuario', attributes: ['id', 'nombre'] },
+      ],
+    });
+
+    return res.status(201).json(presentarAjuste(ajusteCompleto));
+  } catch (err) {
+    if (err.status && err.mensaje) {
+      return res.status(err.status).json({ mensaje: err.mensaje });
+    }
+    console.error('Error en registrarAjuste:', err);
+    return res.status(500).json({ mensaje: 'Error interno del servidor' });
+  }
+};
+
+const listarAjustes = async (req, res) => {
+  try {
+    const { fecha_inicio, fecha_hasta, producto_id } = req.query;
+    const where = {};
+
+    if (fecha_inicio && fecha_hasta) {
+      where.createdAt = { [Op.between]: [new Date(fecha_inicio), new Date(fecha_hasta)] };
+    } else if (fecha_inicio) {
+      where.createdAt = { [Op.gte]: new Date(fecha_inicio) };
+    } else if (fecha_hasta) {
+      where.createdAt = { [Op.lte]: new Date(fecha_hasta) };
+    }
+
+    if (producto_id) {
+      where.producto_id = producto_id;
+    }
+
+    const ajustes = await AjusteInventario.findAll({
+      where,
+      include: [
+        { association: 'producto', attributes: ['id', 'nombre', 'marca'] },
+        { association: 'usuario', attributes: ['id', 'nombre'] },
+      ],
+      order: [['createdAt', 'DESC']],
+    });
+
+    return res.status(200).json(ajustes.map(presentarAjuste));
+  } catch (err) {
+    console.error('Error en listarAjustes:', err);
     return res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
 };
@@ -408,6 +521,8 @@ module.exports = {
   listarEntradas,
   registrarBaja,
   listarBajas,
+  registrarAjuste,
+  listarAjustes,
   crearSolicitud,
   listarSolicitudes,
   aprobarSolicitud,

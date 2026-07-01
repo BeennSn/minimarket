@@ -64,6 +64,26 @@ const Producto = sequelize.define('Producto', {
     type: DataTypes.DECIMAL(10, 2),
     allowNull: true,
   },
+  stock_minimo: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    validate: {
+      min: { args: [0], msg: 'El stock mínimo no puede ser negativo' },
+    },
+  },
+  unidad_compra: {
+    type: DataTypes.ENUM('Unidad', 'Caja', 'Paquete', 'Docena', 'Otro'),
+    allowNull: false,
+    defaultValue: 'Unidad',
+  },
+  factor_conversion: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 1,
+    validate: {
+      min: { args: [1], msg: 'El factor de conversión debe ser al menos 1' },
+    },
+  },
 }, {
   tableName: 'productos',
   timestamps: true,

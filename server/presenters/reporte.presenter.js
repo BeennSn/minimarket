@@ -45,4 +45,11 @@ const presentarMargenProducto = (row) => {
   };
 };
 
-module.exports = { presentarResumenVentas, presentarProductoTop, presentarVentasPorDia, presentarMetodoPago, presentarMargenProducto };
+const presentarMerma = (row) => ({
+  motivo:           row.motivo,
+  num_bajas:        parseInt(row.num_bajas) || 0,
+  cantidad_total:   parseInt(row.cantidad_total) || 0,
+  costo_valorizado: parseFloat(row.costo_valorizado) || 0,
+});
+
+module.exports = { presentarResumenVentas, presentarProductoTop, presentarVentasPorDia, presentarMetodoPago, presentarMargenProducto, presentarMerma };

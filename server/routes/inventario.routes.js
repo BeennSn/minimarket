@@ -32,6 +32,19 @@ router.get(
   inventarioController.listarBajas
 );
 
+// Ajustes (conteo físico)
+router.post(
+  '/ajustes',
+  verificarRol('Almacenero', 'Administrador'),
+  inventarioController.registrarAjuste
+);
+
+router.get(
+  '/ajustes',
+  verificarRol('Almacenero', 'Administrador', 'Gerente'),
+  inventarioController.listarAjustes
+);
+
 // Solicitudes
 router.post(
   '/solicitudes',

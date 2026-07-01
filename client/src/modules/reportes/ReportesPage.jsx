@@ -24,6 +24,7 @@ export default function ReportesPage() {
   const [metodoPago, setMetodoPago] = useState([]);
   const [productosTop, setProductosTop] = useState([]);
   const [margenProductos, setMargenProductos] = useState([]);
+  const [mermasPorMotivo, setMermasPorMotivo] = useState([]);
   const [fechaInicio, setFechaInicio] = useState('');
   const [fechaHasta, setFechaHasta] = useState('');
   const [loading, setLoading] = useState(true);
@@ -52,18 +53,20 @@ export default function ReportesPage() {
     setError('');
     try {
       const params = buildParams();
-      const [rRes, rDia, rMet, rTop, rMargen] = await Promise.all([
+      const [rRes, rDia, rMet, rTop, rMargen, rMermas] = await Promise.all([
         api.get('/reportes/ventas/resumen', { params }),
         api.get('/reportes/ventas/por-dia', { params }),
         api.get('/reportes/ventas/por-metodo-pago', { params }),
         api.get('/reportes/ventas/productos-top', { params: { ...params, limite: 10 } }),
         api.get('/reportes/margen/productos', { params }),
+        api.get('/reportes/inventario/mermas-por-motivo', { params }),
       ]);
       setResumen(rRes.data);
       setVentasPorDia(Array.isArray(rDia.data) ? rDia.data : []);
       setMetodoPago(Array.isArray(rMet.data) ? rMet.data : []);
       setProductosTop(Array.isArray(rTop.data) ? rTop.data : []);
       setMargenProductos(Array.isArray(rMargen.data) ? rMargen.data : []);
+      setMermasPorMotivo(Array.isArray(rMermas.data) ? rMermas.data : []);
     } catch (err) {
       setError(err.response?.data?.mensaje || 'Error al cargar reportes');
     } finally {
@@ -75,8 +78,8 @@ export default function ReportesPage() {
   useEffect(() => { cargarDatos(); }, [cargarDatos]);
 
   useEffect(() => {
-    datosRef.current = { resumen, ventasPorDia, metodoPago, productosTop, margenProductos, fechaInicio, fechaHasta };
-  }, [resumen, ventasPorDia, metodoPago, productosTop, margenProductos, fechaInicio, fechaHasta]);
+    datosRef.current = { resumen, ventasPorDia, metodoPago, productosTop, margenProductos, mermasPorMotivo, fechaInicio, fechaHasta };
+  }, [resumen, ventasPorDia, metodoPago, productosTop, margenProductos, mermasPorMotivo, fechaInicio, fechaHasta]);
 
   const cargarStockCritico = useCallback(async (u) => {
     setCargandoStock(true);
@@ -228,6 +231,31 @@ export default function ReportesPage() {
           theme: 'striped',
           headStyles: { fillColor: [16, 185, 129] },
           styles: { fontSize: 8 },
+          margin: { left: 14 },
+        });
+        y = doc.lastAutoTable.finalY + 12;
+      }
+
+      // ─── Mermas por motivo ─────────────────────────────────────────────────
+      if (d.mermasPorMotivo?.length > 0) {
+        if (y > 220) { doc.addPage(); y = 20; }
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(0);
+        doc.text('Mermas por Motivo', 14, y);
+        y += 4;
+        autoTable(doc, {
+          startY: y,
+          head: [['Motivo', 'N° Bajas', 'Cantidad Total', 'Costo Valorizado']],
+          body: d.mermasPorMotivo.map((m) => [
+            m.motivo || '',
+            String(m.num_bajas ?? 0),
+            String(m.cantidad_total ?? 0),
+            `S/ ${Number(m.costo_valorizado ?? 0).toFixed(2)}`,
+          ]),
+          theme: 'striped',
+          headStyles: { fillColor: [239, 68, 68] },
+          styles: { fontSize: 9 },
           margin: { left: 14 },
         });
         y = doc.lastAutoTable.finalY + 12;
@@ -602,6 +630,7 @@ export default function ReportesPage() {
                   <th className="px-4 py-3 font-medium">Marca</th>
                   <th className="px-4 py-3 font-medium">Categoría</th>
                   <th className="px-4 py-3 font-medium">Stock actual</th>
+                  <th className="px-4 py-3 font-medium">Mínimo aplicado</th>
                 </tr>
               </thead>
               <tbody>
@@ -621,13 +650,55 @@ export default function ReportesPage() {
                         </span>
                       )}
                     </td>
+                    <td className="px-4 py-3 text-gray-500">
+                      {p.umbral_aplicado}{p.stock_minimo == null && <span className="ml-1 text-xs text-gray-300">(global)</span>}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
             <p className="px-4 py-2 text-xs text-gray-400">
-              Mostrando productos con stock ≤ {umbral}. Modifica el umbral para ajustar el criterio.
+              Mostrando productos cuyo stock está por debajo de su propio "Stock Mínimo" (si está definido) o del umbral global de {umbral} en caso contrario.
             </p>
+          </div>
+        )}
+      </div>
+
+      {/* ─── Mermas por Motivo ─────────────────────────────────────────────────── */}
+      <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="font-semibold text-gray-700">Mermas por Motivo</h2>
+          <div className="flex items-center gap-1 text-sm text-gray-400">
+            <FileText className="h-4 w-4" />
+            <span>Se incluirá en el PDF</span>
+          </div>
+        </div>
+        {mermasPorMotivo.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="bg-red-500 text-white">
+                  <th className="px-4 py-3 font-medium">Motivo</th>
+                  <th className="px-4 py-3 font-medium text-right">N° Bajas</th>
+                  <th className="px-4 py-3 font-medium text-right">Cantidad Total</th>
+                  <th className="px-4 py-3 font-medium text-right">Costo Valorizado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {mermasPorMotivo.map((m, i) => (
+                  <tr key={m.motivo || i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                    <td className="px-4 py-3 font-medium text-gray-800">{m.motivo}</td>
+                    <td className="px-4 py-3 text-right text-gray-600">{m.num_bajas}</td>
+                    <td className="px-4 py-3 text-right text-gray-600">{m.cantidad_total}</td>
+                    <td className="px-4 py-3 text-right text-gray-800">S/ {Number(m.costo_valorizado).toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="flex h-32 items-center justify-center text-sm text-gray-400">
+            No hay bajas de inventario en el período seleccionado
           </div>
         )}
       </div>

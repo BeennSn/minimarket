@@ -19,6 +19,8 @@ const validarFechaVencimiento = (fechaStr) => {
   return null;
 };
 
+const UNIDADES_COMPRA = ['Unidad', 'Caja', 'Paquete', 'Docena', 'Otro'];
+
 const INCLUDE = [
   { model: Categoria, as: 'categoria', attributes: ['id', 'nombre'] },
   { model: Proveedor, as: 'proveedor', attributes: ['id', 'nombre', 'ruc'] },
@@ -167,7 +169,7 @@ const obtener = async (req, res) => {
 // ─── Crear un nuevo producto ──────────────────────────────────────────────────
 const crear = async (req, res) => {
   try {
-    const { nombre, marca, categoria_id, proveedor_id, precio, stock, codigo_barras, fecha_vencimiento } = req.body;
+    const { nombre, marca, categoria_id, proveedor_id, precio, stock, codigo_barras, fecha_vencimiento, stock_minimo, unidad_compra, factor_conversion } = req.body;
 
     if (!nombre || !nombre.trim()) {
       return res.status(400).json({ mensaje: 'El nombre del producto es requerido' });
@@ -180,6 +182,15 @@ const crear = async (req, res) => {
     }
     if (stock !== undefined && stock !== null && (isNaN(parseInt(stock, 10)) || parseInt(stock, 10) < 0)) {
       return res.status(400).json({ mensaje: 'El stock no puede ser negativo' });
+    }
+    if (stock_minimo !== undefined && stock_minimo !== null && stock_minimo !== '' && (isNaN(parseInt(stock_minimo, 10)) || parseInt(stock_minimo, 10) < 0)) {
+      return res.status(400).json({ mensaje: 'El stock mínimo no puede ser negativo' });
+    }
+    if (unidad_compra !== undefined && unidad_compra !== null && !UNIDADES_COMPRA.includes(unidad_compra)) {
+      return res.status(400).json({ mensaje: 'La unidad de compra no es válida' });
+    }
+    if (factor_conversion !== undefined && factor_conversion !== null && factor_conversion !== '' && (isNaN(parseInt(factor_conversion, 10)) || parseInt(factor_conversion, 10) < 1)) {
+      return res.status(400).json({ mensaje: 'El factor de conversión debe ser al menos 1' });
     }
 
     const cantidadInicial = stock ? parseInt(stock, 10) : 0;
@@ -229,6 +240,9 @@ const crear = async (req, res) => {
         stock: 0,
         codigo_barras: codigo_barras || null,
         activo: true,
+        stock_minimo: stock_minimo !== undefined && stock_minimo !== null && stock_minimo !== '' ? parseInt(stock_minimo, 10) : null,
+        unidad_compra: unidad_compra || 'Unidad',
+        factor_conversion: factor_conversion !== undefined && factor_conversion !== null && factor_conversion !== '' ? parseInt(factor_conversion, 10) : 1,
       }, { transaction: t });
 
       if (cantidadInicial > 0) {
@@ -264,7 +278,7 @@ const actualizar = async (req, res) => {
       return res.status(404).json({ mensaje: 'Producto no encontrado' });
     }
 
-    const { nombre, marca, categoria_id, proveedor_id, precio, codigo_barras } = req.body;
+    const { nombre, marca, categoria_id, proveedor_id, precio, codigo_barras, stock_minimo, unidad_compra, factor_conversion } = req.body;
 
     const nombreFinal = nombre !== undefined ? nombre.trim() : producto.nombre;
     const marcaFinal  = marca  !== undefined ? marca.trim()  : producto.marca;
@@ -282,6 +296,18 @@ const actualizar = async (req, res) => {
       if (existe) {
         return res.status(400).json({ mensaje: 'El código de barras ya está registrado en otro producto' });
       }
+    }
+
+    if (stock_minimo !== undefined && stock_minimo !== null && stock_minimo !== '' && (isNaN(parseInt(stock_minimo, 10)) || parseInt(stock_minimo, 10) < 0)) {
+      return res.status(400).json({ mensaje: 'El stock mínimo no puede ser negativo' });
+    }
+
+    if (unidad_compra !== undefined && unidad_compra !== null && !UNIDADES_COMPRA.includes(unidad_compra)) {
+      return res.status(400).json({ mensaje: 'La unidad de compra no es válida' });
+    }
+
+    if (factor_conversion !== undefined && factor_conversion !== null && factor_conversion !== '' && (isNaN(parseInt(factor_conversion, 10)) || parseInt(factor_conversion, 10) < 1)) {
+      return res.status(400).json({ mensaje: 'El factor de conversión debe ser al menos 1' });
     }
 
     // Verificar que la categoría exista (si se proporciona)
@@ -309,6 +335,13 @@ const actualizar = async (req, res) => {
     if (categoria_id !== undefined) producto.categoria_id = categoria_id;
     if (precio !== undefined) producto.precio = precio;
     if (codigo_barras !== undefined) producto.codigo_barras = codigo_barras || null;
+    if (stock_minimo !== undefined) {
+      producto.stock_minimo = stock_minimo === null || stock_minimo === '' ? null : parseInt(stock_minimo, 10);
+    }
+    if (unidad_compra !== undefined) producto.unidad_compra = unidad_compra || 'Unidad';
+    if (factor_conversion !== undefined) {
+      producto.factor_conversion = factor_conversion === null || factor_conversion === '' ? 1 : parseInt(factor_conversion, 10);
+    }
 
     await producto.save();
 

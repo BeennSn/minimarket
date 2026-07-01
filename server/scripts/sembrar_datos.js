@@ -64,12 +64,12 @@ const PRODUCTOS = [
   { nombre: 'Queso Fresco 250g',               marca: 'Laive',        cat: 'Lácteos',     prov: 'Gloria S.A.',                  precio: 8.50,  stock: 20,  cod: '7750050001008', fv: en(200) },
 
   // Bebidas
-  { nombre: 'Inca Kola 500ml',                 marca: 'Inca Kola',    cat: 'Bebidas',     prov: 'Arca Continental Lindley',     precio: 2.50,  stock: 80,  cod: '7750060001004', fv: en(365) },
+  { nombre: 'Inca Kola 500ml',                 marca: 'Inca Kola',    cat: 'Bebidas',     prov: 'Arca Continental Lindley',     precio: 2.50,  stock: 80,  cod: '7750060001004', fv: en(365), unidadCompra: 'Caja',    factorConversion: 12 },
   { nombre: 'Inca Kola 2.25L',                 marca: 'Inca Kola',    cat: 'Bebidas',     prov: 'Arca Continental Lindley',     precio: 8.00,  stock: 50,  cod: '7750060002001', fv: en(365) },
-  { nombre: 'Coca Cola 500ml',                 marca: 'Coca Cola',    cat: 'Bebidas',     prov: 'Arca Continental Lindley',     precio: 2.50,  stock: 80,  cod: '7750070001000', fv: en(365) },
+  { nombre: 'Coca Cola 500ml',                 marca: 'Coca Cola',    cat: 'Bebidas',     prov: 'Arca Continental Lindley',     precio: 2.50,  stock: 80,  cod: '7750070001000', fv: en(365), unidadCompra: 'Caja',    factorConversion: 12 },
   { nombre: 'Coca Cola 2.25L',                 marca: 'Coca Cola',    cat: 'Bebidas',     prov: 'Arca Continental Lindley',     precio: 8.00,  stock: 50,  cod: '7750070002007', fv: en(365) },
   { nombre: 'Sprite 500ml',                    marca: 'Sprite',       cat: 'Bebidas',     prov: 'Arca Continental Lindley',     precio: 2.50,  stock: 60,  cod: '7750080001007', fv: en(365) },
-  { nombre: 'Agua Cielo 500ml',                marca: 'Cielo',        cat: 'Bebidas',     prov: 'Arca Continental Lindley',     precio: 1.50,  stock: 100, cod: '7750100001002', fv: en(365) },
+  { nombre: 'Agua Cielo 500ml',                marca: 'Cielo',        cat: 'Bebidas',     prov: 'Arca Continental Lindley',     precio: 1.50,  stock: 100, cod: '7750100001002', fv: en(365), unidadCompra: 'Paquete', factorConversion: 24 },
   { nombre: 'Agua Cielo 2L',                   marca: 'Cielo',        cat: 'Bebidas',     prov: 'Arca Continental Lindley',     precio: 3.00,  stock: 70,  cod: '7750100002009', fv: en(365) },
   { nombre: 'Energizante Monster 473ml',        marca: 'Monster',      cat: 'Bebidas',     prov: 'Arca Continental Lindley',     precio: 6.00,  stock: 35,  cod: '7750110002006', fv: en(365) },
   { nombre: 'Jugo Pulp Naranja 1L',            marca: 'Pulp',         cat: 'Bebidas',     prov: 'Arca Continental Lindley',     precio: 5.50,  stock: 4,   cod: '7750120001005', fv: en(20)  },
@@ -162,6 +162,8 @@ async function crearMaestros(admin) {
         precio: p.precio, stock: 0,
         codigo_barras: p.cod,
         activo: true,
+        unidad_compra: p.unidadCompra || 'Unidad',
+        factor_conversion: p.factorConversion || 1,
       },
     });
     if (created) {
@@ -376,11 +378,11 @@ async function crearEntradas(prodMap, provMap, admin, almacenero) {
 
 async function crearBajas(prodMap, admin, almacenero) {
   const bajas = [
-    { prod: 'Yogurt Gloria Natural 1L',  cant: 2,  motivo: 'Producto vencido — retirado de anaquel',      dias: 3,  usuario: almacenero },
-    { prod: 'Leche Gloria Fresca 1L',    cant: 1,  motivo: 'Fecha de vencimiento próxima — donación',     dias: 2,  usuario: almacenero },
-    { prod: 'Mantequilla Gloria 200g',   cant: 1,  motivo: 'Daño en empaque durante descarga',           dias: 5,  usuario: admin },
-    { prod: 'Avena Tres Ositos 500g',    cant: 2,  motivo: 'Merma por humedad en almacén',               dias: 7,  usuario: almacenero },
-    { prod: 'Jugo Pulp Naranja 1L',      cant: 1,  motivo: 'Producto golpeado — rotura de envase',       dias: 1,  usuario: almacenero },
+    { prod: 'Yogurt Gloria Natural 1L',  cant: 2,  motivo: 'Vencido',  detalle: 'Retirado de anaquel',              dias: 3,  usuario: almacenero },
+    { prod: 'Leche Gloria Fresca 1L',    cant: 1,  motivo: 'Vencido',  detalle: 'Fecha de vencimiento próxima — donación', dias: 2,  usuario: almacenero },
+    { prod: 'Mantequilla Gloria 200g',   cant: 1,  motivo: 'Dañado',   detalle: 'Daño en empaque durante descarga', dias: 5,  usuario: admin },
+    { prod: 'Avena Tres Ositos 500g',    cant: 2,  motivo: 'Dañado',   detalle: 'Merma por humedad en almacén',     dias: 7,  usuario: almacenero },
+    { prod: 'Jugo Pulp Naranja 1L',      cant: 1,  motivo: 'Dañado',   detalle: 'Producto golpeado — rotura de envase', dias: 1,  usuario: almacenero },
   ];
 
   let count = 0;
@@ -391,6 +393,7 @@ async function crearBajas(prodMap, admin, almacenero) {
       producto_id: prod.id,
       cantidad:    b.cant,
       motivo:      b.motivo,
+      motivo_detalle: b.detalle,
       usuario_id:  b.usuario.id,
       createdAt:   hace(b.dias),
     });

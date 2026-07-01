@@ -17,7 +17,7 @@ const EntradaMercaderia = sequelize.define('EntradaMercaderia', {
   },
   proveedor_id: {
     type: DataTypes.INTEGER,
-    allowNull: false,
+    allowNull: true,
     references: {
       model: 'proveedores',
       key: 'id',
@@ -47,12 +47,28 @@ const EntradaMercaderia = sequelize.define('EntradaMercaderia', {
       key: 'id',
     },
   },
+  ajuste_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: 'ajustes_inventario',
+      key: 'id',
+    },
+  },
   fecha_vencimiento: {
     type: DataTypes.DATEONLY,
     allowNull: true,
   },
   costo_unitario: {
     type: DataTypes.DECIMAL(10, 2),
+    allowNull: true,
+  },
+  cantidad_unidad_compra: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
+  unidad_compra_snapshot: {
+    type: DataTypes.ENUM('Unidad', 'Caja', 'Paquete', 'Docena', 'Otro'),
     allowNull: true,
   },
 }, {

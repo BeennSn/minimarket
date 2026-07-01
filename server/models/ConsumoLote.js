@@ -34,6 +34,14 @@ const ConsumoLote = sequelize.define('ConsumoLote', {
       key: 'id',
     },
   },
+  ajuste_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: 'ajustes_inventario',
+      key: 'id',
+    },
+  },
 }, {
   tableName: 'consumos_lote',
   timestamps: true,

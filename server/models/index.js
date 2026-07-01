@@ -16,6 +16,7 @@ const Configuracion      = require('./Configuracion');
 const Turno              = require('./Turno');
 const MovimientoCaja     = require('./MovimientoCaja');
 const ConsumoLote        = require('./ConsumoLote');
+const AjusteInventario   = require('./AjusteInventario');
 
 // ─── Asociaciones ─────────────────────────────────────────────────────────────
 
@@ -81,6 +82,22 @@ Producto.hasMany(BajaInventario,   { foreignKey: 'producto_id', as: 'bajas' });
 // BajaInventario → Usuario
 BajaInventario.belongsTo(Usuario, { foreignKey: 'usuario_id', as: 'usuario' });
 Usuario.hasMany(BajaInventario,   { foreignKey: 'usuario_id', as: 'bajas' });
+
+// AjusteInventario → Producto
+AjusteInventario.belongsTo(Producto, { foreignKey: 'producto_id', as: 'producto' });
+Producto.hasMany(AjusteInventario,   { foreignKey: 'producto_id', as: 'ajustes' });
+
+// AjusteInventario → Usuario
+AjusteInventario.belongsTo(Usuario, { foreignKey: 'usuario_id', as: 'usuario' });
+Usuario.hasMany(AjusteInventario,   { foreignKey: 'usuario_id', as: 'ajustes' });
+
+// EntradaMercaderia → AjusteInventario (lote generado por un ajuste positivo)
+EntradaMercaderia.belongsTo(AjusteInventario, { foreignKey: 'ajuste_id', as: 'ajuste' });
+AjusteInventario.hasMany(EntradaMercaderia,   { foreignKey: 'ajuste_id', as: 'entradas' });
+
+// ConsumoLote → AjusteInventario (consumo generado por un ajuste negativo)
+ConsumoLote.belongsTo(AjusteInventario, { foreignKey: 'ajuste_id', as: 'ajuste' });
+AjusteInventario.hasMany(ConsumoLote,   { foreignKey: 'ajuste_id', as: 'consumos' });
 
 // SolicitudReposicion → Producto
 SolicitudReposicion.belongsTo(Producto, { foreignKey: 'producto_id', as: 'producto' });
@@ -151,4 +168,5 @@ module.exports = {
   Turno,
   MovimientoCaja,
   ConsumoLote,
+  AjusteInventario,
 };

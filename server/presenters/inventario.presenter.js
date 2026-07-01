@@ -5,10 +5,9 @@ const presentarEntrada = (entrada) => ({
     nombre: entrada.producto.nombre,
     marca:  entrada.producto.marca,
   },
-  proveedor: {
-    id:     entrada.proveedor.id,
-    nombre: entrada.proveedor.nombre,
-  },
+  proveedor: entrada.proveedor
+    ? { id: entrada.proveedor.id, nombre: entrada.proveedor.nombre }
+    : null,
   cantidad: entrada.cantidad,
   cantidad_restante: entrada.cantidad_restante,
   usuario: {
@@ -19,8 +18,11 @@ const presentarEntrada = (entrada) => ({
   solicitud: entrada.solicitud
     ? { id: entrada.solicitud.id }
     : null,
+  ajuste_id: entrada.ajuste_id || null,
   fecha_vencimiento: entrada.fecha_vencimiento || null,
   costo_unitario: entrada.costo_unitario ?? null,
+  cantidad_unidad_compra: entrada.cantidad_unidad_compra ?? null,
+  unidad_compra_snapshot: entrada.unidad_compra_snapshot ?? null,
   createdAt: entrada.createdAt,
 });
 
@@ -33,6 +35,7 @@ const presentarBaja = (baja) => ({
   },
   cantidad: baja.cantidad,
   motivo:   baja.motivo,
+  motivo_detalle: baja.motivo_detalle ?? null,
   usuario: {
     id:     baja.usuario.id,
     nombre: baja.usuario.nombre,
@@ -64,4 +67,22 @@ const presentarSolicitud = (solicitud) => ({
   createdAt: solicitud.createdAt,
 });
 
-module.exports = { presentarEntrada, presentarBaja, presentarSolicitud };
+const presentarAjuste = (ajuste) => ({
+  id: ajuste.id,
+  producto: {
+    id:     ajuste.producto.id,
+    nombre: ajuste.producto.nombre,
+    marca:  ajuste.producto.marca,
+  },
+  cantidad_sistema: ajuste.cantidad_sistema,
+  cantidad_contada: ajuste.cantidad_contada,
+  diferencia:       ajuste.diferencia,
+  observaciones:    ajuste.observaciones ?? null,
+  usuario: {
+    id:     ajuste.usuario.id,
+    nombre: ajuste.usuario.nombre,
+  },
+  createdAt: ajuste.createdAt,
+});
+
+module.exports = { presentarEntrada, presentarBaja, presentarSolicitud, presentarAjuste };

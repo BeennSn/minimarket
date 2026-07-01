@@ -1,7 +1,7 @@
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/db');
 
-const BajaInventario = sequelize.define('BajaInventario', {
+const AjusteInventario = sequelize.define('AjusteInventario', {
   id: {
     type: DataTypes.INTEGER,
     primaryKey: true,
@@ -15,15 +15,22 @@ const BajaInventario = sequelize.define('BajaInventario', {
       key: 'id',
     },
   },
-  cantidad: {
+  cantidad_sistema: {
     type: DataTypes.INTEGER,
     allowNull: false,
   },
-  motivo: {
-    type: DataTypes.ENUM('Vencido', 'Dañado', 'Robo o faltante', 'Consumo interno', 'Error de registro', 'Otro'),
+  cantidad_contada: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    validate: {
+      min: { args: [0], msg: 'La cantidad contada no puede ser negativa' },
+    },
+  },
+  diferencia: {
+    type: DataTypes.INTEGER,
     allowNull: false,
   },
-  motivo_detalle: {
+  observaciones: {
     type: DataTypes.STRING,
     allowNull: true,
   },
@@ -36,8 +43,8 @@ const BajaInventario = sequelize.define('BajaInventario', {
     },
   },
 }, {
-  tableName: 'bajas_inventario',
+  tableName: 'ajustes_inventario',
   timestamps: true,
 });
 
-module.exports = BajaInventario;
+module.exports = AjusteInventario;

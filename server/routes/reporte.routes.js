@@ -14,5 +14,6 @@ router.get('/ventas/por-metodo-pago', reporteController.ventasPorMetodoPago);
 router.get('/inventario/stock-critico',  reporteController.stockCritico);
 router.get('/inventario/resumen',        reporteController.resumenInventario);
 router.get('/margen/productos',          reporteController.margenProductos);
+router.get('/inventario/mermas-por-motivo', reporteController.mermasPorMotivo);
 
 module.exports = router;
