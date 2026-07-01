@@ -132,11 +132,30 @@ const cambiarPassword = async (req, res) => {
     }
 
     usuario.password_hash = await bcrypt.hash(password_nueva, 10);
+    usuario.session_version = (usuario.session_version || 0) + 1;
     await usuario.save();
 
     return res.status(200).json({ mensaje: 'Contraseña actualizada correctamente' });
   } catch (err) {
     console.error('Error en cambiarPassword:', err);
+    return res.status(500).json({ mensaje: 'Error interno del servidor' });
+  }
+};
+
+// ─── Forzar cierre de sesión (invalida cualquier token ya emitido) ────────────
+const forzarCierreSesion = async (req, res) => {
+  try {
+    const usuario = await Usuario.findByPk(req.params.id);
+    if (!usuario) {
+      return res.status(404).json({ mensaje: 'Usuario no encontrado' });
+    }
+
+    usuario.session_version = (usuario.session_version || 0) + 1;
+    await usuario.save();
+
+    return res.status(200).json({ mensaje: 'Sesiones cerradas correctamente' });
+  } catch (err) {
+    console.error('Error en forzarCierreSesion:', err);
     return res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
 };
@@ -183,6 +202,7 @@ module.exports = {
   crear,
   actualizar,
   cambiarPassword,
+  forzarCierreSesion,
   desactivar,
   reactivar,
 };

@@ -20,6 +20,7 @@ import {
   UserCheck,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { rolSatisface } from '../utils/roles';
 
 const NAV_ITEMS = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', roles: ['Gerente', 'Administrador'] },
@@ -72,7 +73,7 @@ export default function MainLayout() {
     navigate('/login');
   };
 
-  const filteredNav = NAV_ITEMS.filter((item) => item.roles.includes(usuario?.rol));
+  const filteredNav = NAV_ITEMS.filter((item) => rolSatisface(usuario?.rol, item.roles));
   const pageTitle = PAGE_TITLES[location.pathname] || '';
 
   return (

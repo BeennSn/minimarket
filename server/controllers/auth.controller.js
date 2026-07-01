@@ -43,7 +43,7 @@ const login = async (req, res) => {
     await usuario.save();
 
     const token = jwt.sign(
-      { id: usuario.id, rol: usuario.rol },
+      { id: usuario.id, rol: usuario.rol, sv: usuario.session_version },
       JWT_SECRET,
       { expiresIn: JWT_EXPIRES_IN }
     );
@@ -169,6 +169,7 @@ const resetPassword = async (req, res) => {
     usuario.reset_used = false;
     usuario.intentos_fallidos = 0;
     usuario.bloqueo_hasta = null;
+    usuario.session_version = (usuario.session_version || 0) + 1;
     await usuario.save();
 
     await LogAcceso.create({

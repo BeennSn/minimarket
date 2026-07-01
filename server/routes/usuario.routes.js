@@ -13,31 +13,31 @@ const router = Router();
 // Todas las rutas de este módulo requieren autenticación
 router.use(verificarToken);
 
-// GET  /api/usuarios        → solo Administrador
+// GET  /api/usuarios        → SuperAdmin y Administrador (Administrador: solo lectura)
 router.get(
   '/',
-  verificarRol('Administrador'),
+  verificarRol('SuperAdmin', 'Administrador'),
   usuarioController.listar
 );
 
-// GET  /api/usuarios/:id    → solo Administrador
+// GET  /api/usuarios/:id    → SuperAdmin y Administrador (Administrador: solo lectura)
 router.get(
   '/:id',
-  verificarRol('Administrador'),
+  verificarRol('SuperAdmin', 'Administrador'),
   usuarioController.obtener
 );
 
-// POST /api/usuarios        → solo Administrador
+// POST /api/usuarios        → exclusivo SuperAdmin
 router.post(
   '/',
-  verificarRol('Administrador'),
+  verificarRol('SuperAdmin'),
   usuarioController.crear
 );
 
-// PUT  /api/usuarios/:id    → solo Administrador
+// PUT  /api/usuarios/:id    → exclusivo SuperAdmin
 router.put(
   '/:id',
-  verificarRol('Administrador'),
+  verificarRol('SuperAdmin'),
   usuarioController.actualizar
 );
 
@@ -47,17 +47,24 @@ router.patch(
   usuarioController.cambiarPassword
 );
 
-// PATCH /api/usuarios/:id/desactivar → solo Administrador
+// PATCH /api/usuarios/:id/forzar-cierre-sesion → exclusivo SuperAdmin
+router.patch(
+  '/:id/forzar-cierre-sesion',
+  verificarRol('SuperAdmin'),
+  usuarioController.forzarCierreSesion
+);
+
+// PATCH /api/usuarios/:id/desactivar → exclusivo SuperAdmin
 router.patch(
   '/:id/desactivar',
-  verificarRol('Administrador'),
+  verificarRol('SuperAdmin'),
   usuarioController.desactivar
 );
 
-// PATCH /api/usuarios/:id/reactivar  → solo Administrador
+// PATCH /api/usuarios/:id/reactivar  → exclusivo SuperAdmin
 router.patch(
   '/:id/reactivar',
-  verificarRol('Administrador'),
+  verificarRol('SuperAdmin'),
   usuarioController.reactivar
 );
 

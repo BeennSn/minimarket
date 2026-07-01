@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Pencil, UserX, UserCheck, Plus, Eye, EyeOff, X } from 'lucide-react';
+import { Pencil, UserX, UserCheck, Plus, Eye, EyeOff, X, LogOut, Lock } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../utils/axios';
 import Breadcrumb from '../../components/Breadcrumb';
@@ -9,6 +9,7 @@ import Toast from '../../components/Toast';
 import useToast from '../../hooks/useToast';
 
 const ROL_BADGE = {
+  SuperAdmin: 'bg-red-100 text-red-800',
   Administrador: 'bg-purple-100 text-purple-700',
   Vendedor: 'bg-green-100 text-green-800',
   Almacenero: 'bg-blue-100 text-blue-800',
@@ -175,6 +176,8 @@ export default function UsuariosPage() {
   const [filtroRol, setFiltroRol] = useState('Todos');
   const [filtroEstado, setFiltroEstado] = useState('Todos');
   const [confirmarEstado, setConfirmarEstado] = useState(null);
+  const [confirmarCierreSesion, setConfirmarCierreSesion] = useState(null);
+  const esSuperAdmin = currentUser?.rol === 'SuperAdmin';
 
   const cargarUsuarios = async () => {
     try {
@@ -229,6 +232,18 @@ export default function UsuariosPage() {
     }
   };
 
+  const forzarCierreSesion = async () => {
+    if (!confirmarCierreSesion) return;
+    const u = confirmarCierreSesion;
+    setConfirmarCierreSesion(null);
+    try {
+      await api.patch(`/usuarios/${u.id}/forzar-cierre-sesion`);
+      mostrarExito(`Sesiones de ${u.nombre} cerradas correctamente`);
+    } catch (err) {
+      mostrarError(err.response?.data?.mensaje || 'Error al forzar el cierre de sesión');
+    }
+  };
+
   const filtrados = usuarios.filter((u) => {
     if (filtroRol !== 'Todos' && u.rol !== filtroRol) return false;
     if (filtroEstado !== 'Todos') {
@@ -244,14 +259,24 @@ export default function UsuariosPage() {
       <Breadcrumb items={[{ label: 'Inicio', path: '/dashboard' }, { label: 'Usuarios' }]} />
 
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-800">Usuarios</h1>
-        <button
-          onClick={abrirCrear}
-          className="flex items-center gap-2 rounded-lg bg-[#6366f1] px-4 py-2 text-sm text-white transition-colors hover:bg-indigo-600"
-        >
-          <Plus className="h-4 w-4" />
-          Nuevo Usuario
-        </button>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-800">Usuarios</h1>
+          {!esSuperAdmin && (
+            <p className="mt-0.5 flex items-center gap-1 text-xs text-gray-400">
+              <Lock className="h-3 w-3" />
+              Modo solo lectura — la gestión de usuarios es exclusiva del SuperAdmin
+            </p>
+          )}
+        </div>
+        {esSuperAdmin && (
+          <button
+            onClick={abrirCrear}
+            className="flex items-center gap-2 rounded-lg bg-[#6366f1] px-4 py-2 text-sm text-white transition-colors hover:bg-indigo-600"
+          >
+            <Plus className="h-4 w-4" />
+            Nuevo Usuario
+          </button>
+        )}
       </div>
 
       <div className="flex flex-wrap gap-4">
@@ -325,29 +350,44 @@ export default function UsuariosPage() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => abrirEditar(u)}
-                        className="rounded-lg p-1.5 text-[#6366f1] transition-colors hover:bg-indigo-50"
-                        title="Editar"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </button>
-                      {currentUser?.id !== u.id && (
-                        <button
-                          onClick={() => setConfirmarEstado(u)}
-                          className={`rounded-lg p-1.5 transition-colors ${
-                            esActivo(u)
-                              ? 'text-red-500 hover:bg-red-50'
-                              : 'text-green-500 hover:bg-green-50'
-                          }`}
-                          title={esActivo(u) ? 'Desactivar' : 'Reactivar'}
-                        >
-                          {esActivo(u) ? (
-                            <UserX className="h-4 w-4" />
-                          ) : (
-                            <UserCheck className="h-4 w-4" />
+                      {esSuperAdmin ? (
+                        <>
+                          <button
+                            onClick={() => abrirEditar(u)}
+                            className="rounded-lg p-1.5 text-[#6366f1] transition-colors hover:bg-indigo-50"
+                            title="Editar"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          {currentUser?.id !== u.id && (
+                            <button
+                              onClick={() => setConfirmarEstado(u)}
+                              className={`rounded-lg p-1.5 transition-colors ${
+                                esActivo(u)
+                                  ? 'text-red-500 hover:bg-red-50'
+                                  : 'text-green-500 hover:bg-green-50'
+                              }`}
+                              title={esActivo(u) ? 'Desactivar' : 'Reactivar'}
+                            >
+                              {esActivo(u) ? (
+                                <UserX className="h-4 w-4" />
+                              ) : (
+                                <UserCheck className="h-4 w-4" />
+                              )}
+                            </button>
                           )}
-                        </button>
+                          {currentUser?.id !== u.id && (
+                            <button
+                              onClick={() => setConfirmarCierreSesion(u)}
+                              className="rounded-lg p-1.5 text-amber-600 transition-colors hover:bg-amber-50"
+                              title="Forzar cierre de sesión"
+                            >
+                              <LogOut className="h-4 w-4" />
+                            </button>
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-xs text-gray-300">—</span>
                       )}
                     </div>
                   </td>
@@ -372,6 +412,15 @@ export default function UsuariosPage() {
         onConfirmar={toggleEstado}
         onCancelar={() => setConfirmarEstado(null)}
         colorConfirmar={confirmarEstado && esActivo(confirmarEstado) ? '#ef4444' : '#10b981'}
+      />
+
+      <ConfirmDialog
+        abierto={!!confirmarCierreSesion}
+        titulo="Forzar cierre de sesión"
+        mensaje={confirmarCierreSesion ? `¿Invalidar de inmediato cualquier sesión activa de ${confirmarCierreSesion.nombre}? Deberá volver a iniciar sesión.` : ''}
+        onConfirmar={forzarCierreSesion}
+        onCancelar={() => setConfirmarCierreSesion(null)}
+        colorConfirmar="#d97706"
       />
     </div>
   );

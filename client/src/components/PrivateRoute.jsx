@@ -1,7 +1,9 @@
 import { Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { rolSatisface } from '../utils/roles';
 
 const ROL_HOME = {
+  SuperAdmin: '/dashboard',
   Administrador: '/dashboard',
   Gerente: '/dashboard',
   Vendedor: '/ventas',
@@ -23,7 +25,7 @@ export default function PrivateRoute({ roles, children }) {
     return <Navigate to="/login" replace />;
   }
 
-  if (roles && !roles.includes(usuario?.rol)) {
+  if (roles && !rolSatisface(usuario?.rol, roles)) {
     const destino = ROL_HOME[usuario?.rol] || '/dashboard';
     return <Navigate to={destino} replace />;
   }

@@ -24,7 +24,7 @@ const Usuario = sequelize.define('Usuario', {
     allowNull: false,
   },
   rol: {
-    type: DataTypes.ENUM('Administrador', 'Vendedor', 'Almacenero', 'Gerente'),
+    type: DataTypes.ENUM('Administrador', 'Vendedor', 'Almacenero', 'Gerente', 'SuperAdmin'),
     allowNull: false,
   },
   activo: {
@@ -50,6 +50,11 @@ const Usuario = sequelize.define('Usuario', {
   bloqueo_hasta: {
     type: DataTypes.DATE,
     allowNull: true,
+  },
+  session_version: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0,
   },
 }, {
   tableName: 'usuarios',
