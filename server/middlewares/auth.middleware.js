@@ -8,6 +8,12 @@ const { Usuario } = require('../models');
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
+const MENSAJES_MOTIVO = {
+  'Nueva sesion': 'Se inició sesión con esta cuenta en otro dispositivo o pestaña. Tu sesión se cerró.',
+  'Cambio de contraseña': 'La contraseña de tu cuenta fue cambiada. Vuelve a iniciar sesión.',
+  'Cierre forzado por SuperAdmin': 'Un SuperAdmin cerró tu sesión.',
+};
+
 /**
  * Verifica que la petición incluya un JWT válido en el header
  * Authorization: Bearer <token>. Además de la firma, valida contra la BD que
@@ -31,11 +37,20 @@ const verificarToken = async (req, res, next) => {
     const payload = jwt.verify(token, JWT_SECRET);
 
     const usuario = await Usuario.findByPk(payload.id, {
-      attributes: ['id', 'rol', 'activo', 'session_version'],
+      attributes: ['id', 'rol', 'activo', 'session_version', 'motivo_sesion_cerrada'],
     });
 
-    if (!usuario || !usuario.activo || usuario.session_version !== payload.sv) {
-      return res.status(401).json({ mensaje: 'Token inválido o expirado' });
+    if (!usuario) {
+      return res.status(401).json({ mensaje: 'Token inválido o expirado', motivo: 'token_invalido' });
+    }
+
+    if (!usuario.activo) {
+      return res.status(401).json({ mensaje: 'Tu cuenta ha sido desactivada.', motivo: 'cuenta_desactivada' });
+    }
+
+    if (usuario.session_version !== payload.sv) {
+      const mensaje = MENSAJES_MOTIVO[usuario.motivo_sesion_cerrada] || 'Tu sesión ha expirado. Vuelve a iniciar sesión.';
+      return res.status(401).json({ mensaje, motivo: 'sesion_cerrada' });
     }
 
     req.usuario = { id: usuario.id, rol: usuario.rol };

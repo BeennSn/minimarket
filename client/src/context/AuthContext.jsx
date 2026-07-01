@@ -1,6 +1,12 @@
 import { createContext, useContext, useState, useEffect } from 'react';
+import api from '../utils/axios';
 
 const AuthContext = createContext(null);
+
+// Cada cuántos ms se revisa que la sesión siga activa (cuenta desactivada,
+// contraseña cambiada, cierre forzado por SuperAdmin, o login desde otra
+// pestaña/dispositivo). El interceptor de axios reacciona al 401 resultante.
+const INTERVALO_HEARTBEAT = 12000;
 
 export function AuthProvider({ children }) {
   const [usuario, setUsuario] = useState(null);
@@ -20,6 +26,14 @@ export function AuthProvider({ children }) {
     }
     setLoading(false);
   }, []);
+
+  useEffect(() => {
+    if (!token) return;
+    const intervalo = setInterval(() => {
+      api.get('/auth/me').catch(() => {});
+    }, INTERVALO_HEARTBEAT);
+    return () => clearInterval(intervalo);
+  }, [token]);
 
   const login = (data) => {
     if (data.token) localStorage.setItem('token', data.token);

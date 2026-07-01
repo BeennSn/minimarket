@@ -2,7 +2,7 @@ const bcrypt = require('bcryptjs');
 const jwt    = require('jsonwebtoken');
 
 const { Usuario, LogAcceso } = require('../models');
-const { presentarLogin }     = require('../presenters/auth.presenter');
+const { presentarLogin, presentarUsuario } = require('../presenters/auth.presenter');
 const { enviarCorreo } = require('../services/mail.service');
 
 const JWT_SECRET     = process.env.JWT_SECRET;
@@ -40,6 +40,9 @@ const login = async (req, res) => {
 
     usuario.intentos_fallidos = 0;
     usuario.bloqueo_hasta = null;
+    // Cada login invalida cualquier sesión previa de esta cuenta (una sola sesión activa a la vez).
+    usuario.motivo_sesion_cerrada = 'Nueva sesion';
+    usuario.session_version = (usuario.session_version || 0) + 1;
     await usuario.save();
 
     const token = jwt.sign(
@@ -64,6 +67,22 @@ const login = async (req, res) => {
 
 const logout = (req, res) => {
   return res.status(200).json({ mensaje: 'Sesión cerrada correctamente' });
+};
+
+// Endpoint liviano usado por el frontend (heartbeat) para detectar, sin esperar
+// a la próxima acción del usuario, que la sesión fue invalidada (cuenta
+// desactivada, cambio de contraseña, cierre forzado o login en otro lugar).
+const me = async (req, res) => {
+  try {
+    const usuario = await Usuario.findByPk(req.usuario.id);
+    if (!usuario) {
+      return res.status(404).json({ mensaje: 'Usuario no encontrado' });
+    }
+    return res.status(200).json(presentarUsuario(usuario));
+  } catch (err) {
+    console.error('Error en me:', err);
+    return res.status(500).json({ mensaje: 'Error interno del servidor' });
+  }
 };
 
 // ─── Reset de contraseña ─────────────────────────────────────────────────────
@@ -169,6 +188,7 @@ const resetPassword = async (req, res) => {
     usuario.reset_used = false;
     usuario.intentos_fallidos = 0;
     usuario.bloqueo_hasta = null;
+    usuario.motivo_sesion_cerrada = 'Cambio de contraseña';
     usuario.session_version = (usuario.session_version || 0) + 1;
     await usuario.save();
 
@@ -187,4 +207,4 @@ const resetPassword = async (req, res) => {
   }
 };
 
-module.exports = { login, logout, forgotPassword, resetPassword, validatePassword };
+module.exports = { login, logout, me, forgotPassword, resetPassword, validatePassword };

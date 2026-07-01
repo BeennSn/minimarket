@@ -132,6 +132,7 @@ const cambiarPassword = async (req, res) => {
     }
 
     usuario.password_hash = await bcrypt.hash(password_nueva, 10);
+    usuario.motivo_sesion_cerrada = 'Cambio de contraseña';
     usuario.session_version = (usuario.session_version || 0) + 1;
     await usuario.save();
 
@@ -150,6 +151,7 @@ const forzarCierreSesion = async (req, res) => {
       return res.status(404).json({ mensaje: 'Usuario no encontrado' });
     }
 
+    usuario.motivo_sesion_cerrada = 'Cierre forzado por SuperAdmin';
     usuario.session_version = (usuario.session_version || 0) + 1;
     await usuario.save();
 

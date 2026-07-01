@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import api from '../../utils/axios';
 
 const ROL_REDIRECT = {
+  SuperAdmin: '/dashboard',
   Administrador: '/dashboard',
   Gerente: '/dashboard',
   Vendedor: '/ventas',
@@ -20,12 +21,21 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [avisoSesionCerrada, setAvisoSesionCerrada] = useState('');
 
   useEffect(() => {
     if (token && usuario?.rol) {
       navigate(ROL_REDIRECT[usuario.rol] || '/dashboard', { replace: true });
     }
   }, [token, usuario, navigate]);
+
+  useEffect(() => {
+    const mensaje = sessionStorage.getItem('auth_logout_mensaje');
+    if (mensaje) {
+      setAvisoSesionCerrada(mensaje);
+      sessionStorage.removeItem('auth_logout_mensaje');
+    }
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -51,6 +61,12 @@ export default function LoginPage() {
           <h1 className="mt-3 text-2xl font-bold text-gray-800">Minimarket</h1>
           <p className="mt-1 text-sm text-gray-500">Inicia sesión para continuar</p>
         </div>
+
+        {avisoSesionCerrada && (
+          <div className="mb-4 rounded-lg bg-amber-50 px-4 py-2.5 text-sm text-amber-700">
+            {avisoSesionCerrada}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>

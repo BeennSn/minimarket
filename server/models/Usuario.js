@@ -56,6 +56,10 @@ const Usuario = sequelize.define('Usuario', {
     allowNull: false,
     defaultValue: 0,
   },
+  motivo_sesion_cerrada: {
+    type: DataTypes.ENUM('Nueva sesion', 'Cambio de contraseña', 'Cierre forzado por SuperAdmin'),
+    allowNull: true,
+  },
 }, {
   tableName: 'usuarios',
   timestamps: true,

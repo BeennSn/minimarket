@@ -16,6 +16,10 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
+      const yaHabiaSesion = !!localStorage.getItem('token');
+      if (yaHabiaSesion && error.response?.data?.motivo) {
+        sessionStorage.setItem('auth_logout_mensaje', error.response.data.mensaje || 'Tu sesión se cerró.');
+      }
       localStorage.removeItem('token');
       localStorage.removeItem('usuario');
       window.location.href = '/login';
