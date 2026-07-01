@@ -43,6 +43,10 @@ export function AuthProvider({ children }) {
   };
 
   const logout = () => {
+    // Best-effort: avisa al servidor para liberar el cupo de "sesión activa" de
+    // esta cuenta (ver login() en auth.controller.js). No se espera la
+    // respuesta para no demorar el cierre de sesión local.
+    api.post('/auth/logout').catch(() => {});
     localStorage.removeItem('token');
     localStorage.removeItem('usuario');
     setToken(null);

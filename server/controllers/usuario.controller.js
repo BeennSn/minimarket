@@ -134,6 +134,9 @@ const cambiarPassword = async (req, res) => {
     usuario.password_hash = await bcrypt.hash(password_nueva, 10);
     usuario.motivo_sesion_cerrada = 'Cambio de contraseña';
     usuario.session_version = (usuario.session_version || 0) + 1;
+    // Libera el cupo de sesión: si no, la propia cuenta quedaría bloqueada para
+    // volver a iniciar sesión (login() rechaza si sesion_activa sigue en true).
+    usuario.sesion_activa = false;
     await usuario.save();
 
     return res.status(200).json({ mensaje: 'Contraseña actualizada correctamente' });
@@ -153,6 +156,8 @@ const forzarCierreSesion = async (req, res) => {
 
     usuario.motivo_sesion_cerrada = 'Cierre forzado por SuperAdmin';
     usuario.session_version = (usuario.session_version || 0) + 1;
+    // Libera el cupo para que la cuenta pueda volver a iniciar sesión de inmediato.
+    usuario.sesion_activa = false;
     await usuario.save();
 
     return res.status(200).json({ mensaje: 'Sesiones cerradas correctamente' });
@@ -171,6 +176,7 @@ const desactivar = async (req, res) => {
     }
 
     usuario.activo = false;
+    usuario.sesion_activa = false;
     await usuario.save();
 
     return res.status(200).json({ mensaje: 'Usuario desactivado' });

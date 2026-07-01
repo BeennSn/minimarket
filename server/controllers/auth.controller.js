@@ -38,11 +38,26 @@ const login = async (req, res) => {
       return res.status(401).json({ mensaje: 'Credenciales incorrectas' });
     }
 
+    // Solo una sesión activa a la vez: si ya hay una, se rechaza el nuevo login
+    // en vez de cerrar la existente (evita que "gane" quien haya iniciado sesión
+    // más recientemente, que en un intento de intrusión suele ser el atacante).
+    if (usuario.sesion_activa) {
+      await LogAcceso.create({
+        usuario_id:     usuario.id,
+        nombre_usuario: usuario.nombre,
+        rol:            usuario.rol,
+        fecha_hora:     new Date(),
+        detalle: 'Intento de inicio de sesión bloqueado — ya había una sesión activa',
+      });
+      return res.status(409).json({
+        mensaje: 'Ya hay una sesión activa con esta cuenta. Cierra sesión desde el otro dispositivo, o pide a un SuperAdmin que la cierre.',
+        motivo: 'sesion_ya_activa',
+      });
+    }
+
     usuario.intentos_fallidos = 0;
     usuario.bloqueo_hasta = null;
-    // Cada login invalida cualquier sesión previa de esta cuenta (una sola sesión activa a la vez).
-    usuario.motivo_sesion_cerrada = 'Nueva sesion';
-    usuario.session_version = (usuario.session_version || 0) + 1;
+    usuario.sesion_activa = true;
     await usuario.save();
 
     const token = jwt.sign(
@@ -65,8 +80,14 @@ const login = async (req, res) => {
   }
 };
 
-const logout = (req, res) => {
-  return res.status(200).json({ mensaje: 'Sesión cerrada correctamente' });
+const logout = async (req, res) => {
+  try {
+    await Usuario.update({ sesion_activa: false }, { where: { id: req.usuario.id } });
+    return res.status(200).json({ mensaje: 'Sesión cerrada correctamente' });
+  } catch (err) {
+    console.error('Error en logout:', err);
+    return res.status(500).json({ mensaje: 'Error interno del servidor' });
+  }
 };
 
 // Endpoint liviano usado por el frontend (heartbeat) para detectar, sin esperar
@@ -190,6 +211,7 @@ const resetPassword = async (req, res) => {
     usuario.bloqueo_hasta = null;
     usuario.motivo_sesion_cerrada = 'Cambio de contraseña';
     usuario.session_version = (usuario.session_version || 0) + 1;
+    usuario.sesion_activa = false;
     await usuario.save();
 
     await LogAcceso.create({
