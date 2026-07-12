@@ -11,6 +11,7 @@ const JWT_SECRET = process.env.JWT_SECRET;
 const MENSAJES_MOTIVO = {
   'Cambio de contraseña': 'La contraseña de tu cuenta fue cambiada. Vuelve a iniciar sesión.',
   'Cierre forzado por SuperAdmin': 'Un SuperAdmin cerró tu sesión.',
+  'Nuevo inicio de sesión en otro dispositivo': 'Se inició sesión con esta cuenta desde otro dispositivo.',
 };
 
 /**
@@ -20,9 +21,9 @@ const MENSAJES_MOTIVO = {
  * así, cambiar la contraseña o forzar el cierre de sesión (ver
  * usuario.controller.js → forzarCierreSesion) invalida el token de inmediato
  * en vez de esperar a que expire por sí solo. El control de "una sola sesión
- * activa a la vez" ocurre en login() (auth.controller.js), que rechaza el
- * nuevo inicio de sesión si `sesion_activa` ya está en true, en vez de cerrar
- * la sesión existente.
+ * activa a la vez" ocurre en login() (auth.controller.js): si `sesion_activa`
+ * ya está en true, se cierra esa sesión anterior (subiendo `session_version`)
+ * y se permite el nuevo inicio de sesión.
  * Si es válido, guarda { id, rol } (rol siempre leído en vivo de la BD) en
  * req.usuario y llama a next().
  */

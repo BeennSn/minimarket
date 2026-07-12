@@ -38,20 +38,18 @@ const login = async (req, res) => {
       return res.status(401).json({ mensaje: 'Credenciales incorrectas' });
     }
 
-    // Solo una sesión activa a la vez: si ya hay una, se rechaza el nuevo login
-    // en vez de cerrar la existente (evita que "gane" quien haya iniciado sesión
-    // más recientemente, que en un intento de intrusión suele ser el atacante).
+    // Solo una sesión activa a la vez: si ya hay una, se cierra automáticamente
+    // (sube session_version, invalidando el token anterior) y se permite el
+    // nuevo login, en vez de rechazarlo.
     if (usuario.sesion_activa) {
+      usuario.motivo_sesion_cerrada = 'Nuevo inicio de sesión en otro dispositivo';
+      usuario.session_version = (usuario.session_version || 0) + 1;
       await LogAcceso.create({
         usuario_id:     usuario.id,
         nombre_usuario: usuario.nombre,
         rol:            usuario.rol,
         fecha_hora:     new Date(),
-        detalle: 'Intento de inicio de sesión bloqueado — ya había una sesión activa',
-      });
-      return res.status(409).json({
-        mensaje: 'Ya hay una sesión activa con esta cuenta. Cierra sesión desde el otro dispositivo, o pide a un SuperAdmin que la cierre.',
-        motivo: 'sesion_ya_activa',
+        detalle: 'Sesión anterior cerrada automáticamente por nuevo inicio de sesión',
       });
     }
 
