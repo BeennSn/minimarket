@@ -6,7 +6,11 @@ const router = Router();
 
 router.use(verificarToken);
 
-router.get('/', clienteController.listar);
+router.get(
+  '/',
+  verificarRol('Administrador', 'Gerente'),
+  clienteController.listar
+);
 
 router.post(
   '/buscar-o-crear',

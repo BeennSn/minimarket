@@ -1,5 +1,7 @@
 const { Cliente, Venta } = require('../models');
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 const buscarOCrear = async (req, res) => {
   try {
     const { nombre, dni, email } = req.body;
@@ -45,6 +47,10 @@ const actualizar = async (req, res) => {
   try {
     const { id } = req.params;
     const { email } = req.body;
+
+    if (email && !EMAIL_REGEX.test(email)) {
+      return res.status(400).json({ mensaje: 'Formato de email inválido' });
+    }
 
     const cliente = await Cliente.findByPk(id);
     if (!cliente) return res.status(404).json({ mensaje: 'Cliente no encontrado' });
