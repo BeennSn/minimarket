@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Loader2, Filter, X } from 'lucide-react';
 import api from '../../utils/axios';
-import { formatFechaHora } from '../../utils/format';
+import { formatFechaHora, fechaLocalISO } from '../../utils/format';
 import { useStockSync } from '../../context/StockSyncContext';
 import Breadcrumb from '../../components/Breadcrumb';
 import Spinner from '../../components/Spinner';
@@ -39,7 +39,7 @@ export default function InventarioPage() {
   const fechaMinima = useMemo(() => {
     const f = new Date();
     f.setDate(f.getDate() + DIAS_MINIMOS_VENCIMIENTO);
-    return f.toISOString().split('T')[0];
+    return fechaLocalISO(f);
   }, []);
 
   // Filtros — Entradas

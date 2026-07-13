@@ -1,5 +1,6 @@
 const { Op } = require('sequelize');
 const { EntradaMercaderia, ConsumoLote, Producto } = require('../models');
+const { hoyPeru } = require('../utils/fechas');
 
 // ─── Crear lote (entrada de mercadería) ───────────────────────────────────────
 const crearLote = async ({ producto_id, proveedor_id, cantidad, fecha_vencimiento, usuario_id, solicitud_id, costo_unitario, ajuste_id, cantidad_unidad_compra, unidad_compra_snapshot }, t) => {
@@ -44,13 +45,13 @@ const crearLote = async ({ producto_id, proveedor_id, cantidad, fecha_vencimient
 const consumirStockFIFO = async ({ producto_id, cantidad, tipo, referencia = {}, soloVigente = false }, t) => {
   const where = { producto_id, cantidad_restante: { [Op.gt]: 0 } };
   if (soloVigente) {
-    const hoy = new Date();
-    hoy.setHours(0, 0, 0, 0);
-    // Estrictamente después de hoy: un lote que vence hoy mismo ya NO se
-    // considera vigente (decisión de negocio: no se vende lo que vence hoy).
+    // Estrictamente después de hoy (en hora de Perú): un lote que vence hoy
+    // mismo ya NO se considera vigente (decisión de negocio: no se vende lo
+    // que vence hoy). Comparación fecha-contra-fecha (string), no
+    // fecha-contra-instante, para no arrastrar el desfase de zona horaria.
     where[Op.or] = [
       { fecha_vencimiento: null },
-      { fecha_vencimiento: { [Op.gt]: hoy } },
+      { fecha_vencimiento: { [Op.gt]: hoyPeru() } },
     ];
   }
 
@@ -131,15 +132,13 @@ const revertirConsumo = async ({ tipo, referencia_id }, t) => {
 // vence HOY mismo ya no cuenta como vigente —, para poder avisar de una vez
 // si el stock disponible está vencido, sin esperar a la transacción de la venta.
 const calcularStockVigente = async (producto_id) => {
-  const hoy = new Date();
-  hoy.setHours(0, 0, 0, 0);
   const lotes = await EntradaMercaderia.findAll({
     where: {
       producto_id,
       cantidad_restante: { [Op.gt]: 0 },
       [Op.or]: [
         { fecha_vencimiento: null },
-        { fecha_vencimiento: { [Op.gt]: hoy } },
+        { fecha_vencimiento: { [Op.gt]: hoyPeru() } },
       ],
     },
     attributes: ['cantidad_restante'],

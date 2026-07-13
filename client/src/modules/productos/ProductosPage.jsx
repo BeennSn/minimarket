@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Plus, Search, Pencil, EyeOff, Eye, X, Trash2, AlertTriangle, Loader2, Package, ScanLine } from 'lucide-react';
 import api from '../../utils/axios';
-import { formatMoneda, formatStock, formatFecha } from '../../utils/format';
+import { formatMoneda, formatStock, formatFecha, fechaLocalISO } from '../../utils/format';
 import { useAuth } from '../../context/AuthContext';
 import { useStockSync } from '../../context/StockSyncContext';
 import Breadcrumb from '../../components/Breadcrumb';
@@ -58,7 +58,7 @@ function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categor
   const inputCodigoRef = useRef(null);
   const esCreacion = !productoEditando;
 
-  const fechaMinima = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const fechaMinima = useMemo(() => fechaLocalISO(), []);
 
   const diasRestantesVenc = useMemo(() => {
     if (!fechaVencimiento) return null;

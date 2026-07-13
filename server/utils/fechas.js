@@ -23,4 +23,13 @@ function finDiaPeruExclusivo(fechaStr) {
   return new Date(inicio.getTime() + 24 * 60 * 60 * 1000);
 }
 
-module.exports = { inicioDiaPeru, finDiaPeruExclusivo };
+// Fecha de HOY en Perú como string 'YYYY-MM-DD' (no como instante). Para
+// comparar contra columnas DATEONLY (ej. fecha_vencimiento) hay que comparar
+// fecha contra fecha, no fecha contra un instante UTC — si no, el servidor
+// (que corre en UTC) puede pensar que "hoy" ya es mañana o que todavía es
+// ayer según la hora del día, y el corte de vencimiento queda corrido.
+function hoyPeru() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima' }).format(new Date());
+}
+
+module.exports = { inicioDiaPeru, finDiaPeruExclusivo, hoyPeru };

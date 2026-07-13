@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Loader2, CheckCircle, XCircle, PackageCheck, Plus, X, Check } from 'lucide-react';
 import api from '../../utils/axios';
-import { formatFecha } from '../../utils/format';
+import { formatFecha, fechaLocalISO } from '../../utils/format';
 import { useAuth } from '../../context/AuthContext';
 import { useStockSync } from '../../context/StockSyncContext';
 import Breadcrumb from '../../components/Breadcrumb';
@@ -278,7 +278,7 @@ function ModalCompletar({ abierto, onCerrar, solicitud, onCompletada }) {
   const fechaMinima = useMemo(() => {
     const f = new Date();
     f.setDate(f.getDate() + DIAS_MINIMOS_VENCIMIENTO);
-    return f.toISOString().split('T')[0];
+    return fechaLocalISO(f);
   }, []);
 
   useEffect(() => {

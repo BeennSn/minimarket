@@ -8,6 +8,7 @@ const { sequelize, Producto, Categoria, Proveedor, EntradaMercaderia } = require
 const { presentarProducto, presentarLista } = require('../presenters/producto.presenter');
 const { buscarEnApisExternas } = require('../services/barcodeService');
 const { crearLote } = require('../services/inventario.service');
+const { hoyPeru } = require('../utils/fechas');
 
 const validarFechaVencimiento = (fechaStr) => {
   if (!fechaStr) return null;
@@ -55,8 +56,6 @@ const obtenerProximasFechasVencimiento = async (productoIds) => {
 // llegar al backend de la venta.
 const obtenerStockVigente = async (productoIds) => {
   if (!productoIds.length) return new Map();
-  const hoy = new Date();
-  hoy.setHours(0, 0, 0, 0);
   const filas = await EntradaMercaderia.findAll({
     attributes: [
       'producto_id',
@@ -67,7 +66,7 @@ const obtenerStockVigente = async (productoIds) => {
       cantidad_restante: { [Op.gt]: 0 },
       [Op.or]: [
         { fecha_vencimiento: null },
-        { fecha_vencimiento: { [Op.gt]: hoy } },
+        { fecha_vencimiento: { [Op.gt]: hoyPeru() } },
       ],
     },
     group: ['producto_id'],

@@ -3,6 +3,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Download, Loader2, FileText, ShoppingCart, DollarSign, TrendingUp, AlertTriangle, CheckCircle, RefreshCw } from 'lucide-react';
 import api from '../../utils/axios';
+import { fechaLocalISO } from '../../utils/format';
 import { useStockSync } from '../../context/StockSyncContext';
 import Breadcrumb from '../../components/Breadcrumb';
 
@@ -117,7 +118,7 @@ export default function ReportesPage() {
     try {
       const d = datosRef.current;
       const hoy = new Date();
-      const tituloFecha = `Reporte del ${d.fechaInicio ? formatFechaCompleta(d.fechaInicio) : 'inicio'} al ${d.fechaHasta ? formatFechaCompleta(d.fechaHasta) : formatFechaCompleta(hoy.toISOString().split('T')[0])}`;
+      const tituloFecha = `Reporte del ${d.fechaInicio ? formatFechaCompleta(d.fechaInicio) : 'inicio'} al ${d.fechaHasta ? formatFechaCompleta(d.fechaHasta) : formatFechaCompleta(fechaLocalISO(hoy))}`;
 
       const doc = new jsPDF();
       let y = 20;
