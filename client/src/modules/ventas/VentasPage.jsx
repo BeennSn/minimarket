@@ -10,6 +10,38 @@ import { useConfiguracion } from '../../hooks/useConfiguracion';
 import api from '../../utils/axios';
 
 const ITEMS_PER_PAGE = 25;
+const MONTO_RECIBIDO_MAX = 999999.99;
+
+// Deja solo dígitos y un único punto decimal (bloquea "e", "+", "-", letras, etc.)
+// y limita a 6 dígitos enteros + 2 decimales, para blindar el input desde el origen.
+function sanitizarMontoRecibido(valor) {
+  let limpio = String(valor).replace(/[^0-9.]/g, '');
+
+  const primerPunto = limpio.indexOf('.');
+  if (primerPunto !== -1) {
+    limpio = limpio.slice(0, primerPunto + 1) + limpio.slice(primerPunto + 1).replace(/\./g, '');
+  }
+
+  let [entero, decimal] = limpio.split('.');
+  entero = (entero || '').slice(0, 6);
+  if (decimal !== undefined) {
+    decimal = decimal.slice(0, 2);
+    limpio = `${entero}.${decimal}`;
+  } else {
+    limpio = entero;
+  }
+
+  return limpio;
+}
+
+// Convierte el string del input a un número acotado a [0, MONTO_RECIBIDO_MAX],
+// para que ningún cálculo (vuelto, envío al backend) pueda arrastrar un valor
+// absurdo o en notación científica.
+function parsearMontoRecibido(valor) {
+  const num = parseFloat(valor);
+  if (!Number.isFinite(num) || num < 0) return 0;
+  return Math.min(num, MONTO_RECIBIDO_MAX);
+}
 
 function numeroALetras(num) {
   const u = ['', 'UN', 'DOS', 'TRES', 'CUATRO', 'CINCO', 'SEIS', 'SIETE', 'OCHO', 'NUEVE',
@@ -628,7 +660,7 @@ export default function VentasPage() {
   };
 
   const total = carrito.reduce((sum, item) => sum + item.precio * item.cantidad, 0);
-  const vuelto = montoRecibido ? parseFloat(montoRecibido) - total : 0;
+  const vuelto = montoRecibido ? parsearMontoRecibido(montoRecibido) - total : 0;
 
   const datosClienteValidos = () => {
     if (tipoComprobante === 'BoletaSimple') return true;
@@ -641,7 +673,7 @@ export default function VentasPage() {
 
   const puedeVender =
     carrito.length > 0 &&
-    (metodoPago !== 'Efectivo' || (montoRecibido && parseFloat(montoRecibido) >= total)) &&
+    (metodoPago !== 'Efectivo' || (montoRecibido && parsearMontoRecibido(montoRecibido) >= total)) &&
     (metodoPago !== 'Yape' || yapeVerificado) &&
     datosClienteValidos();
 
@@ -749,7 +781,7 @@ export default function VentasPage() {
       const body = {
         cliente_id: tipoComprobante === 'BoletaDNI' ? clienteId : null,
         metodo_pago: metodoPago,
-        monto_recibido: metodoPago === 'Efectivo' ? parseFloat(montoRecibido) : null,
+        monto_recibido: metodoPago === 'Efectivo' ? parsearMontoRecibido(montoRecibido) : null,
         yape_verificado: metodoPago === 'Yape' ? yapeVerificado : false,
         referencia_pago: metodoPago === 'Yape' ? (referenciaPago.trim() || null) : null,
         items: carrito.map((item) => ({
@@ -1265,12 +1297,19 @@ export default function VentasPage() {
                   <div className="relative">
                     <Banknote className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                     <input
-                      type="number"
+                      type="text"
+                      inputMode="decimal"
                       value={montoRecibido}
-                      onChange={(e) => setMontoRecibido(e.target.value)}
+                      onChange={(e) => setMontoRecibido(sanitizarMontoRecibido(e.target.value))}
+                      onKeyDown={(e) => {
+                        if (['e', 'E', '+', '-'].includes(e.key)) e.preventDefault();
+                      }}
+                      onPaste={(e) => {
+                        e.preventDefault();
+                        const texto = e.clipboardData.getData('text');
+                        setMontoRecibido((prev) => sanitizarMontoRecibido(prev + texto));
+                      }}
                       placeholder="Monto recibido"
-                      min={0}
-                      step="0.01"
                       className="w-full rounded-lg border border-gray-200 px-4 py-2 pl-10 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                     />
                   </div>

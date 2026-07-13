@@ -51,8 +51,14 @@ const registrar = async (req, res) => {
       monto_total_prev += parseFloat(item.cantidad * producto.precio);
     }
 
-    if (metodo_pago === 'Efectivo' && parseFloat(monto_recibido || 0) < monto_total_prev) {
-      return res.status(400).json({ mensaje: 'Monto recibido insuficiente' });
+    if (metodo_pago === 'Efectivo') {
+      const montoRecibidoNum = parseFloat(monto_recibido);
+      if (!Number.isFinite(montoRecibidoNum) || montoRecibidoNum < 0 || montoRecibidoNum > 999999.99) {
+        return res.status(400).json({ mensaje: 'Monto recibido inválido' });
+      }
+      if (montoRecibidoNum < monto_total_prev) {
+        return res.status(400).json({ mensaje: 'Monto recibido insuficiente' });
+      }
     }
 
     const venta = await sequelize.transaction(async (t) => {
