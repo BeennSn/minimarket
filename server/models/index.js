@@ -39,6 +39,10 @@ Cliente.hasMany(Venta,   { foreignKey: 'cliente_id', as: 'ventas' });
 // Venta → Usuario (quien anuló)
 Venta.belongsTo(Usuario, { foreignKey: 'anulado_por', as: 'anulador' });
 
+// Venta → Turno (turno de caja bajo el cual se registró)
+Venta.belongsTo(Turno, { foreignKey: 'turno_id', as: 'turno' });
+Turno.hasMany(Venta,   { foreignKey: 'turno_id', as: 'ventas' });
+
 // DetalleVenta → Venta
 DetalleVenta.belongsTo(Venta, { foreignKey: 'venta_id', as: 'venta' });
 Venta.hasMany(DetalleVenta,   { foreignKey: 'venta_id', as: 'detalles' });

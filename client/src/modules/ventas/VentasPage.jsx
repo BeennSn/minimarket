@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Search, User, X, Trash2, Minus, Plus, Banknote,
   CheckCircle, Loader2, ShoppingCart, ChevronLeft, ChevronRight,
-  ScanLine, ChevronDown, ChevronUp, FileText, Camera, QrCode,
+  ScanLine, ChevronDown, ChevronUp, FileText, Camera, QrCode, AlertTriangle,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useStockSync } from '../../context/StockSyncContext';
@@ -194,6 +195,13 @@ export default function VentasPage() {
   const [rucInfo, setRucInfo] = useState(null);
   const [clienteId, setClienteId] = useState(null);
 
+  // undefined = todavía cargando, null = no tiene turno abierto, objeto = turno activo.
+  // Esto es solo una guía de UX (deshabilitar el botón, mostrar el aviso antes de
+  // intentar vender); la validación real e infranqueable vive en el backend
+  // (venta.controller.js), así que aunque este estado quede desactualizado la
+  // venta jamás se procesa sin turno.
+  const [turnoActivo, setTurnoActivo] = useState(undefined);
+
   const cargarProductos = () => {
     api.get('/productos/activos').then(({ data }) => {
       setProductos(Array.isArray(data) ? data : []);
@@ -202,7 +210,19 @@ export default function VentasPage() {
     });
   };
 
+  const cargarTurno = () => {
+    if (esSoloLectura) return;
+    api.get('/caja/activo').then(({ data }) => {
+      setTurnoActivo(data);
+    }).catch(() => {
+      // Si falla la consulta no bloqueamos la UI por esto solo: el backend
+      // igual va a rechazar la venta si de verdad no hay turno abierto.
+      setTurnoActivo(null);
+    });
+  };
+
   useEffect(() => { cargarProductos(); }, [stockVersion]);
+  useEffect(() => { cargarTurno(); }, [esSoloLectura]);
 
   // Mantiene buscarRef siempre actualizado para usarlo desde el scanner sin closures stale
   useEffect(() => { buscarRef.current = buscarPorCodigo; });
@@ -363,7 +383,11 @@ export default function VentasPage() {
     return false;
   };
 
+  // null = ya se confirmó que no hay turno abierto (undefined = aún cargando, no bloquea)
+  const sinTurno = !esSoloLectura && turnoActivo === null;
+
   const puedeVender =
+    !sinTurno &&
     carrito.length > 0 &&
     (metodoPago !== 'Efectivo' || (montoRecibido && parsearMontoRecibido(montoRecibido) >= total)) &&
     (metodoPago !== 'Yape' || yapeVerificado) &&
@@ -456,6 +480,11 @@ export default function VentasPage() {
   const realizarVenta = async () => {
     setError('');
 
+    if (sinTurno) {
+      setError('No puedes realizar ventas porque no tienes un turno de caja abierto. Abre un turno para continuar.');
+      return;
+    }
+
     if (!datosClienteValidos()) {
       if (tipoComprobante === 'BoletaDNI') {
         setError(/^\d{8}$/.test(clienteDni)
@@ -540,6 +569,21 @@ export default function VentasPage() {
             </span>
           )}
         </div>
+
+        {sinTurno && (
+          <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            <AlertTriangle className="h-5 w-5 shrink-0 text-amber-500" />
+            <p className="flex-1">
+              No puedes realizar ventas porque no tienes un turno de caja abierto. Abre un turno para continuar.
+            </p>
+            <Link
+              to="/caja"
+              className="shrink-0 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-amber-600"
+            >
+              Ir a Mi Caja
+            </Link>
+          </div>
+        )}
 
         {!esSoloLectura && (
           <>

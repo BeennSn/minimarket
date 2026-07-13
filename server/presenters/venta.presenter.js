@@ -20,6 +20,7 @@ const presentarVenta = (venta) => ({
   cliente: venta.cliente
     ? { id: venta.cliente.id, nombre: venta.cliente.nombre, dni: venta.cliente.dni }
     : null,
+  turno_id:          venta.turno_id || null,
   metodo_pago:       venta.metodo_pago,
   monto_total:       venta.monto_total,
   monto_recibido:    venta.monto_recibido,

@@ -14,6 +14,14 @@ const INCLUDE_VENTA = [
   },
 ];
 
+// Único mensaje para "no hay turno utilizable": la consulta que lo produce
+// siempre está acotada a { usuario_id: req.usuario.id, estado: 'Abierto' },
+// así que un turno inexistente, uno cerrado o uno de otro vendedor son, desde
+// la perspectiva de este endpoint, exactamente el mismo caso — nunca se
+// aceptó ni se acepta un turno_id enviado por el cliente, por lo que no hay
+// forma de que una venta quede asociada al turno de otro usuario.
+const MSG_SIN_TURNO = 'No puedes realizar ventas porque no tienes un turno de caja abierto. Abre un turno para continuar.';
+
 const registrar = async (req, res) => {
   try {
     const { cliente_id, metodo_pago, monto_recibido, items, tipo_comprobante, cliente_dni, cliente_ruc, cliente_razon_social, cliente_direccion, yape_verificado, referencia_pago } = req.body;
@@ -24,6 +32,16 @@ const registrar = async (req, res) => {
 
     if (!['Efectivo', 'Yape'].includes(metodo_pago)) {
       return res.status(400).json({ mensaje: 'El método de pago debe ser Efectivo o Yape' });
+    }
+
+    // ─── Turno de caja obligatorio ─────────────────────────────────────────
+    // Validación de negocio (no solo de UI): sin un turno abierto del propio
+    // vendedor autenticado, la venta ni siquiera llega a tocar stock/BD.
+    const turnoActivo = await Turno.findOne({
+      where: { usuario_id: req.usuario.id, estado: 'Abierto' },
+    });
+    if (!turnoActivo) {
+      return res.status(400).json({ mensaje: MSG_SIN_TURNO });
     }
 
     for (const item of items) {
@@ -73,6 +91,19 @@ const registrar = async (req, res) => {
     }
 
     const venta = await sequelize.transaction(async (t) => {
+      // Re-verifica el turno con bloqueo de fila dentro de la transacción:
+      // cubre la ventana entre la validación previa (arriba) y este punto,
+      // por si el mismo vendedor cerró su turno desde otra pestaña/petición
+      // justo en el medio (evita una venta "huérfana" sin turno real).
+      const turno = await Turno.findOne({
+        where: { id: turnoActivo.id, usuario_id: req.usuario.id, estado: 'Abierto' },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+      if (!turno) {
+        throw { status: 400, mensaje: MSG_SIN_TURNO };
+      }
+
       let monto_total = 0;
       const detallesData = [];
 
@@ -105,6 +136,7 @@ const registrar = async (req, res) => {
       const nuevaVenta = await Venta.create({
         usuario_id:    req.usuario.id,
         cliente_id:    cliente_id || null,
+        turno_id:      turno.id,
         metodo_pago,
         monto_total:   monto_total.toFixed(2),
         monto_recibido: metodo_pago === 'Efectivo' ? monto_recibido : null,
@@ -136,22 +168,17 @@ const registrar = async (req, res) => {
         }, t);
       }
 
-      // Registrar movimiento en turno activo si existe (no bloquea la venta si no hay turno)
-      const turnoActivo = await Turno.findOne({
-        where: { usuario_id: req.usuario.id, estado: 'Abierto' },
-        transaction: t,
-      });
-      if (turnoActivo) {
-        await MovimientoCaja.create({
-          turno_id:    turnoActivo.id,
-          tipo:        'Venta',
-          descripcion: `Venta #${nuevaVenta.id}`,
-          metodo:      metodo_pago === 'Efectivo' ? 'Efectivo' : 'Yape',
-          monto:       monto_total.toFixed(2),
-          venta_id:    nuevaVenta.id,
-          usuario_id:  req.usuario.id,
-        }, { transaction: t });
-      }
+      // El turno ya fue validado y bloqueado arriba, así que el movimiento de
+      // caja de esta venta siempre queda registrado (antes era condicional).
+      await MovimientoCaja.create({
+        turno_id:    turno.id,
+        tipo:        'Venta',
+        descripcion: `Venta #${nuevaVenta.id}`,
+        metodo:      metodo_pago === 'Efectivo' ? 'Efectivo' : 'Yape',
+        monto:       monto_total.toFixed(2),
+        venta_id:    nuevaVenta.id,
+        usuario_id:  req.usuario.id,
+      }, { transaction: t });
 
       return { venta: nuevaVenta, detalles };
     });

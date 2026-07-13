@@ -23,6 +23,18 @@ const Venta = sequelize.define('Venta', {
       key: 'id',
     },
   },
+  // Turno de caja bajo el cual se registró la venta. Se permite NULL a nivel de
+  // columna únicamente para que el ALTER TABLE no falle sobre ventas históricas
+  // ya existentes; para ventas nuevas el controller siempre lo exige y lo
+  // completa (ver venta.controller.js).
+  turno_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: 'turnos',
+      key: 'id',
+    },
+  },
   metodo_pago: {
     type: DataTypes.ENUM('Efectivo', 'Yape'),
     allowNull: false,
