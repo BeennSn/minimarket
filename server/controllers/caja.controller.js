@@ -51,25 +51,33 @@ const abrir = async (req, res) => {
       return res.status(400).json({ mensaje: 'Ya tienes un turno abierto. Ciérralo antes de abrir uno nuevo.' });
     }
 
-    const turno = await sequelize.transaction(async (t) => {
-      const nuevoTurno = await Turno.create({
-        usuario_id:     req.usuario.id,
-        monto_apertura: parseFloat(monto_apertura),
-        estado:         'Abierto',
-        fecha_apertura: new Date(),
-      }, { transaction: t });
+    let turno;
+    try {
+      turno = await sequelize.transaction(async (t) => {
+        const nuevoTurno = await Turno.create({
+          usuario_id:     req.usuario.id,
+          monto_apertura: parseFloat(monto_apertura),
+          estado:         'Abierto',
+          fecha_apertura: new Date(),
+        }, { transaction: t });
 
-      await MovimientoCaja.create({
-        turno_id:    nuevoTurno.id,
-        tipo:        'Apertura',
-        descripcion: 'Apertura de turno',
-        metodo:      'Efectivo',
-        monto:       parseFloat(monto_apertura),
-        usuario_id:  req.usuario.id,
-      }, { transaction: t });
+        await MovimientoCaja.create({
+          turno_id:    nuevoTurno.id,
+          tipo:        'Apertura',
+          descripcion: 'Apertura de turno',
+          metodo:      'Efectivo',
+          monto:       parseFloat(monto_apertura),
+          usuario_id:  req.usuario.id,
+        }, { transaction: t });
 
-      return nuevoTurno;
-    });
+        return nuevoTurno;
+      });
+    } catch (err) {
+      if (err.name === 'SequelizeUniqueConstraintError') {
+        return res.status(400).json({ mensaje: 'Ya tienes un turno abierto. Ciérralo antes de abrir uno nuevo.' });
+      }
+      throw err;
+    }
 
     const turnoCompleto = await Turno.findByPk(turno.id, { include: INCLUDE_TURNO });
     return res.status(201).json(presentarTurno(turnoCompleto));

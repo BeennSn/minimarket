@@ -65,7 +65,8 @@ const registrar = async (req, res) => {
       let monto_total = 0;
       const detallesData = [];
 
-      for (const item of items) {
+      const itemsOrdenados = [...items].sort((a, b) => a.producto_id - b.producto_id);
+      for (const item of itemsOrdenados) {
         const producto = await Producto.findByPk(item.producto_id, { transaction: t, lock: t.LOCK.UPDATE });
         if (!producto || !producto.activo) throw { status: 400, mensaje: 'Producto no encontrado o inactivo' };
         if (producto.stock < item.cantidad) throw { status: 400, mensaje: `Stock insuficiente para: ${producto.nombre}` };
@@ -78,6 +79,10 @@ const registrar = async (req, res) => {
           precio_unitario: producto.precio,
           subtotal,
         });
+      }
+
+      if (metodo_pago === 'Efectivo' && parseFloat(monto_recibido) < monto_total) {
+        throw { status: 400, mensaje: 'Monto recibido insuficiente' };
       }
 
       const vuelto = metodo_pago === 'Efectivo'

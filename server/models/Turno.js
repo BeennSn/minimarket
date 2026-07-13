@@ -18,6 +18,9 @@ const Turno = sequelize.define('Turno', {
 }, {
   tableName: 'turnos',
   timestamps: false,
+  indexes: [
+    { unique: true, fields: ['usuario_id'], where: { estado: 'Abierto' }, name: 'turnos_usuario_abierto_unico' },
+  ],
 });
 
 module.exports = Turno;
