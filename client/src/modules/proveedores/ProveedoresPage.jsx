@@ -69,6 +69,10 @@ function ModalProveedor({ abierto, onCerrar, onGuardar, proveedorEditando }) {
         setErrorRuc(`RUC dado de baja en SUNAT (estado: ${data.estado})`);
         return;
       }
+      if (data.condicion && data.condicion.toUpperCase() !== 'HABIDO') {
+        setErrorRuc(`RUC con domicilio no habido en SUNAT (condición: ${data.condicion})`);
+        return;
+      }
       setRazonSocialRuc(data.razon_social || '');
       setRucValidado(true);
       if (!nombre.trim() && data.razon_social) setNombre(data.razon_social);
