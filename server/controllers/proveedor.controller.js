@@ -1,17 +1,20 @@
 const { Op } = require('sequelize');
+const { isValidPhoneNumber } = require('libphonenumber-js');
 const { Proveedor } = require('../models');
 const { presentarProveedor, presentarLista } = require('../presenters/proveedor.presenter');
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const TELEFONO_REGEX = /^\+?\d{6,15}$/;
 
-// Valida que el contacto, si se envía, sea un correo o un teléfono con formato válido.
+// Valida que el contacto, si se envía, sea un correo válido o un celular en
+// formato internacional E.164 (+<código país><número>) real para ese país
+// (mismas reglas de numeración que usan WhatsApp/Google, vía libphonenumber-js).
 function contactoInvalido(contacto) {
   if (contacto == null) return false;
   const v = String(contacto).trim();
   if (!v) return false;
   if (v.includes('@')) return !EMAIL_REGEX.test(v);
-  return !TELEFONO_REGEX.test(v.replace(/[\s-]/g, ''));
+  if (!v.startsWith('+')) return true;
+  return !isValidPhoneNumber(v);
 }
 
 const listar = async (req, res) => {

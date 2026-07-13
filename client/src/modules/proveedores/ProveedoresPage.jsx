@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Plus, Search, Pencil, UserX, UserCheck, X, Loader2 } from 'lucide-react';
+import { parsePhoneNumberFromString, getCountryCallingCode } from 'libphonenumber-js';
 import api from '../../utils/axios';
 import Breadcrumb from '../../components/Breadcrumb';
 import Spinner from '../../components/Spinner';
@@ -9,21 +10,48 @@ import { useAuth } from '../../context/AuthContext';
 import useToast from '../../hooks/useToast';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const TELEFONO_REGEX = /^\+?\d{6,15}$/;
 
-function validarContacto(valor) {
+const PAISES_TELEFONO = [
+  { code: 'PE', nombre: 'Perú' },
+  { code: 'CO', nombre: 'Colombia' },
+  { code: 'EC', nombre: 'Ecuador' },
+  { code: 'BO', nombre: 'Bolivia' },
+  { code: 'CL', nombre: 'Chile' },
+  { code: 'AR', nombre: 'Argentina' },
+  { code: 'BR', nombre: 'Brasil' },
+  { code: 'MX', nombre: 'México' },
+  { code: 'US', nombre: 'Estados Unidos' },
+  { code: 'ES', nombre: 'España' },
+  { code: 'CN', nombre: 'China' },
+];
+
+// Valida el correo; string vacío se considera válido (el campo es opcional).
+function validarCorreo(valor) {
   const v = valor.trim();
-  if (!v) return null;
-  if (v.includes('@')) {
-    return EMAIL_REGEX.test(v) ? null : 'Correo electrónico inválido';
+  if (!v) return { ok: true, valor: '' };
+  return EMAIL_REGEX.test(v) ? { ok: true, valor: v } : { ok: false, error: 'Correo electrónico inválido' };
+}
+
+// Valida el celular contra las reglas de numeración reales del país elegido
+// (misma librería que usan WhatsApp/Google); no confirma que la línea esté
+// activa, pero sí que el número podría existir de verdad para ese país.
+function validarCelular(numero, pais) {
+  const v = numero.trim();
+  if (!v) return { ok: true, valor: '' };
+  const telefono = parsePhoneNumberFromString(v, pais);
+  if (!telefono || !telefono.isValid()) {
+    return { ok: false, error: `Número de celular inválido para ${PAISES_TELEFONO.find((p) => p.code === pais)?.nombre || pais}` };
   }
-  return TELEFONO_REGEX.test(v.replace(/[\s-]/g, '')) ? null : 'Teléfono inválido (solo números, 6 a 15 dígitos)';
+  return { ok: true, valor: telefono.number };
 }
 
 function ModalProveedor({ abierto, onCerrar, onGuardar, proveedorEditando }) {
   const [nombre, setNombre] = useState('');
   const [ruc, setRuc] = useState('');
-  const [contacto, setContacto] = useState('');
+  const [tipoContacto, setTipoContacto] = useState('celular');
+  const [paisCelular, setPaisCelular] = useState('PE');
+  const [numeroCelular, setNumeroCelular] = useState('');
+  const [correoContacto, setCorreoContacto] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [errorRuc, setErrorRuc] = useState('');
@@ -35,24 +63,31 @@ function ModalProveedor({ abierto, onCerrar, onGuardar, proveedorEditando }) {
 
   useEffect(() => {
     if (abierto) {
-      if (proveedorEditando) {
-        setNombre(proveedorEditando.nombre || '');
-        setRuc(proveedorEditando.ruc || '');
-        setContacto(proveedorEditando.contacto || '');
-        // Un proveedor ya guardado se asume verificado; solo se re-exige si cambian el RUC.
-        setRucValidado(true);
-        setRazonSocialRuc('');
+      setNombre(proveedorEditando?.nombre || '');
+      setRuc(proveedorEditando?.ruc || '');
+
+      const c = proveedorEditando?.contacto || '';
+      if (c.includes('@')) {
+        setTipoContacto('correo');
+        setCorreoContacto(c);
+        setPaisCelular('PE');
+        setNumeroCelular('');
       } else {
-        setNombre('');
-        setRuc('');
-        setContacto('');
-        setRucValidado(false);
-        setRazonSocialRuc('');
+        const telefono = c ? parsePhoneNumberFromString(c) : null;
+        setTipoContacto('celular');
+        setPaisCelular(telefono?.country || 'PE');
+        setNumeroCelular(telefono ? telefono.nationalNumber : c.replace(/\D/g, ''));
+        setCorreoContacto('');
       }
+
+      // Un proveedor ya guardado se asume verificado; solo se re-exige si cambian el RUC.
+      setRucValidado(esCreacion ? false : true);
+      setRazonSocialRuc('');
       setError('');
       setErrorRuc('');
       setErrorContacto('');
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [abierto, proveedorEditando]);
 
   if (!abierto) return null;
@@ -99,14 +134,19 @@ function ModalProveedor({ abierto, onCerrar, onGuardar, proveedorEditando }) {
       setErrorRuc('Debes verificar el RUC con SUNAT antes de continuar');
       return;
     }
-    const errContacto = validarContacto(contacto);
-    setErrorContacto(errContacto || '');
-    if (errContacto) return;
+    const resultadoContacto = tipoContacto === 'correo'
+      ? validarCorreo(correoContacto)
+      : validarCelular(numeroCelular, paisCelular);
+    if (!resultadoContacto.ok) {
+      setErrorContacto(resultadoContacto.error);
+      return;
+    }
+    setErrorContacto('');
 
     setLoading(true);
 
     try {
-      const payload = { nombre, ruc, contacto };
+      const payload = { nombre, ruc, contacto: resultadoContacto.valor };
       if (esCreacion) {
         await api.post('/proveedores', payload);
       } else {
@@ -182,14 +222,69 @@ function ModalProveedor({ abierto, onCerrar, onGuardar, proveedorEditando }) {
 
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">Contacto</label>
-            <input
-              type="text"
-              value={contacto}
-              onChange={(e) => { setContacto(e.target.value); setErrorContacto(''); }}
-              onBlur={() => setErrorContacto(validarContacto(contacto) || '')}
-              placeholder="Teléfono o email de contacto"
-              className="w-full rounded-lg border border-gray-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-            />
+            <div className="mb-2 flex gap-2">
+              <button
+                type="button"
+                onClick={() => { setTipoContacto('celular'); setErrorContacto(''); }}
+                className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                  tipoContacto === 'celular'
+                    ? 'bg-indigo-100 text-indigo-700'
+                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                }`}
+              >
+                Celular
+              </button>
+              <button
+                type="button"
+                onClick={() => { setTipoContacto('correo'); setErrorContacto(''); }}
+                className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                  tipoContacto === 'correo'
+                    ? 'bg-indigo-100 text-indigo-700'
+                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                }`}
+              >
+                Correo
+              </button>
+            </div>
+
+            {tipoContacto === 'celular' ? (
+              <div className="flex gap-2">
+                <select
+                  value={paisCelular}
+                  onChange={(e) => { setPaisCelular(e.target.value); setErrorContacto(''); }}
+                  className="rounded-lg border border-gray-200 px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                >
+                  {PAISES_TELEFONO.map((p) => (
+                    <option key={p.code} value={p.code}>
+                      {p.nombre} (+{getCountryCallingCode(p.code)})
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="text"
+                  value={numeroCelular}
+                  onChange={(e) => { setNumeroCelular(e.target.value.replace(/\D/g, '')); setErrorContacto(''); }}
+                  onBlur={() => {
+                    const r = validarCelular(numeroCelular, paisCelular);
+                    setErrorContacto(r.ok ? '' : r.error);
+                  }}
+                  placeholder="Número de celular"
+                  className="flex-1 rounded-lg border border-gray-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                />
+              </div>
+            ) : (
+              <input
+                type="text"
+                value={correoContacto}
+                onChange={(e) => { setCorreoContacto(e.target.value); setErrorContacto(''); }}
+                onBlur={() => {
+                  const r = validarCorreo(correoContacto);
+                  setErrorContacto(r.ok ? '' : r.error);
+                }}
+                placeholder="proveedor@ejemplo.com"
+                className="w-full rounded-lg border border-gray-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              />
+            )}
             {errorContacto && (
               <p className="mt-1 text-xs text-red-500">{errorContacto}</p>
             )}
