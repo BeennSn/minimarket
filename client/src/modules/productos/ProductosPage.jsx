@@ -384,6 +384,11 @@ function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categor
               className="w-full rounded-lg border border-gray-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
             />
             <p className="mt-1 text-xs text-gray-400">Punto de reorden propio de este producto para el reporte de Stock Crítico.</p>
+            {esCreacion && stockMinimo !== '' && parseInt(stockMinimo, 10) > (parseInt(stock, 10) || 0) && (
+              <p className="mt-1 text-xs text-orange-500">
+                ⚠ El stock mínimo es mayor al stock inicial — este producto aparecerá como crítico de inmediato.
+              </p>
+            )}
           </div>
 
           {esCreacion && (
