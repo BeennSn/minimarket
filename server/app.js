@@ -53,11 +53,22 @@ const dbReady = sequelize
   });
 
 // En serverless (Vercel) cada invocación "fría" puede recibir requests antes
-// de que termine el sync/alter de arriba: sin este middleware, una query podía
+// de que termine el sync/alter de arriba: sin esperar un poco, una query podía
 // ejecutarse contra columnas que el ALTER TABLE todavía no había creado
 // (ej. "column serie_boleta does not exist") y tumbar el endpoint con 500.
+//
+// OJO: la espera tiene un tope corto. Si se esperara a dbReady sin límite,
+// una sincronización lenta o trabada (ej. contención de conexiones con la BD)
+// colgaría TODAS las rutas —incluso las que no tocan la tabla que cambió,
+// como /api/auth/login— hasta que Vercel corta la función a los 30s (504).
+// Con el tope, en el peor caso una request sigue de largo y, si la columna
+// todavía no existe, el catch del controller responde con un 500 normal y
+// rápido en vez de colgar toda la API.
+const DB_READY_TIMEOUT_MS = 4000;
+const esperarBrevePorDbReady = () => new Promise((resolve) => setTimeout(resolve, DB_READY_TIMEOUT_MS));
+
 app.use(async (req, res, next) => {
-  await dbReady;
+  await Promise.race([dbReady, esperarBrevePorDbReady()]);
   next();
 });
 
