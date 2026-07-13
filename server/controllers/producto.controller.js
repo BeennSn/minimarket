@@ -7,18 +7,7 @@ const { Op } = require('sequelize');
 const { sequelize, Producto, Categoria, Proveedor, EntradaMercaderia } = require('../models');
 const { presentarProducto, presentarLista } = require('../presenters/producto.presenter');
 const { buscarEnApisExternas } = require('../services/barcodeService');
-const { crearLote } = require('../services/inventario.service');
 const { hoyPeru } = require('../utils/fechas');
-
-const validarFechaVencimiento = (fechaStr) => {
-  if (!fechaStr) return null;
-  const fecha = new Date(fechaStr + 'T00:00:00');
-  const hoy = new Date();
-  hoy.setHours(0, 0, 0, 0);
-  if (isNaN(fecha.getTime())) return 'Fecha de vencimiento inválida';
-  if (fecha < hoy) return 'La fecha de vencimiento no puede ser anterior a hoy';
-  return null;
-};
 
 const UNIDADES_COMPRA = ['Unidad', 'Caja', 'Paquete', 'Docena', 'Otro'];
 
@@ -201,7 +190,7 @@ const obtener = async (req, res) => {
 // ─── Crear un nuevo producto ──────────────────────────────────────────────────
 const crear = async (req, res) => {
   try {
-    const { nombre, marca, categoria_id, proveedor_id, precio, stock, codigo_barras, fecha_vencimiento, stock_minimo, unidad_compra, factor_conversion } = req.body;
+    const { nombre, marca, categoria_id, precio, codigo_barras, stock_minimo, unidad_compra, factor_conversion } = req.body;
 
     if (!nombre || !nombre.trim()) {
       return res.status(400).json({ mensaje: 'El nombre del producto es requerido' });
@@ -212,9 +201,6 @@ const crear = async (req, res) => {
     if (precio === undefined || precio === null || parseFloat(precio) <= 0) {
       return res.status(400).json({ mensaje: 'El precio debe ser mayor a 0' });
     }
-    if (stock !== undefined && stock !== null && (isNaN(parseInt(stock, 10)) || parseInt(stock, 10) < 0)) {
-      return res.status(400).json({ mensaje: 'El stock no puede ser negativo' });
-    }
     if (stock_minimo !== undefined && stock_minimo !== null && stock_minimo !== '' && (isNaN(parseInt(stock_minimo, 10)) || parseInt(stock_minimo, 10) < 0)) {
       return res.status(400).json({ mensaje: 'El stock mínimo no puede ser negativo' });
     }
@@ -224,19 +210,6 @@ const crear = async (req, res) => {
     if (factor_conversion !== undefined && factor_conversion !== null && factor_conversion !== '' && (isNaN(parseInt(factor_conversion, 10)) || parseInt(factor_conversion, 10) < 1)) {
       return res.status(400).json({ mensaje: 'El factor de conversión debe ser al menos 1' });
     }
-
-    const cantidadInicial = stock ? parseInt(stock, 10) : 0;
-
-    if (cantidadInicial > 0 && !proveedor_id) {
-      return res.status(400).json({ mensaje: 'Selecciona un proveedor para registrar el stock inicial' });
-    }
-
-    if (cantidadInicial > 0 && !fecha_vencimiento) {
-      return res.status(400).json({ mensaje: 'Indica la fecha de vencimiento para registrar el stock inicial' });
-    }
-
-    const errorFecha = validarFechaVencimiento(fecha_vencimiento);
-    if (errorFecha) return res.status(400).json({ mensaje: errorFecha });
 
     const duplicado = await Producto.findOne({ where: { nombre: nombre.trim(), marca: marca.trim() } });
     if (duplicado) {
@@ -258,45 +231,28 @@ const crear = async (req, res) => {
       }
     }
 
-    // Verificar que el proveedor exista
-    if (proveedor_id) {
-      const proveedor = await Proveedor.findByPk(proveedor_id);
-      if (!proveedor) {
-        return res.status(400).json({ mensaje: 'Proveedor no encontrado' });
-      }
-    }
-
-    const nuevo = await sequelize.transaction(async (t) => {
-      const productoCreado = await Producto.create({
-        nombre,
-        marca,
-        categoria_id,
-        proveedor_id: proveedor_id || null,
-        precio,
-        stock: 0,
-        codigo_barras: codigo_barras || null,
-        activo: true,
-        stock_minimo: stock_minimo !== undefined && stock_minimo !== null && stock_minimo !== '' ? parseInt(stock_minimo, 10) : null,
-        unidad_compra: unidad_compra || 'Unidad',
-        factor_conversion: factor_conversion !== undefined && factor_conversion !== null && factor_conversion !== '' ? parseInt(factor_conversion, 10) : 1,
-      }, { transaction: t });
-
-      if (cantidadInicial > 0) {
-        await crearLote({
-          producto_id: productoCreado.id,
-          proveedor_id,
-          cantidad: cantidadInicial,
-          fecha_vencimiento: fecha_vencimiento || null,
-          usuario_id: req.usuario.id,
-        }, t);
-      }
-
-      return productoCreado;
+    // El producto siempre nace con stock 0: el primer lote (cantidad,
+    // proveedor, fecha de vencimiento, costo) se registra aparte vía
+    // Inventario → Entradas (registrarEntrada), igual que cualquier reposición
+    // posterior — así todo movimiento de stock queda en el historial de
+    // EntradaMercaderia desde el día uno, sin excepciones "mágicas" en la
+    // creación del producto.
+    const productoCreado = await Producto.create({
+      nombre,
+      marca,
+      categoria_id,
+      precio,
+      stock: 0,
+      codigo_barras: codigo_barras || null,
+      activo: true,
+      stock_minimo: stock_minimo !== undefined && stock_minimo !== null && stock_minimo !== '' ? parseInt(stock_minimo, 10) : null,
+      unidad_compra: unidad_compra || 'Unidad',
+      factor_conversion: factor_conversion !== undefined && factor_conversion !== null && factor_conversion !== '' ? parseInt(factor_conversion, 10) : 1,
     });
 
-    const productoCreado = await Producto.findByPk(nuevo.id, { include: INCLUDE });
-    await adjuntarProximasFechas([productoCreado]);
-    return res.status(201).json(presentarProducto(productoCreado));
+    const productoCompleto = await Producto.findByPk(productoCreado.id, { include: INCLUDE });
+    await adjuntarProximasFechas([productoCompleto]);
+    return res.status(201).json(presentarProducto(productoCompleto));
   } catch (err) {
     if (err.status && err.mensaje) {
       return res.status(err.status).json({ mensaje: err.mensaje });

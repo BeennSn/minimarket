@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Plus, Search, Pencil, EyeOff, Eye, X, Trash2, AlertTriangle, Loader2, Package, ScanLine } from 'lucide-react';
 import api from '../../utils/axios';
-import { formatMoneda, formatStock, formatFecha, fechaLocalISO } from '../../utils/format';
+import { formatMoneda, formatStock, formatFecha } from '../../utils/format';
 import { useAuth } from '../../context/AuthContext';
 import { useStockSync } from '../../context/StockSyncContext';
 import Breadcrumb from '../../components/Breadcrumb';
@@ -35,18 +35,15 @@ function sanitizarPrecio(valor) {
   return limpio;
 }
 
-function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categorias, proveedores, onProductoExistente }) {
+function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categorias, onProductoExistente }) {
   const [nombre, setNombre] = useState('');
   const [marca, setMarca] = useState('');
   const [categoriaId, setCategoriaId] = useState('');
   const [precio, setPrecio] = useState('');
-  const [stock, setStock] = useState('');
   const [stockMinimo, setStockMinimo] = useState('');
   const [unidadCompra, setUnidadCompra] = useState('Unidad');
   const [factorConversion, setFactorConversion] = useState('1');
   const [codigoBarras, setCodigoBarras] = useState('');
-  const [fechaVencimiento, setFechaVencimiento] = useState('');
-  const [proveedorId, setProveedorId] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [buscandoCodigo, setBuscandoCodigo] = useState(false);
@@ -58,15 +55,6 @@ function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categor
   const inputCodigoRef = useRef(null);
   const esCreacion = !productoEditando;
 
-  const fechaMinima = useMemo(() => fechaLocalISO(), []);
-
-  const diasRestantesVenc = useMemo(() => {
-    if (!fechaVencimiento) return null;
-    return Math.ceil((new Date(fechaVencimiento + 'T00:00:00') - new Date()) / 86400000);
-  }, [fechaVencimiento]);
-
-  const requiereProveedor = esCreacion && parseInt(stock, 10) > 0;
-
   useEffect(() => {
     if (abierto) {
       if (productoEditando) {
@@ -74,7 +62,6 @@ function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categor
         setMarca(productoEditando.marca || '');
         setCategoriaId(productoEditando.categoria?.id ?? productoEditando.categoria_id ?? productoEditando.categoriaId ?? '');
         setPrecio(productoEditando.precio ?? '');
-        setStock(productoEditando.stock ?? '');
         setStockMinimo(productoEditando.stock_minimo ?? '');
         setUnidadCompra(productoEditando.unidad_compra || 'Unidad');
         setFactorConversion(String(productoEditando.factor_conversion ?? 1));
@@ -84,14 +71,11 @@ function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categor
         setMarca('');
         setCategoriaId(categorias.length > 0 ? categorias[0].id : '');
         setPrecio('');
-        setStock('');
         setStockMinimo('10');
         setUnidadCompra('Unidad');
         setFactorConversion('1');
         setCodigoBarras('');
-        setProveedorId('');
       }
-      setFechaVencimiento('');
       setError('');
       setBuscandoCodigo(false);
       setYaExiste(null);
@@ -137,12 +121,6 @@ function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categor
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-
-    if (requiereProveedor && !fechaVencimiento) {
-      setError('Debes indicar la fecha de vencimiento del lote inicial');
-      return;
-    }
-
     setLoading(true);
 
     try {
@@ -152,11 +130,6 @@ function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categor
         unidad_compra: unidadCompra,
         factor_conversion: factorConversion !== '' ? parseInt(factorConversion, 10) : 1,
       };
-      if (esCreacion) {
-        payload.stock = parseInt(stock, 10) || 0;
-        payload.fecha_vencimiento = fechaVencimiento || null;
-        if (requiereProveedor) payload.proveedor_id = proveedorId;
-      }
 
       if (esCreacion) {
         await api.post('/productos', payload);
@@ -357,19 +330,11 @@ function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categor
           )}
 
         {esCreacion && (
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">Stock inicial</label>
-              <input
-                type="number"
-                min="0"
-                value={stock}
-                onChange={(e) => setStock(e.target.value)}
-                required
-                className="w-full rounded-lg border border-gray-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-              />
-              <p className="mt-1 text-xs text-gray-400">Si ingresas stock, se crea un lote de inventario con ese vencimiento y proveedor.</p>
-            </div>
-          )}
+          <div className="rounded-lg border border-indigo-100 bg-indigo-50 px-4 py-3 text-xs text-indigo-700">
+            El producto se crea con <b>stock 0</b>. Para registrar el primer lote (cantidad,
+            proveedor, fecha de vencimiento), ve a <b>Inventario → Entradas</b> después de guardar.
+          </div>
+        )}
 
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">
@@ -389,58 +354,7 @@ function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categor
                 ? 'Valor preestablecido (10). Se puede ajustar más adelante editando el producto.'
                 : 'Punto de reorden propio de este producto para el reporte de Stock Crítico.'}
             </p>
-            {esCreacion && stockMinimo !== '' && parseInt(stockMinimo, 10) > (parseInt(stock, 10) || 0) && (
-              <p className="mt-1 text-xs text-orange-500">
-                ⚠ El stock mínimo es mayor al stock inicial — este producto aparecerá como crítico de inmediato.
-              </p>
-            )}
           </div>
-
-          {esCreacion && (
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">
-                Proveedor del lote inicial {requiereProveedor && <span className="text-red-500">*</span>}
-              </label>
-              <select
-                value={proveedorId}
-                onChange={(e) => setProveedorId(e.target.value)}
-                required={requiereProveedor}
-                disabled={!requiereProveedor}
-                className="w-full rounded-lg border border-gray-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:bg-gray-50 disabled:text-gray-400"
-              >
-                <option value="">Seleccionar...</option>
-                {proveedores.map((p) => (
-                  <option key={p.id} value={p.id}>{p.nombre}</option>
-                ))}
-              </select>
-              {!requiereProveedor && (
-                <p className="mt-1 text-xs text-gray-400">Ingresa un stock inicial mayor a 0 para habilitar este campo.</p>
-              )}
-            </div>
-          )}
-
-          {esCreacion && (
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">
-                Fecha de Vencimiento {requiereProveedor && <span className="text-red-500">*</span>}
-              </label>
-              <input
-                type="date"
-                value={fechaVencimiento}
-                onChange={(e) => setFechaVencimiento(e.target.value)}
-                min={fechaMinima}
-                required={requiereProveedor}
-                disabled={!requiereProveedor}
-                className="w-full rounded-lg border border-gray-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:bg-gray-50 disabled:text-gray-400"
-              />
-              {!requiereProveedor && (
-                <p className="mt-1 text-xs text-gray-400">Ingresa un stock inicial mayor a 0 para habilitar este campo.</p>
-              )}
-              {diasRestantesVenc !== null && diasRestantesVenc < 30 && (
-                <p className="mt-1 text-xs text-orange-500">⚠ Este lote vence en {diasRestantesVenc} día{diasRestantesVenc !== 1 ? 's' : ''}</p>
-              )}
-            </div>
-          )}
 
           {error && (
             <div className="rounded-lg bg-red-50 px-4 py-2 text-sm text-red-600">{error}</div>
@@ -1083,7 +997,6 @@ export default function ProductosPage() {
         onGuardar={handleGuardar}
         productoEditando={productoEditando}
         categorias={categorias}
-        proveedores={proveedores}
         onProductoExistente={abrirEditar}
       />
 
