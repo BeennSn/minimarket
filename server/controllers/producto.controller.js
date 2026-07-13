@@ -199,6 +199,10 @@ const crear = async (req, res) => {
       return res.status(400).json({ mensaje: 'Selecciona un proveedor para registrar el stock inicial' });
     }
 
+    if (cantidadInicial > 0 && !fecha_vencimiento) {
+      return res.status(400).json({ mensaje: 'Indica la fecha de vencimiento para registrar el stock inicial' });
+    }
+
     const errorFecha = validarFechaVencimiento(fecha_vencimiento);
     if (errorFecha) return res.status(400).json({ mensaje: errorFecha });
 

@@ -11,6 +11,29 @@ import Toast from '../../components/Toast';
 import useToast from '../../hooks/useToast';
 
 const UNIDADES_COMPRA = ['Unidad', 'Caja', 'Paquete', 'Docena', 'Otro'];
+const PRECIO_MAX = 999999.99;
+
+// Deja solo dígitos y un único punto decimal (bloquea "e", "+", "-", letras, etc.)
+// y limita a 6 dígitos enteros + 2 decimales, igual que el monto recibido en Ventas.
+function sanitizarPrecio(valor) {
+  let limpio = String(valor).replace(/[^0-9.]/g, '');
+
+  const primerPunto = limpio.indexOf('.');
+  if (primerPunto !== -1) {
+    limpio = limpio.slice(0, primerPunto + 1) + limpio.slice(primerPunto + 1).replace(/\./g, '');
+  }
+
+  let [entero, decimal] = limpio.split('.');
+  entero = (entero || '').slice(0, 6);
+  if (decimal !== undefined) {
+    decimal = decimal.slice(0, 2);
+    limpio = `${entero}.${decimal}`;
+  } else {
+    limpio = entero;
+  }
+
+  return limpio;
+}
 
 function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categorias, proveedores, onProductoExistente }) {
   const [nombre, setNombre] = useState('');
@@ -76,7 +99,11 @@ function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categor
       setAutocompletado(false);
       setMensajeBusqueda(null);
     }
-  }, [abierto, productoEditando, categorias]);
+    // categorias se usa solo para el valor por defecto al crear; no debe
+    // re-disparar este efecto cuando el padre la recarga en segundo plano
+    // (si no, se borraría el formulario a mitad de que el usuario lo llena).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [abierto, productoEditando]);
 
   if (!abierto) return null;
 
@@ -110,6 +137,12 @@ function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categor
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+
+    if (requiereProveedor && !fechaVencimiento) {
+      setError('Debes indicar la fecha de vencimiento del lote inicial');
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -277,11 +310,18 @@ function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categor
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">S./</span>
               <input
-                type="number"
-                step="0.01"
-                min="0.01"
+                type="text"
+                inputMode="decimal"
                 value={precio}
-                onChange={(e) => setPrecio(e.target.value)}
+                onChange={(e) => setPrecio(sanitizarPrecio(e.target.value))}
+                onKeyDown={(e) => {
+                  if (['e', 'E', '+', '-'].includes(e.key)) e.preventDefault();
+                }}
+                onPaste={(e) => {
+                  e.preventDefault();
+                  const texto = e.clipboardData.getData('text');
+                  setPrecio((prev) => sanitizarPrecio(prev + texto));
+                }}
                 required
                 className="w-full rounded-lg border border-gray-200 px-4 py-2 pl-10 focus:outline-none focus:ring-2 focus:ring-indigo-400"
               />
@@ -346,33 +386,46 @@ function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categor
             <p className="mt-1 text-xs text-gray-400">Punto de reorden propio de este producto para el reporte de Stock Crítico.</p>
           </div>
 
-          {requiereProveedor && (
+          {esCreacion && (
             <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">Proveedor del lote inicial</label>
+              <label className="mb-1 block text-sm font-medium text-gray-700">
+                Proveedor del lote inicial {requiereProveedor && <span className="text-red-500">*</span>}
+              </label>
               <select
                 value={proveedorId}
                 onChange={(e) => setProveedorId(e.target.value)}
-                required
-                className="w-full rounded-lg border border-gray-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                required={requiereProveedor}
+                disabled={!requiereProveedor}
+                className="w-full rounded-lg border border-gray-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:bg-gray-50 disabled:text-gray-400"
               >
                 <option value="">Seleccionar...</option>
                 {proveedores.map((p) => (
                   <option key={p.id} value={p.id}>{p.nombre}</option>
                 ))}
               </select>
+              {!requiereProveedor && (
+                <p className="mt-1 text-xs text-gray-400">Ingresa un stock inicial mayor a 0 para habilitar este campo.</p>
+              )}
             </div>
           )}
 
-          {requiereProveedor && (
+          {esCreacion && (
             <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">Fecha de Vencimiento (opcional)</label>
+              <label className="mb-1 block text-sm font-medium text-gray-700">
+                Fecha de Vencimiento {requiereProveedor && <span className="text-red-500">*</span>}
+              </label>
               <input
                 type="date"
                 value={fechaVencimiento}
                 onChange={(e) => setFechaVencimiento(e.target.value)}
                 min={fechaMinima}
-                className="w-full rounded-lg border border-gray-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                required={requiereProveedor}
+                disabled={!requiereProveedor}
+                className="w-full rounded-lg border border-gray-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:bg-gray-50 disabled:text-gray-400"
               />
+              {!requiereProveedor && (
+                <p className="mt-1 text-xs text-gray-400">Ingresa un stock inicial mayor a 0 para habilitar este campo.</p>
+              )}
               {diasRestantesVenc !== null && diasRestantesVenc < 30 && (
                 <p className="mt-1 text-xs text-orange-500">⚠ Este lote vence en {diasRestantesVenc} día{diasRestantesVenc !== 1 ? 's' : ''}</p>
               )}
