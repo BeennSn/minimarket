@@ -41,6 +41,26 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
+// ─── Sincronizar BD (siempre, para crear tablas/columnas nuevas en prod) ─────
+const dbReady = sequelize
+  .sync({ alter: true })
+  .then(async () => {
+    console.log('✅ Tablas sincronizadas correctamente');
+    await seedAdmin();
+  })
+  .catch((err) => {
+    console.error('❌ Unable to sync database:', err);
+  });
+
+// En serverless (Vercel) cada invocación "fría" puede recibir requests antes
+// de que termine el sync/alter de arriba: sin este middleware, una query podía
+// ejecutarse contra columnas que el ALTER TABLE todavía no había creado
+// (ej. "column serie_boleta does not exist") y tumbar el endpoint con 500.
+app.use(async (req, res, next) => {
+  await dbReady;
+  next();
+});
+
 // ─── Rutas ────────────────────────────────────────────────────────────────────
 app.use('/api/auth',       authRoutes);
 app.use('/api/usuarios',   usuarioRoutes);
@@ -60,17 +80,6 @@ app.use('/api/logs-acceso',    logAccesoRoutes);
 app.get('/', (req, res) => {
   res.json({ status: 'ok', message: 'Minimarket API running' });
 });
-
-// ─── Sincronizar BD (siempre, para crear tablas nuevas en prod) ──────────────
-const dbReady = sequelize
-  .sync({ alter: true })
-  .then(async () => {
-    console.log('✅ Tablas sincronizadas correctamente');
-    await seedAdmin();
-  })
-  .catch((err) => {
-    console.error('❌ Unable to sync database:', err);
-  });
 
 // ─── Arrancar servidor HTTP solo fuera de Vercel ─────────────────────────────
 if (!process.env.VERCEL) {
