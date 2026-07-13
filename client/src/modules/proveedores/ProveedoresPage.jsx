@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Search, Pencil, UserX, UserCheck, X } from 'lucide-react';
+import { Plus, Search, Pencil, UserX, UserCheck, X, Loader2 } from 'lucide-react';
 import api from '../../utils/axios';
 import Breadcrumb from '../../components/Breadcrumb';
 import Spinner from '../../components/Spinner';
@@ -8,6 +8,18 @@ import Toast from '../../components/Toast';
 import { useAuth } from '../../context/AuthContext';
 import useToast from '../../hooks/useToast';
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const TELEFONO_REGEX = /^\+?\d{6,15}$/;
+
+function validarContacto(valor) {
+  const v = valor.trim();
+  if (!v) return null;
+  if (v.includes('@')) {
+    return EMAIL_REGEX.test(v) ? null : 'Correo electrónico inválido';
+  }
+  return TELEFONO_REGEX.test(v.replace(/[\s-]/g, '')) ? null : 'Teléfono inválido (solo números, 6 a 15 dígitos)';
+}
+
 function ModalProveedor({ abierto, onCerrar, onGuardar, proveedorEditando }) {
   const [nombre, setNombre] = useState('');
   const [ruc, setRuc] = useState('');
@@ -15,6 +27,10 @@ function ModalProveedor({ abierto, onCerrar, onGuardar, proveedorEditando }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [errorRuc, setErrorRuc] = useState('');
+  const [errorContacto, setErrorContacto] = useState('');
+  const [verificandoRuc, setVerificandoRuc] = useState(false);
+  const [rucValidado, setRucValidado] = useState(false);
+  const [razonSocialRuc, setRazonSocialRuc] = useState('');
   const esCreacion = !proveedorEditando;
 
   useEffect(() => {
@@ -23,27 +39,61 @@ function ModalProveedor({ abierto, onCerrar, onGuardar, proveedorEditando }) {
         setNombre(proveedorEditando.nombre || '');
         setRuc(proveedorEditando.ruc || '');
         setContacto(proveedorEditando.contacto || '');
+        // Un proveedor ya guardado se asume verificado; solo se re-exige si cambian el RUC.
+        setRucValidado(true);
+        setRazonSocialRuc('');
       } else {
         setNombre('');
         setRuc('');
         setContacto('');
+        setRucValidado(false);
+        setRazonSocialRuc('');
       }
       setError('');
       setErrorRuc('');
+      setErrorContacto('');
     }
   }, [abierto, proveedorEditando]);
 
   if (!abierto) return null;
 
+  const verificarRuc = async () => {
+    if (ruc.length !== 11) return;
+    setVerificandoRuc(true);
+    setErrorRuc('');
+    setRucValidado(false);
+    setRazonSocialRuc('');
+    try {
+      const { data } = await api.get(`/consulta/ruc/${ruc}`);
+      if (data.estado && data.estado.toUpperCase() !== 'ACTIVO') {
+        setErrorRuc(`RUC dado de baja en SUNAT (estado: ${data.estado})`);
+        return;
+      }
+      setRazonSocialRuc(data.razon_social || '');
+      setRucValidado(true);
+      if (!nombre.trim() && data.razon_social) setNombre(data.razon_social);
+    } catch (err) {
+      setErrorRuc(err.response?.data?.mensaje || 'No se encontró información para ese RUC en SUNAT');
+    } finally {
+      setVerificandoRuc(false);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    setErrorRuc('');
 
     if (ruc.length !== 11) {
       setErrorRuc('Debe tener exactamente 11 dígitos');
       return;
     }
+    if (!rucValidado) {
+      setErrorRuc('Debes verificar el RUC con SUNAT antes de continuar');
+      return;
+    }
+    const errContacto = validarContacto(contacto);
+    setErrorContacto(errContacto || '');
+    if (errContacto) return;
 
     setLoading(true);
 
@@ -88,17 +138,37 @@ function ModalProveedor({ abierto, onCerrar, onGuardar, proveedorEditando }) {
 
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">RUC</label>
-            <input
-              type="text"
-              maxLength={11}
-              value={ruc}
-              onChange={(e) => setRuc(e.target.value.replace(/\D/g, ''))}
-              required
-              placeholder="00000000000"
-              className="w-full rounded-lg border border-gray-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-            />
+            <div className="flex gap-2">
+              <input
+                type="text"
+                maxLength={11}
+                value={ruc}
+                onChange={(e) => {
+                  setRuc(e.target.value.replace(/\D/g, ''));
+                  setRucValidado(false);
+                  setRazonSocialRuc('');
+                  setErrorRuc('');
+                }}
+                onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), verificarRuc())}
+                required
+                placeholder="00000000000"
+                className="flex-1 rounded-lg border border-gray-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              />
+              <button
+                type="button"
+                onClick={verificarRuc}
+                disabled={ruc.length !== 11 || verificandoRuc}
+                title="Verificar RUC en SUNAT"
+                className="rounded-lg bg-indigo-500 px-3 py-2 text-white transition-colors hover:bg-indigo-600 disabled:opacity-50"
+              >
+                {verificandoRuc ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+              </button>
+            </div>
             {errorRuc && (
               <p className="mt-1 text-xs text-red-500">{errorRuc}</p>
+            )}
+            {razonSocialRuc && (
+              <p className="mt-1 text-xs font-medium text-emerald-600">{razonSocialRuc}</p>
             )}
           </div>
 
@@ -107,10 +177,14 @@ function ModalProveedor({ abierto, onCerrar, onGuardar, proveedorEditando }) {
             <input
               type="text"
               value={contacto}
-              onChange={(e) => setContacto(e.target.value)}
+              onChange={(e) => { setContacto(e.target.value); setErrorContacto(''); }}
+              onBlur={() => setErrorContacto(validarContacto(contacto) || '')}
               placeholder="Teléfono o email de contacto"
               className="w-full rounded-lg border border-gray-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
             />
+            {errorContacto && (
+              <p className="mt-1 text-xs text-red-500">{errorContacto}</p>
+            )}
           </div>
 
           {error && (
@@ -127,7 +201,7 @@ function ModalProveedor({ abierto, onCerrar, onGuardar, proveedorEditando }) {
             </button>
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || !rucValidado || !!errorContacto}
               className="flex items-center gap-2 rounded-lg bg-[#6366f1] px-4 py-2 text-sm text-white transition-colors hover:bg-indigo-600 disabled:opacity-70"
             >
               {loading && <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />}

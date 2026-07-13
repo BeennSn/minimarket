@@ -2,6 +2,18 @@ const { Op } = require('sequelize');
 const { Proveedor } = require('../models');
 const { presentarProveedor, presentarLista } = require('../presenters/proveedor.presenter');
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const TELEFONO_REGEX = /^\+?\d{6,15}$/;
+
+// Valida que el contacto, si se envía, sea un correo o un teléfono con formato válido.
+function contactoInvalido(contacto) {
+  if (contacto == null) return false;
+  const v = String(contacto).trim();
+  if (!v) return false;
+  if (v.includes('@')) return !EMAIL_REGEX.test(v);
+  return !TELEFONO_REGEX.test(v.replace(/[\s-]/g, ''));
+}
+
 const listar = async (req, res) => {
   try {
     const { soloActivos } = req.query;
@@ -35,6 +47,10 @@ const crear = async (req, res) => {
       return res.status(400).json({ mensaje: 'El RUC debe tener 11 dígitos' });
     }
 
+    if (contactoInvalido(contacto)) {
+      return res.status(400).json({ mensaje: 'El contacto debe ser un teléfono o correo electrónico válido' });
+    }
+
     const porRuc = await Proveedor.findOne({ where: { ruc } });
     if (porRuc) {
       return res.status(400).json({ mensaje: 'El RUC ya está registrado' });
@@ -61,6 +77,10 @@ const actualizar = async (req, res) => {
     }
 
     const { nombre, ruc, contacto } = req.body;
+
+    if (contactoInvalido(contacto)) {
+      return res.status(400).json({ mensaje: 'El contacto debe ser un teléfono o correo electrónico válido' });
+    }
 
     if (ruc !== undefined && ruc !== proveedor.ruc) {
       if (!/^\d{11}$/.test(ruc)) {
