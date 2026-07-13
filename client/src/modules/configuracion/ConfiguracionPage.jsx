@@ -9,6 +9,8 @@ export default function ConfiguracionPage() {
     direccion: '',
     telefono: '',
     igv: '',
+    serie_boleta: '',
+    serie_factura: '',
   });
   const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState(false);
@@ -25,6 +27,8 @@ export default function ConfiguracionPage() {
           direccion: data.direccion,
           telefono: data.telefono,
           igv: String(data.igv),
+          serie_boleta: data.serie_boleta || 'B001',
+          serie_factura: data.serie_factura || 'F001',
         });
       })
       .catch(() => setError('Error al cargar la configuración'))
@@ -68,6 +72,14 @@ export default function ConfiguracionPage() {
     const igvNum = Number(form.igv);
     if (!Number.isFinite(igvNum) || igvNum < 0 || igvNum > 100) {
       return setError('El IGV debe ser un número entre 0 y 100');
+    }
+
+    const serieRegex = /^[A-Z]\d{3}$/;
+    if (!serieRegex.test(form.serie_boleta.toUpperCase())) {
+      return setError('La serie de boleta debe tener el formato: 1 letra + 3 dígitos (ej. B001)');
+    }
+    if (!serieRegex.test(form.serie_factura.toUpperCase())) {
+      return setError('La serie de factura debe tener el formato: 1 letra + 3 dígitos (ej. F001)');
     }
 
     setGuardando(true);
@@ -194,6 +206,44 @@ export default function ConfiguracionPage() {
             />
             <p className="mt-1 text-xs text-gray-400">Actualmente en Perú: 18%</p>
           </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">
+                Serie de boleta <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                name="serie_boleta"
+                value={form.serie_boleta}
+                onChange={(e) =>
+                  cambiar({ target: { name: 'serie_boleta', value: e.target.value.toUpperCase().slice(0, 4) } })
+                }
+                maxLength={4}
+                required
+                placeholder="B001"
+                className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm uppercase focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">
+                Serie de factura <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                name="serie_factura"
+                value={form.serie_factura}
+                onChange={(e) =>
+                  cambiar({ target: { name: 'serie_factura', value: e.target.value.toUpperCase().slice(0, 4) } })
+                }
+                maxLength={4}
+                required
+                placeholder="F001"
+                className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm uppercase focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              />
+            </div>
+          </div>
+          <p className="-mt-3 text-xs text-gray-400">Formato SUNAT: 1 letra + 3 dígitos. Se usan para numerar boletas y facturas (ej. B001-00000023).</p>
 
           {error && (
             <div className="rounded-lg bg-red-50 px-4 py-2 text-sm text-red-600">{error}</div>

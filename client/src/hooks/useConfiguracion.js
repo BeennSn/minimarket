@@ -6,6 +6,8 @@ const DEFAULT_EMPRESA = {
   ruc: '99999999999',
   direccion: 'Av. Prueba 000, Ciudad',
   telefono: '000-000000',
+  serieBoleta: 'B001',
+  serieFactura: 'F001',
 };
 
 export function useConfiguracion() {
@@ -21,6 +23,8 @@ export function useConfiguracion() {
           ruc: data.ruc,
           direccion: data.direccion,
           telefono: data.telefono,
+          serieBoleta: data.serie_boleta || DEFAULT_EMPRESA.serieBoleta,
+          serieFactura: data.serie_factura || DEFAULT_EMPRESA.serieFactura,
         });
         setIgv(data.igv / 100);
       })

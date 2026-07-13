@@ -1,9 +1,10 @@
 const presentarDetalle = (detalle) => ({
   id: detalle.id,
   producto: {
-    id:     detalle.producto.id,
-    nombre: detalle.producto.nombre,
-    marca:  detalle.producto.marca,
+    id:            detalle.producto.id,
+    nombre:        detalle.producto.nombre,
+    marca:         detalle.producto.marca,
+    codigo_barras: detalle.producto.codigo_barras,
   },
   cantidad:        detalle.cantidad,
   precio_unitario: detalle.precio_unitario,

@@ -6,10 +6,13 @@ import Toast from '../../components/Toast';
 import useToast from '../../hooks/useToast';
 import { useAuth } from '../../context/AuthContext';
 import { useStockSync } from '../../context/StockSyncContext';
+import { useConfiguracion } from '../../hooks/useConfiguracion';
+import { generarComprobantePDF, construirNumeroComprobante } from '../../utils/comprobante';
 
 export default function HistorialVentasPage() {
   const { usuario } = useAuth();
   const { notificarCambioStock } = useStockSync();
+  const { empresa, igv } = useConfiguracion();
   const puedeAnular = usuario?.rol === 'Administrador' || usuario?.rol === 'Gerente';
   const { toast, mostrarExito, mostrarError, cerrar } = useToast();
 
@@ -23,6 +26,7 @@ export default function HistorialVentasPage() {
   const [paginaActual, setPaginaActual] = useState(1);
   const [detalleVenta, setDetalleVenta] = useState(null);
   const [exportando, setExportando] = useState(false);
+  const [descargandoComprobante, setDescargandoComprobante] = useState(false);
   const [ventaAAnular, setVentaAAnular] = useState(null);
   const [motivoAnular, setMotivoAnular] = useState('');
   const [anulando, setAnulando] = useState(false);
@@ -112,6 +116,18 @@ export default function HistorialVentasPage() {
       setDetalleVenta(data);
     } catch (err) {
       setError('Error al carrar detalle de venta');
+    }
+  };
+
+  const descargarComprobante = async () => {
+    if (!detalleVenta) return;
+    setDescargandoComprobante(true);
+    try {
+      await generarComprobantePDF(detalleVenta, empresa, igv);
+    } catch (err) {
+      mostrarError(err.message || 'Error al generar el comprobante PDF');
+    } finally {
+      setDescargandoComprobante(false);
     }
   };
 
@@ -343,7 +359,12 @@ export default function HistorialVentasPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setDetalleVenta(null)}>
           <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-bold text-gray-800">Venta #{String(detalleVenta.id).padStart(6, '0')}</h2>
+              <div>
+                <h2 className="text-lg font-bold text-gray-800">Venta #{String(detalleVenta.id).padStart(6, '0')}</h2>
+                <p className="text-xs text-gray-400">
+                  {detalleVenta.tipo_comprobante === 'Factura' ? 'Factura' : 'Boleta'} {construirNumeroComprobante(detalleVenta, empresa)}
+                </p>
+              </div>
               <button onClick={() => setDetalleVenta(null)} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
                 <X className="h-5 w-5" />
               </button>
@@ -433,6 +454,17 @@ export default function HistorialVentasPage() {
                   </div>
                 ))}
               </div>
+
+              {detalleVenta.estado !== 'Anulada' && (
+                <button
+                  onClick={descargarComprobante}
+                  disabled={descargandoComprobante}
+                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-500 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-600 disabled:opacity-60"
+                >
+                  {descargandoComprobante ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+                  {detalleVenta.tipo_comprobante === 'Factura' ? 'Descargar Factura PDF' : 'Descargar Boleta PDF'}
+                </button>
+              )}
             </div>
           </div>
         </div>

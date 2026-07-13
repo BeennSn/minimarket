@@ -10,7 +10,7 @@ const INCLUDE_VENTA = [
   { association: 'anulador', attributes: ['id', 'nombre'] },
   {
     association: 'detalles',
-    include: [{ association: 'producto', attributes: ['id', 'nombre', 'marca'] }],
+    include: [{ association: 'producto', attributes: ['id', 'nombre', 'marca', 'codigo_barras'] }],
   },
 ];
 

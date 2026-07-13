@@ -32,6 +32,16 @@ const Configuracion = sequelize.define('Configuracion', {
     allowNull: false,
     defaultValue: 18,
   },
+  serie_boleta: {
+    type: DataTypes.STRING(4),
+    allowNull: false,
+    defaultValue: 'B001',
+  },
+  serie_factura: {
+    type: DataTypes.STRING(4),
+    allowNull: false,
+    defaultValue: 'F001',
+  },
 }, {
   tableName: 'configuracion',
   timestamps: false,

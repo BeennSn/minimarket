@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import html2pdf from 'html2pdf.js';
 import {
   Search, User, X, Trash2, Minus, Plus, Banknote,
   CheckCircle, Loader2, ShoppingCart, ChevronLeft, ChevronRight,
@@ -9,6 +8,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useStockSync } from '../../context/StockSyncContext';
 import { useConfiguracion } from '../../hooks/useConfiguracion';
 import api from '../../utils/axios';
+import { generarComprobantePDF, construirNumeroComprobante } from '../../utils/comprobante';
 
 const ITEMS_PER_PAGE = 25;
 const MONTO_RECIBIDO_MAX = 999999.99;
@@ -44,334 +44,16 @@ function parsearMontoRecibido(valor) {
   return Math.min(num, MONTO_RECIBIDO_MAX);
 }
 
-function numeroALetras(num) {
-  const u = ['', 'UN', 'DOS', 'TRES', 'CUATRO', 'CINCO', 'SEIS', 'SIETE', 'OCHO', 'NUEVE',
-    'DIEZ', 'ONCE', 'DOCE', 'TRECE', 'CATORCE', 'QUINCE', 'DIECISÉIS', 'DIECISIETE', 'DIECIOCHO', 'DIECINUEVE'];
-  const d = ['', 'DIEZ', 'VEINTE', 'TREINTA', 'CUARENTA', 'CINCUENTA', 'SESENTA', 'SETENTA', 'OCHENTA', 'NOVENTA'];
-  const ve = ['', 'VEINTIUN', 'VEINTIDÓS', 'VEINTITRÉS', 'VEINTICUATRO', 'VEINTICINCO', 'VEINTISÉIS', 'VEINTISIETE', 'VEINTIOCHO', 'VEINTINUEVE'];
-  const c = ['', 'CIENTO', 'DOSCIENTOS', 'TRESCIENTOS', 'CUATROCIENTOS', 'QUINIENTOS', 'SEISCIENTOS', 'SETECIENTOS', 'OCHOCIENTOS', 'NOVECIENTOS'];
-  function convertir(n) {
-    if (n === 0) return '';
-    if (n < 20) return u[n];
-    if (n < 30) return ve[n - 20];
-    if (n < 100) {
-      const dec = d[Math.floor(n / 10)];
-      const uni = n % 10;
-      return uni > 0 ? dec + ' Y ' + u[uni] : dec;
-    }
-    if (n < 1000) return (n === 100 ? 'CIEN' : c[Math.floor(n / 100)] + (n % 100 > 0 ? ' ' + convertir(n % 100) : ''));
-    if (n < 1000000) return (Math.floor(n / 1000) === 1 ? 'MIL' : convertir(Math.floor(n / 1000)) + ' MIL') + (n % 1000 > 0 ? ' ' + convertir(n % 1000) : '');
-    return (Math.floor(n / 1000000) === 1 ? 'UN MILLÓN' : convertir(Math.floor(n / 1000000)) + ' MILLONES') + (n % 1000000 > 0 ? ' ' + convertir(n % 1000000) : '');
-  }
-  const entero = Math.floor(num);
-  const decimal = Math.round((num - entero) * 100);
-  const letras = entero === 0 ? 'CERO' : convertir(entero);
-  return `SON: ${letras} CON ${String(decimal).padStart(2, '0')}/100 SOLES`;
-}
-
-function generarPDF(venta, empresa, igvRate) {
-  const fecha = new Date(venta.createdAt);
-  const esFactura = venta.tipo_comprobante === 'Factura';
-  const prefijo = esFactura ? 'F' : 'B';
-  const numero = `${prefijo}173-${String(venta.id).padStart(8, '0')}`;
-  const total = Number(venta.monto_total || venta.total || 0);
-
-  const detalles = venta.detalles || venta.items || [];
-
-  const filasProductos = detalles.map(d => {
-    const nom = d.producto?.nombre || d.nombre || '';
-    const cant = d.cantidad;
-    const pUnit = Number(d.precio_unitario || d.precio || 0);
-    const subtotal = Number(d.subtotal || 0);
-    return { nombre: nom, cantidad: cant, precioUnitario: pUnit, subtotal };
-  });
-
-  const subtotalCalc = filasProductos.reduce((s, f) => s + f.precioUnitario * f.cantidad, 0);
-  const montoIgv = subtotalCalc * igvRate;
-
-  if (esFactura) {
-    const productosHTML = filasProductos.map(f => `
-      <tr>
-        <td style="text-align:center;padding:3px 4px;border:1px solid #999;font-size:9px;">${f.cantidad}</td>
-        <td style="text-align:center;padding:3px 4px;border:1px solid #999;font-size:9px;">UND</td>
-        <td style="text-align:center;padding:3px 4px;border:1px solid #999;font-size:9px;">${String(venta.id).padStart(6, '0')}</td>
-        <td style="padding:3px 4px;border:1px solid #999;font-size:9px;">${f.nombre}</td>
-        <td style="text-align:right;padding:3px 4px;border:1px solid #999;font-size:9px;">${f.precioUnitario.toFixed(2)}</td>
-      </tr>
-    `).join('');
-
-    const container = document.createElement('div');
-    container.innerHTML = `
-      <div style="width:190mm;padding:10mm;font-family:Arial,sans-serif;font-size:10px;color:#000;background:#fff;">
-        <style>
-          table { border-collapse: collapse; width: 100%; }
-          td, th { vertical-align: top; }
-          .b-blue { border: 2px solid #a0c4e8; padding: 6px 10px; }
-          .b-all { border: 1px solid #999; }
-          .bg-gray { background: #f0f0f0; }
-          .right { text-align: right; }
-          .center { text-align: center; }
-          .bold { font-weight: bold; }
-          .mono { font-family: 'Courier New', monospace; }
-        </style>
-
-        <!-- ─── Encabezado ─── -->
-        <table>
-          <tr>
-            <td style="width:55%;">
-              <div style="font-size:14px;font-weight:bold;margin-bottom:4px;">${empresa.nombre.toUpperCase()}</div>
-              <div style="font-size:9px;color:#333;">${empresa.direccion}</div>
-              <div style="font-size:9px;color:#333;">Trujillo - La Libertad</div>
-            </td>
-            <td style="width:45%;">
-              <div class="b-blue center" style="float:right;width:240px;">
-                <div style="font-size:10px;font-weight:bold;">FACTURA ELECTRÓNICA</div>
-                <div style="font-size:11px;font-weight:bold;margin-top:2px;">RUC ${empresa.ruc}</div>
-                <div style="font-size:13px;color:#1a5fb4;font-weight:bold;margin-top:4px;">${numero}</div>
-              </div>
-            </td>
-          </tr>
-        </table>
-
-        <div style="border-top:2px solid #000;border-bottom:1px solid #a0c4e8;margin:6px 0 10px 0;"></div>
-
-        <!-- ─── Datos del cliente ─── -->
-        <table style="margin-bottom:10px;">
-          <tr>
-            <td style="width:18%;font-size:9px;padding:2px 4px;">Fecha de Vencimiento:</td>
-            <td style="width:32%;font-size:9px;padding:2px 4px;">${fecha.toLocaleDateString('es-PE')}</td>
-            <td style="width:18%;font-size:9px;padding:2px 4px;">Señor(es):</td>
-            <td style="width:32%;font-size:9px;padding:2px 4px;background:#f5f5f5;">${venta.cliente_razon_social || '—'}</td>
-          </tr>
-          <tr>
-            <td style="font-size:9px;padding:2px 4px;">Fecha de Emisión:</td>
-            <td style="font-size:9px;padding:2px 4px;">${fecha.toLocaleDateString('es-PE')}</td>
-            <td style="font-size:9px;padding:2px 4px;">RUC:</td>
-            <td style="font-size:9px;padding:2px 4px;font-weight:bold;">${venta.cliente_ruc || '—'}</td>
-          </tr>
-          <tr>
-            <td style="font-size:9px;padding:2px 4px;">Tipo Moneda:</td>
-            <td style="font-size:9px;padding:2px 4px;">SOLES</td>
-            <td style="font-size:9px;padding:2px 4px;">Dirección:</td>
-            <td style="font-size:9px;padding:2px 4px;">${venta.cliente_direccion || '—'}</td>
-          </tr>
-          <tr>
-            <td style="font-size:9px;padding:2px 4px;">Observación:</td>
-            <td style="font-size:9px;padding:2px 4px;" colspan="3"></td>
-          </tr>
-        </table>
-
-        <!-- ─── Tabla de productos ─── -->
-        <table style="margin-bottom:8px;">
-          <thead>
-            <tr class="bg-gray">
-              <th style="width:8%;padding:4px;border:1px solid #999;font-size:9px;font-weight:bold;">Cant.</th>
-              <th style="width:10%;padding:4px;border:1px solid #999;font-size:9px;font-weight:bold;">Unidad</th>
-              <th style="width:12%;padding:4px;border:1px solid #999;font-size:9px;font-weight:bold;">Código</th>
-              <th style="width:48%;padding:4px;border:1px solid #999;font-size:9px;font-weight:bold;">Descripción</th>
-              <th style="width:22%;padding:4px;border:1px solid #999;font-size:9px;font-weight:bold;">Valor Unitario</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${productosHTML}
-            <tr>
-              <td colspan="5" style="border:1px solid #999;height:${Math.max(1, 10 - filasProductos.length) * 18}px;"></td>
-            </tr>
-          </tbody>
-        </table>
-
-        <!-- ─── Pie: Total en letras + Tabla de totales ─── -->
-        <table>
-          <tr>
-            <td style="width:55%;vertical-align:top;">
-              <div style="font-size:9px;margin-bottom:2px;">Son:</div>
-              <div style="font-size:9px;font-weight:bold;">${numeroALetras(total)}</div>
-            </td>
-            <td style="width:45%;vertical-align:top;">
-              <table style="border-collapse:collapse;">
-                <tr>
-                  <td style="width:60%;padding:3px 6px;border:1px solid #999;font-size:9px;text-align:right;">Subtotal de Ventas:</td>
-                  <td style="width:40%;padding:3px 6px;border:1px solid #999;font-size:9px;text-align:right;background:#f5f5f5;">${subtotalCalc.toFixed(2)}</td>
-                </tr>
-                <tr>
-                  <td style="padding:3px 6px;border:1px solid #999;font-size:9px;text-align:right;">Anticipos:</td>
-                  <td style="padding:3px 6px;border:1px solid #999;font-size:9px;text-align:right;background:#f5f5f5;">0.00</td>
-                </tr>
-                <tr>
-                  <td style="padding:3px 6px;border:1px solid #999;font-size:9px;text-align:right;">Descuentos:</td>
-                  <td style="padding:3px 6px;border:1px solid #999;font-size:9px;text-align:right;background:#f5f5f5;">0.00</td>
-                </tr>
-                <tr>
-                  <td style="padding:3px 6px;border:1px solid #999;font-size:9px;text-align:right;">Valor de Venta:</td>
-                  <td style="padding:3px 6px;border:1px solid #999;font-size:9px;text-align:right;background:#f5f5f5;">${subtotalCalc.toFixed(2)}</td>
-                </tr>
-                <tr>
-                  <td style="padding:3px 6px;border:1px solid #999;font-size:9px;text-align:right;">IGV (${(igvRate * 100).toFixed(0)}%):</td>
-                  <td style="padding:3px 6px;border:1px solid #999;font-size:9px;text-align:right;background:#f5f5f5;">${montoIgv.toFixed(2)}</td>
-                </tr>
-                <tr>
-                  <td style="padding:3px 6px;border:1px solid #999;font-size:9px;text-align:right;font-weight:bold;">Importe Total:</td>
-                  <td style="padding:3px 6px;border:1px solid #999;font-size:9px;text-align:right;background:#f5f5f5;font-weight:bold;">${total.toFixed(2)}</td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-        </table>
-
-        <div style="margin-top:10px;border-top:1px solid #999;padding-top:6px;font-size:7px;color:#666;text-align:center;">
-          ${empresa.nombre} | ${empresa.direccion} | RUC ${empresa.ruc} | ${empresa.telefono}
-        </div>
-      </div>
-    `;
-
-    const opt = {
-      margin: 5,
-      filename: `factura_${numero}.pdf`,
-      image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2 },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
-    };
-    html2pdf().set(opt).from(container.firstElementChild).save();
-  } else {
-    // ─── BOLETA (estilo clásico / físico) ───
-    const productosHTML = filasProductos.map(f => `
-      <tr>
-        <td style="text-align:center;padding:3px 2px;border:1px solid #999;font-size:9px;">${f.cantidad}</td>
-        <td style="padding:3px 2px;border:1px solid #999;font-size:9px;">${f.nombre}</td>
-        <td style="text-align:right;padding:3px 2px;border:1px solid #999;font-size:9px;">${f.precioUnitario.toFixed(2)}</td>
-        <td style="text-align:right;padding:3px 2px;border:1px solid #999;font-size:9px;">${f.subtotal.toFixed(2)}</td>
-      </tr>
-    `).join('');
-
-    const container = document.createElement('div');
-    container.innerHTML = `
-      <div style="width:170mm;padding:8mm;font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#000;background:#fff;border:1px solid #666;">
-        <style>
-          table { border-collapse: collapse; }
-          .b-t { border-top: 1px solid #999; }
-          .b-b { border-bottom: 1px solid #999; }
-          .b-l { border-left: 1px solid #999; }
-          .b-r { border-right: 1px solid #999; }
-          .bg-g { background: #f5f5f5; }
-          .bold { font-weight: bold; }
-          .center { text-align: center; }
-          .right { text-align: right; }
-          .mono { font-family: 'Courier New', monospace; }
-        </style>
-
-        <table style="width:100%;margin-bottom:8px;">
-          <tr>
-            <td style="width:50%;">
-              <div style="display:flex;align-items:center;gap:6px;">
-                <div style="width:32px;height:32px;border:1px solid #999;display:flex;align-items:center;justify-content:center;font-size:6px;color:#999;">LOGO</div>
-                <div>
-                  <div style="font-size:16px;font-weight:bold;">${empresa.nombre}</div>
-                  <div style="font-size:8px;color:#333;line-height:1.3;">
-                    ${empresa.nombre} S.A.C.<br>
-                    ${empresa.direccion}<br>
-                    Tel: ${empresa.telefono}<br>
-                    Trujillo - La Libertad
-                  </div>
-                </div>
-              </div>
-            </td>
-            <td style="width:50%;">
-              <div style="border:2px solid #000;padding:6px 10px;text-align:center;float:right;width:200px;">
-                <div style="font-size:9px;">RUC ${empresa.ruc}</div>
-                <div style="font-size:12px;font-weight:bold;margin:3px 0;">BOLETA DE VENTA</div>
-                <div style="font-size:10px;font-weight:bold;">${numero}</div>
-              </div>
-            </td>
-          </tr>
-        </table>
-
-        <div style="border-top:1px solid #000;margin-bottom:10px;"></div>
-
-        <!-- Datos del cliente -->
-        <table style="width:100%;margin-bottom:10px;font-size:9px;">
-          <tr>
-            <td style="width:12%;">Señor(es):</td>
-            <td style="width:38%;border-bottom:1px solid #999;">${venta.cliente_razon_social || '—'}</td>
-            <td style="width:10%;">DNI:</td>
-            <td style="width:15%;border-bottom:1px solid #999;">${venta.cliente_dni || '—'}</td>
-            <td style="width:10%;">Fecha:</td>
-            <td style="width:15%;border-bottom:1px solid #999;">${fecha.toLocaleDateString('es-PE')}</td>
-          </tr>
-          <tr>
-            <td>Dirección:</td>
-            <td colspan="5" style="border-bottom:1px solid #999;">${venta.cliente_direccion || '—'}</td>
-          </tr>
-          ${venta.cliente_ruc ? `<tr><td>RUC:</td><td colspan="5" style="border-bottom:1px solid #999;">${venta.cliente_ruc}</td></tr>` : ''}
-        </table>
-
-        <!-- Tabla de productos -->
-        <table style="width:100%;border-collapse:collapse;">
-          <thead>
-            <tr class="bg-g">
-              <th style="width:8%;padding:4px;border:1px solid #999;font-size:9px;">Código</th>
-              <th style="width:8%;padding:4px;border:1px solid #999;font-size:9px;">Cant.</th>
-              <th style="width:44%;padding:4px;border:1px solid #999;font-size:9px;">Descripción</th>
-              <th style="width:20%;padding:4px;border:1px solid #999;font-size:9px;">P.Unitario</th>
-              <th style="width:20%;padding:4px;border:1px solid #999;font-size:9px;">P.Venta</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${productosHTML}
-            <tr>
-              <td colspan="5" style="border:1px solid #999;height:${Math.max(1, 8 - filasProductos.length) * 18}px;"></td>
-            </tr>
-          </tbody>
-        </table>
-
-        <table style="width:100%;margin-top:10px;">
-          <tr>
-            <td style="width:40%;vertical-align:bottom;font-size:8px;">
-              <div style="border:1px solid #999;padding:4px;display:inline-block;font-size:7px;">
-                AUT. IMPRENTA: 12345678<br>
-                RUC: ${empresa.ruc}<br>
-                ${empresa.nombre.toUpperCase()} S.A.C.
-              </div>
-            </td>
-            <td style="width:20%;text-align:center;vertical-align:bottom;">
-              <div style="font-size:14px;font-weight:bold;border:2px solid #000;padding:6px 12px;display:inline-block;">CANCELADO</div>
-              <div style="font-size:8px;margin-top:6px;">${fecha.toLocaleDateString('es-PE')}</div>
-            </td>
-            <td style="width:40%;text-align:right;vertical-align:bottom;">
-              <table style="border-collapse:collapse;float:right;">
-                <tr>
-                  <td style="padding:4px 10px;font-size:11px;font-weight:bold;border:1px solid #999;">TOTAL</td>
-                  <td style="padding:4px 10px;font-size:11px;font-weight:bold;border:1px solid #999;">S/ ${total.toFixed(2)}</td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-        </table>
-
-        <div style="margin-top:10px;border-top:1px solid #999;padding-top:6px;font-size:7px;color:#666;text-align:center;">
-          ${empresa.nombre} | ${empresa.direccion} | Tel: ${empresa.telefono}
-        </div>
-      </div>
-    `;
-
-    const opt = {
-      margin: 5,
-      filename: `boleta_${numero}.pdf`,
-      image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2 },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-    };
-    html2pdf().set(opt).from(container.firstElementChild).save();
-  }
-}
-
-function ModalComprobante({ venta, onCerrar, onDescargarPDF }) {
+function ModalComprobante({ venta, empresa, pdfError, onCerrar, onDescargarPDF }) {
+  const esFactura = venta?.tipo_comprobante === 'Factura';
+  const numero = construirNumeroComprobante(venta, empresa);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
         <div className="mb-4 text-center">
           <CheckCircle className="mx-auto h-12 w-12 text-green-500" />
           <h2 className="mt-3 text-lg font-bold text-gray-800">¡Venta realizada!</h2>
-          <p className="mt-1 text-sm text-gray-400">Venta #00{venta?.id}</p>
+          <p className="mt-1 text-sm text-gray-400">{esFactura ? 'Factura' : 'Boleta'} {numero}</p>
         </div>
 
         <div className="space-y-2">
@@ -398,11 +80,11 @@ function ModalComprobante({ venta, onCerrar, onDescargarPDF }) {
 
         <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
           <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
-            venta.tipo_comprobante === 'Factura'
+            esFactura
               ? 'bg-amber-100 text-amber-700'
               : 'bg-indigo-100 text-indigo-700'
           }`}>
-            {venta.tipo_comprobante === 'Factura' ? 'Factura' : venta.cliente_dni ? 'Boleta con DNI' : 'Boleta Simple'}
+            {esFactura ? 'Factura' : venta.cliente_dni ? 'Boleta con DNI' : 'Boleta Simple'}
           </span>
           {venta.cliente_dni && (
             <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600">DNI: {venta.cliente_dni}</span>
@@ -440,12 +122,18 @@ function ModalComprobante({ venta, onCerrar, onDescargarPDF }) {
           </p>
         )}
 
+        {pdfError && (
+          <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-center text-xs text-red-600">
+            {pdfError}
+          </p>
+        )}
+
         <button
           onClick={onDescargarPDF}
           className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-500 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-600"
         >
           <FileText className="h-4 w-4" />
-          {venta.tipo_comprobante === 'Factura' ? 'Descargar Factura PDF' : 'Descargar Boleta PDF'}
+          {esFactura ? 'Descargar Factura PDF' : 'Descargar Boleta PDF'}
         </button>
 
         <button
@@ -488,6 +176,7 @@ export default function VentasPage() {
   const [error, setError] = useState('');
   const [modalComprobante, setModalComprobante] = useState(false);
   const [ventaExitosa, setVentaExitosa] = useState(null);
+  const [pdfError, setPdfError] = useState('');
   const [codigoBarras, setCodigoBarras] = useState('');
   const [buscandoCodigo, setBuscandoCodigo] = useState(false);
   const [mostrarLista, setMostrarLista] = useState(false);
@@ -700,6 +389,7 @@ export default function VentasPage() {
     setRucInfo(null);
     setClienteId(null);
     setError('');
+    setPdfError('');
     setPasoYape('inicio');
     setReferenciaPago('');
     inputCodigoRef.current?.focus();
@@ -807,7 +497,7 @@ export default function VentasPage() {
       const { data } = await api.post('/ventas', body);
       setVentaExitosa(data);
       setModalComprobante(true);
-      generarPDF(data, empresa, igv);
+      generarYDescargarComprobante(data);
       cargarProductos();
       notificarCambioStock();
     } catch (err) {
@@ -821,8 +511,17 @@ export default function VentasPage() {
     }
   };
 
+  const generarYDescargarComprobante = async (venta) => {
+    setPdfError('');
+    try {
+      await generarComprobantePDF(venta, empresa, igv);
+    } catch (err) {
+      setPdfError(err.message || 'Error al generar el comprobante PDF');
+    }
+  };
+
   const descargarPDF = () => {
-    if (ventaExitosa) generarPDF(ventaExitosa, empresa, igv);
+    if (ventaExitosa) generarYDescargarComprobante(ventaExitosa);
   };
 
   const cerrarComprobante = () => {
@@ -1371,7 +1070,7 @@ export default function VentasPage() {
         </div>
       )}
       {modalComprobante && ventaExitosa && (
-        <ModalComprobante venta={ventaExitosa} onCerrar={cerrarComprobante} onDescargarPDF={descargarPDF} />
+        <ModalComprobante venta={ventaExitosa} empresa={empresa} pdfError={pdfError} onCerrar={cerrarComprobante} onDescargarPDF={descargarPDF} />
       )}
 
       {showCamera && (
