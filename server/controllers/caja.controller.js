@@ -1,6 +1,7 @@
 const { Op } = require('sequelize');
 const { sequelize, Turno, MovimientoCaja, Usuario } = require('../models');
 const { presentarTurno, presentarMovimiento } = require('../presenters/caja.presenter');
+const { inicioDiaPeru, finDiaPeruExclusivo } = require('../utils/fechas');
 
 const INCLUDE_TURNO = [
   { association: 'cajero',    attributes: ['id', 'nombre'] },
@@ -202,15 +203,11 @@ const historial = async (req, res) => {
     const where = {};
 
     if (fecha_inicio && fecha_hasta) {
-      const hasta = new Date(fecha_hasta);
-      hasta.setDate(hasta.getDate() + 1);
-      where.fecha_apertura = { [Op.between]: [new Date(fecha_inicio), hasta] };
+      where.fecha_apertura = { [Op.between]: [inicioDiaPeru(fecha_inicio), finDiaPeruExclusivo(fecha_hasta)] };
     } else if (fecha_inicio) {
-      where.fecha_apertura = { [Op.gte]: new Date(fecha_inicio) };
+      where.fecha_apertura = { [Op.gte]: inicioDiaPeru(fecha_inicio) };
     } else if (fecha_hasta) {
-      const hasta = new Date(fecha_hasta);
-      hasta.setDate(hasta.getDate() + 1);
-      where.fecha_apertura = { [Op.lt]: hasta };
+      where.fecha_apertura = { [Op.lt]: finDiaPeruExclusivo(fecha_hasta) };
     }
 
     if (usuario_id) where.usuario_id = usuario_id;

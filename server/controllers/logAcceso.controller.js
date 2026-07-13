@@ -1,6 +1,7 @@
 const { Op } = require('sequelize');
 const { LogAcceso } = require('../models');
 const { presentarLista } = require('../presenters/logAcceso.presenter');
+const { inicioDiaPeru, finDiaPeruExclusivo } = require('../utils/fechas');
 
 const TIPOS_VALIDOS = ['Login', 'Logout', 'Otro'];
 
@@ -14,15 +15,11 @@ const listar = async (req, res) => {
     }
 
     if (fecha_inicio && fecha_hasta) {
-      const hasta = new Date(fecha_hasta);
-      hasta.setDate(hasta.getDate() + 1);
-      where.fecha_hora = { [Op.between]: [new Date(fecha_inicio), hasta] };
+      where.fecha_hora = { [Op.between]: [inicioDiaPeru(fecha_inicio), finDiaPeruExclusivo(fecha_hasta)] };
     } else if (fecha_inicio) {
-      where.fecha_hora = { [Op.gte]: new Date(fecha_inicio) };
+      where.fecha_hora = { [Op.gte]: inicioDiaPeru(fecha_inicio) };
     } else if (fecha_hasta) {
-      const hasta = new Date(fecha_hasta);
-      hasta.setDate(hasta.getDate() + 1);
-      where.fecha_hora = { [Op.lt]: hasta };
+      where.fecha_hora = { [Op.lt]: finDiaPeruExclusivo(fecha_hasta) };
     }
 
     if (usuario_id) {

@@ -8,22 +8,19 @@ const {
   presentarMargenProducto,
   presentarMerma,
 } = require('../presenters/reporte.presenter');
+const { inicioDiaPeru, finDiaPeruExclusivo } = require('../utils/fechas');
 
 const armarWhereFecha = (req) => {
   const { fecha_inicio, fecha_hasta } = req.query;
   if (!fecha_inicio && !fecha_hasta) return {};
 
   if (fecha_inicio && fecha_hasta) {
-    const hasta = new Date(fecha_hasta);
-    hasta.setDate(hasta.getDate() + 1);
-    return { createdAt: { [Op.between]: [new Date(fecha_inicio), hasta] } };
+    return { createdAt: { [Op.between]: [inicioDiaPeru(fecha_inicio), finDiaPeruExclusivo(fecha_hasta)] } };
   }
   if (fecha_inicio) {
-    return { createdAt: { [Op.gte]: new Date(fecha_inicio) } };
+    return { createdAt: { [Op.gte]: inicioDiaPeru(fecha_inicio) } };
   }
-  const hasta = new Date(fecha_hasta);
-  hasta.setDate(hasta.getDate() + 1);
-  return { createdAt: { [Op.lt]: hasta } };
+  return { createdAt: { [Op.lt]: finDiaPeruExclusivo(fecha_hasta) } };
 };
 
 const resumenVentas = async (req, res) => {
@@ -202,19 +199,15 @@ const margenProductos = async (req, res) => {
     const reemplazos = {};
 
     if (fecha_inicio && fecha_hasta) {
-      const hasta = new Date(fecha_hasta);
-      hasta.setDate(hasta.getDate() + 1);
       condicionFecha = 'AND v."createdAt" >= :desde AND v."createdAt" < :hasta';
-      reemplazos.desde = new Date(fecha_inicio);
-      reemplazos.hasta = hasta;
+      reemplazos.desde = inicioDiaPeru(fecha_inicio);
+      reemplazos.hasta = finDiaPeruExclusivo(fecha_hasta);
     } else if (fecha_inicio) {
       condicionFecha = 'AND v."createdAt" >= :desde';
-      reemplazos.desde = new Date(fecha_inicio);
+      reemplazos.desde = inicioDiaPeru(fecha_inicio);
     } else if (fecha_hasta) {
-      const hasta = new Date(fecha_hasta);
-      hasta.setDate(hasta.getDate() + 1);
       condicionFecha = 'AND v."createdAt" < :hasta';
-      reemplazos.hasta = hasta;
+      reemplazos.hasta = finDiaPeruExclusivo(fecha_hasta);
     }
 
     const sql = `
@@ -259,19 +252,15 @@ const mermasPorMotivo = async (req, res) => {
     const reemplazos = {};
 
     if (fecha_inicio && fecha_hasta) {
-      const hasta = new Date(fecha_hasta);
-      hasta.setDate(hasta.getDate() + 1);
       condicionFecha = 'AND b."createdAt" >= :desde AND b."createdAt" < :hasta';
-      reemplazos.desde = new Date(fecha_inicio);
-      reemplazos.hasta = hasta;
+      reemplazos.desde = inicioDiaPeru(fecha_inicio);
+      reemplazos.hasta = finDiaPeruExclusivo(fecha_hasta);
     } else if (fecha_inicio) {
       condicionFecha = 'AND b."createdAt" >= :desde';
-      reemplazos.desde = new Date(fecha_inicio);
+      reemplazos.desde = inicioDiaPeru(fecha_inicio);
     } else if (fecha_hasta) {
-      const hasta = new Date(fecha_hasta);
-      hasta.setDate(hasta.getDate() + 1);
       condicionFecha = 'AND b."createdAt" < :hasta';
-      reemplazos.hasta = hasta;
+      reemplazos.hasta = finDiaPeruExclusivo(fecha_hasta);
     }
 
     const sql = `

@@ -11,6 +11,7 @@ const {
 } = require('../models');
 const { presentarEntrada, presentarBaja, presentarSolicitud, presentarAjuste } = require('../presenters/inventario.presenter');
 const { crearLote, consumirStockFIFO } = require('../services/inventario.service');
+const { inicioDiaPeru, finDiaPeruExclusivo } = require('../utils/fechas');
 
 const DIAS_MINIMOS_VENCIMIENTO = 30;
 
@@ -97,15 +98,11 @@ const listarEntradas = async (req, res) => {
     const where = {};
 
     if (fecha_inicio && fecha_hasta) {
-      const hasta = new Date(fecha_hasta);
-      hasta.setDate(hasta.getDate() + 1);
-      where.createdAt = { [Op.between]: [new Date(fecha_inicio), hasta] };
+      where.createdAt = { [Op.between]: [inicioDiaPeru(fecha_inicio), finDiaPeruExclusivo(fecha_hasta)] };
     } else if (fecha_inicio) {
-      where.createdAt = { [Op.gte]: new Date(fecha_inicio) };
+      where.createdAt = { [Op.gte]: inicioDiaPeru(fecha_inicio) };
     } else if (fecha_hasta) {
-      const hasta = new Date(fecha_hasta);
-      hasta.setDate(hasta.getDate() + 1);
-      where.createdAt = { [Op.lt]: hasta };
+      where.createdAt = { [Op.lt]: finDiaPeruExclusivo(fecha_hasta) };
     }
 
     if (producto_id) {
@@ -192,15 +189,11 @@ const listarBajas = async (req, res) => {
     const where = {};
 
     if (fecha_inicio && fecha_hasta) {
-      const hasta = new Date(fecha_hasta);
-      hasta.setDate(hasta.getDate() + 1);
-      where.createdAt = { [Op.between]: [new Date(fecha_inicio), hasta] };
+      where.createdAt = { [Op.between]: [inicioDiaPeru(fecha_inicio), finDiaPeruExclusivo(fecha_hasta)] };
     } else if (fecha_inicio) {
-      where.createdAt = { [Op.gte]: new Date(fecha_inicio) };
+      where.createdAt = { [Op.gte]: inicioDiaPeru(fecha_inicio) };
     } else if (fecha_hasta) {
-      const hasta = new Date(fecha_hasta);
-      hasta.setDate(hasta.getDate() + 1);
-      where.createdAt = { [Op.lt]: hasta };
+      where.createdAt = { [Op.lt]: finDiaPeruExclusivo(fecha_hasta) };
     }
 
     if (producto_id) {
@@ -300,15 +293,11 @@ const listarAjustes = async (req, res) => {
     const where = {};
 
     if (fecha_inicio && fecha_hasta) {
-      const hasta = new Date(fecha_hasta);
-      hasta.setDate(hasta.getDate() + 1);
-      where.createdAt = { [Op.between]: [new Date(fecha_inicio), hasta] };
+      where.createdAt = { [Op.between]: [inicioDiaPeru(fecha_inicio), finDiaPeruExclusivo(fecha_hasta)] };
     } else if (fecha_inicio) {
-      where.createdAt = { [Op.gte]: new Date(fecha_inicio) };
+      where.createdAt = { [Op.gte]: inicioDiaPeru(fecha_inicio) };
     } else if (fecha_hasta) {
-      const hasta = new Date(fecha_hasta);
-      hasta.setDate(hasta.getDate() + 1);
-      where.createdAt = { [Op.lt]: hasta };
+      where.createdAt = { [Op.lt]: finDiaPeruExclusivo(fecha_hasta) };
     }
 
     if (producto_id) {

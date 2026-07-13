@@ -2,6 +2,7 @@ const { Op } = require('sequelize');
 const { sequelize, Venta, DetalleVenta, Producto, Usuario, Cliente, Turno, MovimientoCaja } = require('../models');
 const { presentarVenta, presentarLista } = require('../presenters/venta.presenter');
 const { consumirStockFIFO, revertirConsumo } = require('../services/inventario.service');
+const { inicioDiaPeru, finDiaPeruExclusivo } = require('../utils/fechas');
 
 const INCLUDE_VENTA = [
   { association: 'usuario', attributes: ['id', 'nombre'] },
@@ -179,15 +180,11 @@ const listar = async (req, res) => {
     }
 
     if (fecha_inicio && fecha_hasta) {
-      const hasta = new Date(fecha_hasta);
-      hasta.setDate(hasta.getDate() + 1);
-      where.createdAt = { [Op.between]: [new Date(fecha_inicio), hasta] };
+      where.createdAt = { [Op.between]: [inicioDiaPeru(fecha_inicio), finDiaPeruExclusivo(fecha_hasta)] };
     } else if (fecha_inicio) {
-      where.createdAt = { [Op.gte]: new Date(fecha_inicio) };
+      where.createdAt = { [Op.gte]: inicioDiaPeru(fecha_inicio) };
     } else if (fecha_hasta) {
-      const hasta = new Date(fecha_hasta);
-      hasta.setDate(hasta.getDate() + 1);
-      where.createdAt = { [Op.lt]: hasta };
+      where.createdAt = { [Op.lt]: finDiaPeruExclusivo(fecha_hasta) };
     }
 
     if (metodo_pago) {
