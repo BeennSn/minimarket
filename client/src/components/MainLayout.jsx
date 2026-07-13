@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
+import Spinner from './Spinner';
 import {
   LayoutDashboard,
   Users,
@@ -149,7 +150,9 @@ export default function MainLayout() {
           </div>
         </header>
         <main className="flex-1 overflow-y-auto bg-[#f9fafb] p-6">
-          <Outlet />
+          <Suspense fallback={<Spinner texto="Cargando..." />}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
     </div>

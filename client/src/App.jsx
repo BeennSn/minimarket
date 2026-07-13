@@ -1,3 +1,4 @@
+import { lazy } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { StockSyncProvider } from './context/StockSyncContext';
@@ -5,21 +6,26 @@ import PrivateRoute from './components/PrivateRoute';
 import MainLayout from './components/MainLayout';
 import LoginPage from './modules/auth/LoginPage';
 import ResetPasswordPage from './modules/auth/ResetPasswordPage';
-import DashboardPage from './modules/dashboard/DashboardPage';
-import UsuariosPage from './modules/usuarios/UsuariosPage';
-import LogsAccesoPage from './modules/logs/LogsAccesoPage';
-import CategoriasPage from './modules/categorias/CategoriasPage';
-import ProductosPage from './modules/productos/ProductosPage';
-import ProveedoresPage from './modules/proveedores/ProveedoresPage';
-import VentasPage from './modules/ventas/VentasPage';
-import HistorialVentasPage from './modules/ventas/HistorialVentasPage';
-import InventarioPage from './modules/inventario/InventarioPage';
-import SolicitudesPage from './modules/solicitudes/SolicitudesPage';
-import ReportesPage from './modules/reportes/ReportesPage';
-import ConfiguracionPage from './modules/configuracion/ConfiguracionPage';
-import CajaPage from './modules/caja/CajaPage';
-import HistorialCajaPage from './modules/caja/HistorialCajaPage';
-import ClientesPage from './modules/clientes/ClientesPage';
+
+// Cada página se descarga sola la primera vez que se visita (en vez de que
+// las 15 páginas del sistema vayan todas en el mismo bundle inicial) — ver
+// Suspense/fallback en MainLayout.jsx, que es quien muestra el spinner
+// mientras carga cada una.
+const DashboardPage = lazy(() => import('./modules/dashboard/DashboardPage'));
+const UsuariosPage = lazy(() => import('./modules/usuarios/UsuariosPage'));
+const LogsAccesoPage = lazy(() => import('./modules/logs/LogsAccesoPage'));
+const CategoriasPage = lazy(() => import('./modules/categorias/CategoriasPage'));
+const ProductosPage = lazy(() => import('./modules/productos/ProductosPage'));
+const ProveedoresPage = lazy(() => import('./modules/proveedores/ProveedoresPage'));
+const VentasPage = lazy(() => import('./modules/ventas/VentasPage'));
+const HistorialVentasPage = lazy(() => import('./modules/ventas/HistorialVentasPage'));
+const InventarioPage = lazy(() => import('./modules/inventario/InventarioPage'));
+const SolicitudesPage = lazy(() => import('./modules/solicitudes/SolicitudesPage'));
+const ReportesPage = lazy(() => import('./modules/reportes/ReportesPage'));
+const ConfiguracionPage = lazy(() => import('./modules/configuracion/ConfiguracionPage'));
+const CajaPage = lazy(() => import('./modules/caja/CajaPage'));
+const HistorialCajaPage = lazy(() => import('./modules/caja/HistorialCajaPage'));
+const ClientesPage = lazy(() => import('./modules/clientes/ClientesPage'));
 
 function HomeRedirect() {
   return <Navigate to="/dashboard" replace />;
