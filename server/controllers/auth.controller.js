@@ -1,5 +1,6 @@
 const bcrypt = require('bcryptjs');
 const jwt    = require('jsonwebtoken');
+const { Op } = require('sequelize');
 
 const { Usuario, LogAcceso } = require('../models');
 const { presentarLogin, presentarUsuario } = require('../presenters/auth.presenter');
@@ -13,9 +14,14 @@ const BLOQUEO_MINUTOS  = 15;
 
 const login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { password } = req.body;
+    const email = req.body.email?.trim();
 
-    const usuario = await Usuario.findOne({ where: { email, activo: true } });
+    // Búsqueda insensible a mayúsculas/minúsculas: si la cuenta se creó como
+    // "Marlon@Gmail.com", debe poder loguearse igual con "marlon@gmail.com".
+    const usuario = email
+      ? await Usuario.findOne({ where: { email: { [Op.iLike]: email }, activo: true } })
+      : null;
     if (!usuario) {
       return res.status(401).json({ mensaje: 'Credenciales incorrectas' });
     }
@@ -130,9 +136,11 @@ const validatePassword = (password) => {
 
 const forgotPassword = async (req, res) => {
   try {
-    const email = req.body.email?.trim().toLowerCase();
+    const email = req.body.email?.trim();
 
-    const usuario = await Usuario.findOne({ where: { email, activo: true } });
+    const usuario = email
+      ? await Usuario.findOne({ where: { email: { [Op.iLike]: email }, activo: true } })
+      : null;
     if (!usuario) {
       return res.status(404).json({ mensaje: 'No existe un usuario registrado con ese correo electrónico' });
     }
@@ -182,7 +190,7 @@ const forgotPassword = async (req, res) => {
 
 const resetPassword = async (req, res) => {
   try {
-    const email = req.body.email?.trim().toLowerCase();
+    const email = req.body.email?.trim();
     const { codigo, password_nueva } = req.body;
 
     if (!/^\d{4}$/.test(codigo)) {
@@ -194,7 +202,9 @@ const resetPassword = async (req, res) => {
       return res.status(400).json({ mensaje: `Contraseña inválida: ${passwordError}` });
     }
 
-    const usuario = await Usuario.findOne({ where: { email, activo: true } });
+    const usuario = email
+      ? await Usuario.findOne({ where: { email: { [Op.iLike]: email }, activo: true } })
+      : null;
     if (!usuario) {
       return res.status(400).json({ mensaje: 'Código inválido o expirado' });
     }

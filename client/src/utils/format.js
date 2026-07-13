@@ -48,3 +48,27 @@ export function fechaLocalISO(date = new Date()) {
   const dd = String(date.getDate()).padStart(2, '0');
   return `${yy}-${mm}-${dd}`;
 }
+
+// Deja solo dígitos y un único punto decimal (bloquea "e", "+", "-", letras,
+// etc. — con type="number" el navegador los deja escribir igual, ya que
+// "1e5" es notación científica válida para HTML). Limita a 6 dígitos enteros
+// + 2 decimales. Usar junto con un <input type="text" inputMode="decimal">.
+export function sanitizarMonto(valor) {
+  let limpio = String(valor).replace(/[^0-9.]/g, '');
+
+  const primerPunto = limpio.indexOf('.');
+  if (primerPunto !== -1) {
+    limpio = limpio.slice(0, primerPunto + 1) + limpio.slice(primerPunto + 1).replace(/\./g, '');
+  }
+
+  let [entero, decimal] = limpio.split('.');
+  entero = (entero || '').slice(0, 6);
+  if (decimal !== undefined) {
+    decimal = decimal.slice(0, 2);
+    limpio = `${entero}.${decimal}`;
+  } else {
+    limpio = entero;
+  }
+
+  return limpio;
+}

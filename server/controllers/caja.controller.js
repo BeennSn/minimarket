@@ -96,6 +96,11 @@ const cerrar = async (req, res) => {
     if (monto_contado_efectivo === undefined || monto_contado_yape === undefined) {
       return res.status(400).json({ mensaje: 'Debes ingresar el monto contado de efectivo y Yape' });
     }
+    const efectivoNum = parseFloat(monto_contado_efectivo);
+    const yapeNum = parseFloat(monto_contado_yape);
+    if (!Number.isFinite(efectivoNum) || efectivoNum < 0 || !Number.isFinite(yapeNum) || yapeNum < 0) {
+      return res.status(400).json({ mensaje: 'Los montos contados deben ser números válidos mayores o iguales a 0' });
+    }
 
     const turno = await Turno.findOne({
       where: { usuario_id: req.usuario.id, estado: 'Abierto' },
@@ -201,6 +206,10 @@ const historial = async (req, res) => {
   try {
     const { fecha_inicio, fecha_hasta, usuario_id, estado } = req.query;
     const where = {};
+
+    if (fecha_inicio && fecha_hasta && new Date(fecha_inicio) > new Date(fecha_hasta)) {
+      return res.status(400).json({ mensaje: 'La fecha de inicio no puede ser posterior a la fecha final' });
+    }
 
     if (fecha_inicio && fecha_hasta) {
       where.fecha_apertura = { [Op.between]: [inicioDiaPeru(fecha_inicio), finDiaPeruExclusivo(fecha_hasta)] };

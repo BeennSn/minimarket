@@ -295,7 +295,11 @@ function ModalCompletar({ abierto, onCerrar, solicitud, onCompletada }) {
     e.preventDefault();
     const cr = parseInt(cantidadRecibida, 10);
     if (!cr || cr <= 0) { setError('La cantidad debe ser mayor a 0'); return; }
-    if (fechaVencimiento && fechaVencimiento < fechaMinima) {
+    if (!fechaVencimiento) {
+      setError('La fecha de vencimiento es obligatoria');
+      return;
+    }
+    if (fechaVencimiento < fechaMinima) {
       setError(`La fecha de vencimiento debe ser al menos ${DIAS_MINIMOS_VENCIMIENTO} días a partir de hoy`);
       return;
     }
@@ -352,13 +356,14 @@ function ModalCompletar({ abierto, onCerrar, solicitud, onCompletada }) {
 
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">
-              Fecha de vencimiento <span className="text-gray-400">(opcional)</span>
+              Fecha de vencimiento <span className="text-red-500">*</span>
             </label>
             <input
               type="date"
               value={fechaVencimiento}
               onChange={(e) => setFechaVencimiento(e.target.value)}
               min={fechaMinima}
+              required
               className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
             />
           </div>

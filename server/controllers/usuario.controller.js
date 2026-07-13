@@ -35,7 +35,11 @@ const obtener = async (req, res) => {
 // ─── Crear usuario ────────────────────────────────────────────────────────────
 const crear = async (req, res) => {
   try {
-    const { nombre, email, password, rol } = req.body;
+    const { nombre, password, rol } = req.body;
+    // Normalizado a minúsculas: si no, "Marlon@Gmail.com" y "marlon@gmail.com"
+    // quedarían como dos cuentas distintas y el login (que compara sin
+    // distinguir mayúsculas) generaría resultados confusos.
+    const email = req.body.email?.trim().toLowerCase();
 
     if (!nombre || !nombre.trim()) {
       return res.status(400).json({ mensaje: 'El nombre es requerido' });
@@ -54,8 +58,8 @@ const crear = async (req, res) => {
       return res.status(400).json({ mensaje: `El rol debe ser uno de: ${ROLES_VALIDOS.join(', ')}` });
     }
 
-    // Verificar email duplicado
-    const existe = await Usuario.findOne({ where: { email } });
+    // Verificar email duplicado (insensible a mayúsculas)
+    const existe = await Usuario.findOne({ where: { email: { [Op.iLike]: email } } });
     if (existe) {
       return res.status(400).json({ mensaje: 'El email ya está registrado' });
     }
@@ -85,19 +89,24 @@ const actualizar = async (req, res) => {
       return res.status(404).json({ mensaje: 'Usuario no encontrado' });
     }
 
-    const { nombre, email, rol } = req.body;
+    const { nombre, rol } = req.body;
+    const email = req.body.email !== undefined ? req.body.email?.trim().toLowerCase() : undefined;
 
-    if (email !== undefined && email !== usuario.email) {
+    if (email !== undefined && email.toLowerCase() !== usuario.email.toLowerCase()) {
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         return res.status(400).json({ mensaje: 'El email no es válido' });
       }
-      const emailEnUso = await Usuario.findOne({ where: { email, id: { [Op.ne]: usuario.id } } });
+      const emailEnUso = await Usuario.findOne({ where: { email: { [Op.iLike]: email }, id: { [Op.ne]: usuario.id } } });
       if (emailEnUso) {
         return res.status(400).json({ mensaje: 'El email ya está en uso por otro usuario' });
       }
     }
 
-    if (rol !== undefined && !ROLES_VALIDOS.includes(rol)) {
+    // Si rol no cambia (ej. se reenvía 'SuperAdmin' sin querer tocarlo porque
+    // el <select> del formulario no incluye esa opción), no se valida contra
+    // ROLES_VALIDOS — si no, guardar el propio nombre/email de un SuperAdmin
+    // fallaría siempre con "rol inválido" aunque el rol no se esté cambiando.
+    if (rol !== undefined && rol !== usuario.rol && !ROLES_VALIDOS.includes(rol)) {
       return res.status(400).json({ mensaje: `El rol debe ser uno de: ${ROLES_VALIDOS.join(', ')}` });
     }
 
@@ -191,6 +200,10 @@ const desactivar = async (req, res) => {
     const usuario = await Usuario.findByPk(req.params.id);
     if (!usuario) {
       return res.status(404).json({ mensaje: 'Usuario no encontrado' });
+    }
+
+    if (usuario.id === req.usuario.id) {
+      return res.status(400).json({ mensaje: 'No puedes desactivar tu propia cuenta' });
     }
 
     const teniaSesionActiva = usuario.sesion_activa;

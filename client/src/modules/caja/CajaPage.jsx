@@ -3,7 +3,27 @@ import {
   DollarSign, Clock, TrendingUp, TrendingDown, Plus, X, CheckCircle, AlertCircle, Loader
 } from 'lucide-react';
 import api from '../../utils/axios';
+import { sanitizarMonto } from '../../utils/format';
 import { useAuth } from '../../context/AuthContext';
+
+// Props comunes para los 4 inputs de dinero del módulo: bloquean "e"/"+"/"-"
+// y sanean lo pegado, igual que en Ventas/Productos.
+function propsMonto(value, setValue) {
+  return {
+    type: 'text',
+    inputMode: 'decimal',
+    value,
+    onChange: (e) => setValue(sanitizarMonto(e.target.value)),
+    onKeyDown: (e) => {
+      if (['e', 'E', '+', '-'].includes(e.key)) e.preventDefault();
+    },
+    onPaste: (e) => {
+      e.preventDefault();
+      const texto = e.clipboardData.getData('text');
+      setValue(sanitizarMonto(value + texto));
+    },
+  };
+}
 
 const fmt = (n) =>
   n == null ? '—' : `S/ ${parseFloat(n).toFixed(2)}`;
@@ -288,9 +308,8 @@ export default function CajaPage() {
                 Monto inicial en caja (S/)
               </label>
               <input
-                type="number" min="0" step="0.01" required
-                value={montoApertura}
-                onChange={(e) => setMontoApertura(e.target.value)}
+                {...propsMonto(montoApertura, setMontoApertura)}
+                required
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                 placeholder="Ej: 200.00"
                 autoFocus
@@ -320,18 +339,17 @@ export default function CajaPage() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Efectivo contado (S/)</label>
-                <input type="number" min="0" step="0.01" required
-                  value={contadoEfectivo}
-                  onChange={(e) => setContadoEfectivo(e.target.value)}
+                <input
+                  {...propsMonto(contadoEfectivo, setContadoEfectivo)}
+                  required
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                   placeholder="0.00" autoFocus
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Yape contado (S/)</label>
-                <input type="number" min="0" step="0.01"
-                  value={contadoYape}
-                  onChange={(e) => setContadoYape(e.target.value)}
+                <input
+                  {...propsMonto(contadoYape, setContadoYape)}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                   placeholder="0.00"
                 />
@@ -382,8 +400,9 @@ export default function CajaPage() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Monto (S/)</label>
-              <input type="number" min="0.01" step="0.01" required
-                value={movMonto} onChange={(e) => setMovMonto(e.target.value)}
+              <input
+                {...propsMonto(movMonto, setMovMonto)}
+                required
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                 placeholder="0.00" autoFocus
               />

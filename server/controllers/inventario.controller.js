@@ -15,8 +15,11 @@ const { inicioDiaPeru, finDiaPeruExclusivo } = require('../utils/fechas');
 
 const DIAS_MINIMOS_VENCIMIENTO = 30;
 
+// Obligatoria: un lote sin fecha de vencimiento se trata como vigente para
+// siempre (nunca se bloquea su venta aunque pase el tiempo), así que dejarla
+// vacía anularía en la práctica el control de "no vender vencido".
 const validarFechaVencimiento = (fechaStr) => {
-  if (!fechaStr) return null;
+  if (!fechaStr) return 'La fecha de vencimiento es obligatoria';
   const fecha = new Date(fechaStr + 'T00:00:00');
   const hoy = new Date();
   hoy.setHours(0, 0, 0, 0);
@@ -333,8 +336,8 @@ const crearSolicitud = async (req, res) => {
   try {
     const { producto_id, cantidad, proveedor_id } = req.body;
 
-    if (!cantidad || cantidad <= 0) {
-      return res.status(400).json({ mensaje: 'La cantidad debe ser mayor a 0' });
+    if (!Number.isInteger(Number(cantidad)) || Number(cantidad) <= 0) {
+      return res.status(400).json({ mensaje: 'La cantidad debe ser un número entero mayor a 0' });
     }
 
     const producto = await Producto.findByPk(producto_id);

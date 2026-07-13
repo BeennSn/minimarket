@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Loader2, Filter, X } from 'lucide-react';
 import api from '../../utils/axios';
-import { formatFechaHora, fechaLocalISO } from '../../utils/format';
+import { formatFechaHora, fechaLocalISO, sanitizarMonto } from '../../utils/format';
 import { useStockSync } from '../../context/StockSyncContext';
 import Breadcrumb from '../../components/Breadcrumb';
 import Spinner from '../../components/Spinner';
@@ -177,7 +177,11 @@ export default function InventarioPage() {
   const registrarEntrada = async (e) => {
     e.preventDefault();
     setError('');
-    if (fechaVencimiento && fechaVencimiento < fechaMinima) {
+    if (!fechaVencimiento) {
+      setError('La fecha de vencimiento es obligatoria');
+      return;
+    }
+    if (fechaVencimiento < fechaMinima) {
       setError(`La fecha de vencimiento debe ser al menos ${DIAS_MINIMOS_VENCIMIENTO} días a partir de hoy`);
       return;
     }
@@ -380,12 +384,15 @@ export default function InventarioPage() {
                   )}
                 </div>
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Vencimiento</label>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                    Vencimiento <span className="text-red-500">*</span>
+                  </label>
                   <input
                     type="date"
                     value={fechaVencimiento}
                     onChange={(e) => setFechaVencimiento(e.target.value)}
                     min={fechaMinima}
+                    required
                     className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                   />
                 </div>
@@ -395,11 +402,18 @@ export default function InventarioPage() {
                     <span className="ml-1 text-xs font-normal text-gray-400">(opcional)</span>
                   </label>
                   <input
-                    type="number"
-                    step="0.01"
-                    min="0.01"
+                    type="text"
+                    inputMode="decimal"
                     value={costoUnitario}
-                    onChange={(e) => setCostoUnitario(e.target.value)}
+                    onChange={(e) => setCostoUnitario(sanitizarMonto(e.target.value))}
+                    onKeyDown={(e) => {
+                      if (['e', 'E', '+', '-'].includes(e.key)) e.preventDefault();
+                    }}
+                    onPaste={(e) => {
+                      e.preventDefault();
+                      const texto = e.clipboardData.getData('text');
+                      setCostoUnitario((prev) => sanitizarMonto(prev + texto));
+                    }}
                     placeholder="0.00"
                     className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                   />
