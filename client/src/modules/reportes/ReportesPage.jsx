@@ -83,19 +83,27 @@ export default function ReportesPage() {
     datosRef.current = { resumen, ventasPorDia, metodoPago, productosTop, margenProductos, mermasPorMotivo, fechaInicio, fechaHasta };
   }, [resumen, ventasPorDia, metodoPago, productosTop, margenProductos, mermasPorMotivo, fechaInicio, fechaHasta]);
 
-  const cargarStockCritico = useCallback(async (u) => {
-    setCargandoStock(true);
+  const cargarStockCritico = useCallback(async (u, silencioso = false) => {
+    if (!silencioso) setCargandoStock(true);
     try {
       const { data } = await api.get('/reportes/inventario/stock-critico', { params: { umbral: u } });
       setStockCritico(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Error al cargar stock crítico:', err);
     } finally {
-      setCargandoStock(false);
+      if (!silencioso) setCargandoStock(false);
     }
   }, []);
 
-  useEffect(() => { cargarStockCritico(umbral); }, [cargarStockCritico, umbral, stockVersion]);
+  useEffect(() => { cargarStockCritico(umbral); }, [cargarStockCritico, umbral]);
+
+  // La carga inicial ya la hace el efecto de arriba (ligado a `umbral`); este
+  // solo reacciona a cambios de stock posteriores, en silencio.
+  const primeraCargaStockRef = useRef(true);
+  useEffect(() => {
+    if (primeraCargaStockRef.current) { primeraCargaStockRef.current = false; return; }
+    cargarStockCritico(umbral, true);
+  }, [stockVersion]);
 
   const aplicarUmbral = () => {
     const val = parseInt(umbralInput, 10);

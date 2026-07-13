@@ -648,8 +648,8 @@ export default function ProductosPage() {
   const rol = usuario?.rol;
   const puedeDarBaja = rol === 'Almacenero' || rol === 'Administrador';
 
-  const cargarDatos = async () => {
-    setLoading(true);
+  const cargarDatos = async (silencioso = false) => {
+    if (!silencioso) setLoading(true);
     setError('');
     try {
       const [resProductos, resCategorias, resVenc, resProv] = await Promise.all([
@@ -663,13 +663,17 @@ export default function ProductosPage() {
       setDatosVencimiento(Array.isArray(resVenc.data) ? resVenc.data : []);
       setProveedores(Array.isArray(resProv.data) ? resProv.data : []);
     } catch (err) {
-      setError(err.response?.data?.mensaje || 'Error al cargar datos');
+      if (!silencioso) setError(err.response?.data?.mensaje || 'Error al cargar datos');
     } finally {
-      setLoading(false);
+      if (!silencioso) setLoading(false);
     }
   };
 
-  useEffect(() => { cargarDatos(); }, [stockVersion]);
+  const primeraCargaRef = useRef(true);
+  useEffect(() => {
+    cargarDatos(!primeraCargaRef.current);
+    primeraCargaRef.current = false;
+  }, [stockVersion]);
 
   const abrirCrear = () => { setProductoEditando(null); setModalAbierto(true); };
   const abrirEditar = (p) => { setProductoEditando(p); setModalAbierto(true); };

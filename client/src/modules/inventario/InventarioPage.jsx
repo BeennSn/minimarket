@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Loader2, Filter, X } from 'lucide-react';
 import api from '../../utils/axios';
 import { formatFechaHora } from '../../utils/format';
@@ -62,8 +62,8 @@ export default function InventarioPage() {
 
   // ─── Carga inicial ────────────────────────────────────────────────────────
 
-  const cargarDatos = async () => {
-    setLoading(true);
+  const cargarDatos = async (silencioso = false) => {
+    if (!silencioso) setLoading(true);
     setError('');
     try {
       const [rP, rProv, rE, rB, rA] = await Promise.all([
@@ -79,13 +79,17 @@ export default function InventarioPage() {
       setBajas(Array.isArray(rB.data) ? rB.data : []);
       setAjustes(Array.isArray(rA.data) ? rA.data : []);
     } catch (err) {
-      setError(err.response?.data?.mensaje || 'Error al cargar datos');
+      if (!silencioso) setError(err.response?.data?.mensaje || 'Error al cargar datos');
     } finally {
-      setLoading(false);
+      if (!silencioso) setLoading(false);
     }
   };
 
-  useEffect(() => { cargarDatos(); }, [stockVersion]);
+  const primeraCargaRef = useRef(true);
+  useEffect(() => {
+    cargarDatos(!primeraCargaRef.current);
+    primeraCargaRef.current = false;
+  }, [stockVersion]);
 
   // ─── Filtrar entradas ─────────────────────────────────────────────────────
 

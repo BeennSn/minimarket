@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Loader2, CheckCircle, XCircle, PackageCheck, Plus, X, Check } from 'lucide-react';
 import api from '../../utils/axios';
 import { formatFecha } from '../../utils/format';
@@ -406,8 +406,8 @@ export default function SolicitudesPage() {
   const [solicitudSeleccionada, setSolicitudSeleccionada] = useState(null);
   const [modalCompletar, setModalCompletar] = useState(null);
 
-  const cargarDatos = async () => {
-    setLoading(true);
+  const cargarDatos = async (silencioso = false) => {
+    if (!silencioso) setLoading(true);
     setError('');
     try {
       const [rS, rP, rProv] = await Promise.all([
@@ -419,13 +419,17 @@ export default function SolicitudesPage() {
       setProductos(Array.isArray(rP.data) ? rP.data : []);
       setProveedores(Array.isArray(rProv.data) ? rProv.data : []);
     } catch (err) {
-      setError(err.response?.data?.mensaje || 'Error al cargar datos');
+      if (!silencioso) setError(err.response?.data?.mensaje || 'Error al cargar datos');
     } finally {
-      setLoading(false);
+      if (!silencioso) setLoading(false);
     }
   };
 
-  useEffect(() => { cargarDatos(); }, [stockVersion]);
+  const primeraCargaRef = useRef(true);
+  useEffect(() => {
+    cargarDatos(!primeraCargaRef.current);
+    primeraCargaRef.current = false;
+  }, [stockVersion]);
 
   const solicitudesFiltradas = filtroEstado === 'Todos'
     ? solicitudes
