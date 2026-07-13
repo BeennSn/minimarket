@@ -27,7 +27,16 @@ export default function HistorialVentasPage() {
   const [motivoAnular, setMotivoAnular] = useState('');
   const [anulando, setAnulando] = useState(false);
 
+  const rangoFechaInvalido = Boolean(fechaInicio && fechaHasta && fechaInicio > fechaHasta);
+
   const cargarVentas = useCallback(async () => {
+    if (fechaInicio && fechaHasta && fechaInicio > fechaHasta) {
+      setError('La fecha "Desde" no puede ser posterior a la fecha "Hasta"');
+      setVentas([]);
+      setPagination({ total: 0, pagina: 1, limite: 25, totalPaginas: 0 });
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError('');
     try {
@@ -52,6 +61,10 @@ export default function HistorialVentasPage() {
   const handleLimpiar = () => { setFechaInicio(''); setFechaHasta(''); setFiltroMetodo(''); setPaginaActual(1); };
 
   const exportarCSV = async () => {
+    if (rangoFechaInvalido) {
+      mostrarError('La fecha "Desde" no puede ser posterior a la fecha "Hasta"');
+      return;
+    }
     setExportando(true);
     try {
       const params = {};
@@ -128,7 +141,7 @@ export default function HistorialVentasPage() {
         <h1 className="text-2xl font-bold text-gray-800">Historial de Ventas</h1>
         <button
           onClick={exportarCSV}
-          disabled={exportando}
+          disabled={exportando || rangoFechaInvalido}
           className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:opacity-50"
         >
           {exportando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
@@ -143,6 +156,7 @@ export default function HistorialVentasPage() {
           <input
             type="date"
             value={fechaInicio}
+            max={fechaHasta || undefined}
             onChange={(e) => setFechaInicio(e.target.value)}
             className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
           />
@@ -152,6 +166,7 @@ export default function HistorialVentasPage() {
           <input
             type="date"
             value={fechaHasta}
+            min={fechaInicio || undefined}
             onChange={(e) => setFechaHasta(e.target.value)}
             className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
           />
@@ -170,7 +185,8 @@ export default function HistorialVentasPage() {
         </div>
         <button
           onClick={handleFiltrar}
-          className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-700"
+          disabled={rangoFechaInvalido}
+          className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Search className="mr-1 inline h-4 w-4" />
           Filtrar
@@ -182,6 +198,11 @@ export default function HistorialVentasPage() {
           <X className="mr-1 inline h-4 w-4" />
           Limpiar
         </button>
+        {rangoFechaInvalido && (
+          <p className="w-full text-xs text-red-500">
+            La fecha "Desde" no puede ser posterior a la fecha "Hasta"
+          </p>
+        )}
       </div>
 
       {/* Tabla */}

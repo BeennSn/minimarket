@@ -174,6 +174,10 @@ const listar = async (req, res) => {
     const { fecha_inicio, fecha_hasta, metodo_pago, pagina, limite } = req.query;
     const where = {};
 
+    if (fecha_inicio && fecha_hasta && new Date(fecha_inicio) > new Date(fecha_hasta)) {
+      return res.status(400).json({ mensaje: 'La fecha de inicio no puede ser posterior a la fecha final' });
+    }
+
     if (fecha_inicio && fecha_hasta) {
       where.createdAt = { [Op.between]: [new Date(fecha_inicio), new Date(fecha_hasta)] };
     } else if (fecha_inicio) {
