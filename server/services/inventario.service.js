@@ -46,9 +46,11 @@ const consumirStockFIFO = async ({ producto_id, cantidad, tipo, referencia = {},
   if (soloVigente) {
     const hoy = new Date();
     hoy.setHours(0, 0, 0, 0);
+    // Estrictamente después de hoy: un lote que vence hoy mismo ya NO se
+    // considera vigente (decisión de negocio: no se vende lo que vence hoy).
     where[Op.or] = [
       { fecha_vencimiento: null },
-      { fecha_vencimiento: { [Op.gte]: hoy } },
+      { fecha_vencimiento: { [Op.gt]: hoy } },
     ];
   }
 
@@ -125,9 +127,9 @@ const revertirConsumo = async ({ tipo, referencia_id }, t) => {
 };
 
 // ─── Stock realmente vigente (no vencido) de un producto ──────────────────────
-// Suma cantidad_restante solo de lotes sin vencer (o sin fecha), para poder
-// avisar de una vez si el stock disponible está vencido, sin esperar a la
-// transacción de la venta.
+// Suma cantidad_restante solo de lotes sin vencer (o sin fecha) — un lote que
+// vence HOY mismo ya no cuenta como vigente —, para poder avisar de una vez
+// si el stock disponible está vencido, sin esperar a la transacción de la venta.
 const calcularStockVigente = async (producto_id) => {
   const hoy = new Date();
   hoy.setHours(0, 0, 0, 0);
@@ -137,7 +139,7 @@ const calcularStockVigente = async (producto_id) => {
       cantidad_restante: { [Op.gt]: 0 },
       [Op.or]: [
         { fecha_vencimiento: null },
-        { fecha_vencimiento: { [Op.gte]: hoy } },
+        { fecha_vencimiento: { [Op.gt]: hoy } },
       ],
     },
     attributes: ['cantidad_restante'],

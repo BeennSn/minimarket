@@ -48,9 +48,11 @@ const obtenerProximasFechasVencimiento = async (productoIds) => {
 };
 
 // Suma, por producto, el stock de lotes NO vencidos (o sin fecha) con
-// cantidad_restante > 0. A diferencia de Producto.stock (que cuenta todo,
-// incluido lo vencido), esto es lo que realmente se puede vender — se usa en
-// el POS para avisar/bloquear antes de llegar al backend de la venta.
+// cantidad_restante > 0. Un lote que vence HOY mismo ya no cuenta como
+// vigente (decisión de negocio: no se vende lo que vence hoy). A diferencia
+// de Producto.stock (que cuenta todo, incluido lo vencido), esto es lo que
+// realmente se puede vender — se usa en el POS para avisar/bloquear antes de
+// llegar al backend de la venta.
 const obtenerStockVigente = async (productoIds) => {
   if (!productoIds.length) return new Map();
   const hoy = new Date();
@@ -65,7 +67,7 @@ const obtenerStockVigente = async (productoIds) => {
       cantidad_restante: { [Op.gt]: 0 },
       [Op.or]: [
         { fecha_vencimiento: null },
-        { fecha_vencimiento: { [Op.gte]: hoy } },
+        { fecha_vencimiento: { [Op.gt]: hoy } },
       ],
     },
     group: ['producto_id'],
