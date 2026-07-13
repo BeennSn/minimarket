@@ -59,10 +59,14 @@ function ModalProveedor({ abierto, onCerrar, onGuardar, proveedorEditando }) {
 
   const verificarRuc = async () => {
     if (ruc.length !== 11) return;
-    setVerificandoRuc(true);
     setErrorRuc('');
     setRucValidado(false);
     setRazonSocialRuc('');
+    if (ruc.startsWith('10')) {
+      setErrorRuc('RUC de persona natural (10) no válido para proveedor; debe ser RUC de empresa (20)');
+      return;
+    }
+    setVerificandoRuc(true);
     try {
       const { data } = await api.get(`/consulta/ruc/${ruc}`);
       if (data.estado && data.estado.toUpperCase() !== 'ACTIVO') {

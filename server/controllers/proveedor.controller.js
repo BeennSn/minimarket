@@ -47,6 +47,10 @@ const crear = async (req, res) => {
       return res.status(400).json({ mensaje: 'El RUC debe tener 11 dígitos' });
     }
 
+    if (ruc.startsWith('10')) {
+      return res.status(400).json({ mensaje: 'RUC de persona natural (10) no válido para proveedor; debe ser RUC de empresa (20)' });
+    }
+
     if (contactoInvalido(contacto)) {
       return res.status(400).json({ mensaje: 'El contacto debe ser un teléfono o correo electrónico válido' });
     }
@@ -85,6 +89,9 @@ const actualizar = async (req, res) => {
     if (ruc !== undefined && ruc !== proveedor.ruc) {
       if (!/^\d{11}$/.test(ruc)) {
         return res.status(400).json({ mensaje: 'El RUC debe tener 11 dígitos' });
+      }
+      if (ruc.startsWith('10')) {
+        return res.status(400).json({ mensaje: 'RUC de persona natural (10) no válido para proveedor; debe ser RUC de empresa (20)' });
       }
       const existe = await Proveedor.findOne({ where: { ruc, id: { [Op.ne]: proveedor.id } } });
       if (existe) {
