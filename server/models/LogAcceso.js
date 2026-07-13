@@ -23,6 +23,11 @@ const LogAcceso = sequelize.define('LogAcceso', {
     type: DataTypes.STRING,
     allowNull: false,
   },
+  tipo: {
+    type: DataTypes.ENUM('Login', 'Logout', 'Otro'),
+    allowNull: false,
+    defaultValue: 'Login',
+  },
   fecha_hora: {
     type: DataTypes.DATE,
     defaultValue: DataTypes.NOW,

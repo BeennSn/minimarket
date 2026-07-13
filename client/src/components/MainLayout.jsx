@@ -18,6 +18,7 @@ import {
   Wallet,
   History,
   UserCheck,
+  Fingerprint,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { rolSatisface } from '../utils/roles';
@@ -25,6 +26,7 @@ import { rolSatisface } from '../utils/roles';
 const NAV_ITEMS = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', roles: ['Gerente', 'Administrador'] },
   { to: '/usuarios', icon: Users, label: 'Usuarios', roles: ['Administrador'] },
+  { to: '/logs-acceso', icon: Fingerprint, label: 'Logs de Acceso', roles: ['Administrador'] },
   { to: '/productos', icon: Package, label: 'Productos', roles: ['Administrador', 'Almacenero'] },
   { to: '/categorias', icon: Tag, label: 'Categorías', roles: ['Administrador', 'Almacenero'] },
   { to: '/proveedores', icon: Truck, label: 'Proveedores', roles: ['Administrador', 'Almacenero'] },
@@ -42,6 +44,7 @@ const NAV_ITEMS = [
 const PAGE_TITLES = {
   '/dashboard': 'Dashboard',
   '/usuarios': 'Usuarios',
+  '/logs-acceso': 'Logs de Acceso',
   '/productos': 'Productos',
   '/categorias': 'Categorías',
   '/proveedores': 'Proveedores',

@@ -19,6 +19,7 @@ const reporteRoutes          = require('./routes/reporte.routes');
 const configuracionRoutes    = require('./routes/configuracion.routes');
 const cajaRoutes             = require('./routes/caja.routes');
 const consultaRoutes         = require('./routes/consulta.routes');
+const logAccesoRoutes        = require('./routes/logAcceso.routes');
 
 // ─── Importar seeders ─────────────────────────────────────────────────────────
 const seedAdmin = require('./seeders/adminSeed');
@@ -45,6 +46,7 @@ app.use('/api/reportes',       reporteRoutes);
 app.use('/api/configuracion',  configuracionRoutes);
 app.use('/api/caja',           cajaRoutes);
 app.use('/api/consulta',       consultaRoutes);
+app.use('/api/logs-acceso',    logAccesoRoutes);
 
 // ─── Health check ─────────────────────────────────────────────────────────────
 app.get('/', (req, res) => {

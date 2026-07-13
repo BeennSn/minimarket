@@ -1,7 +1,7 @@
 const bcrypt = require('bcryptjs');
 const { Op }  = require('sequelize');
 
-const { Usuario }                          = require('../models');
+const { Usuario, LogAcceso }               = require('../models');
 const { presentarUsuario, presentarLista } = require('../presenters/usuario.presenter');
 const { validatePassword }                 = require('./auth.controller');
 
@@ -139,6 +139,15 @@ const cambiarPassword = async (req, res) => {
     usuario.sesion_activa = false;
     await usuario.save();
 
+    await LogAcceso.create({
+      usuario_id:     usuario.id,
+      nombre_usuario: usuario.nombre,
+      rol:            usuario.rol,
+      tipo:           'Logout',
+      fecha_hora:     new Date(),
+      detalle: 'Sesión cerrada: cambio de contraseña',
+    });
+
     return res.status(200).json({ mensaje: 'Contraseña actualizada correctamente' });
   } catch (err) {
     console.error('Error en cambiarPassword:', err);
@@ -160,6 +169,15 @@ const forzarCierreSesion = async (req, res) => {
     usuario.sesion_activa = false;
     await usuario.save();
 
+    await LogAcceso.create({
+      usuario_id:     usuario.id,
+      nombre_usuario: usuario.nombre,
+      rol:            usuario.rol,
+      tipo:           'Logout',
+      fecha_hora:     new Date(),
+      detalle: 'Cierre forzado por SuperAdmin',
+    });
+
     return res.status(200).json({ mensaje: 'Sesiones cerradas correctamente' });
   } catch (err) {
     console.error('Error en forzarCierreSesion:', err);
@@ -175,9 +193,21 @@ const desactivar = async (req, res) => {
       return res.status(404).json({ mensaje: 'Usuario no encontrado' });
     }
 
+    const teniaSesionActiva = usuario.sesion_activa;
     usuario.activo = false;
     usuario.sesion_activa = false;
     await usuario.save();
+
+    if (teniaSesionActiva) {
+      await LogAcceso.create({
+        usuario_id:     usuario.id,
+        nombre_usuario: usuario.nombre,
+        rol:            usuario.rol,
+        tipo:           'Logout',
+        fecha_hora:     new Date(),
+        detalle: 'Sesión cerrada: usuario desactivado',
+      });
+    }
 
     return res.status(200).json({ mensaje: 'Usuario desactivado' });
   } catch (err) {

@@ -48,6 +48,7 @@ const login = async (req, res) => {
         usuario_id:     usuario.id,
         nombre_usuario: usuario.nombre,
         rol:            usuario.rol,
+        tipo:           'Logout',
         fecha_hora:     new Date(),
         detalle: 'Sesión anterior cerrada automáticamente por nuevo inicio de sesión',
       });
@@ -68,6 +69,7 @@ const login = async (req, res) => {
       usuario_id:     usuario.id,
       nombre_usuario: usuario.nombre,
       rol:            usuario.rol,
+      tipo:           'Login',
       fecha_hora:     new Date(),
     });
 
@@ -80,7 +82,19 @@ const login = async (req, res) => {
 
 const logout = async (req, res) => {
   try {
-    await Usuario.update({ sesion_activa: false }, { where: { id: req.usuario.id } });
+    const usuario = await Usuario.findByPk(req.usuario.id);
+    if (usuario) {
+      usuario.sesion_activa = false;
+      await usuario.save();
+
+      await LogAcceso.create({
+        usuario_id:     usuario.id,
+        nombre_usuario: usuario.nombre,
+        rol:            usuario.rol,
+        tipo:           'Logout',
+        fecha_hora:     new Date(),
+      });
+    }
     return res.status(200).json({ mensaje: 'Sesión cerrada correctamente' });
   } catch (err) {
     console.error('Error en logout:', err);
@@ -154,6 +168,7 @@ const forgotPassword = async (req, res) => {
       usuario_id: usuario.id,
       nombre_usuario: usuario.nombre,
       rol: usuario.rol,
+      tipo: 'Otro',
       fecha_hora: new Date(),
       detalle: 'Solicitud de código de recuperación',
     });
@@ -216,8 +231,9 @@ const resetPassword = async (req, res) => {
       usuario_id:     usuario.id,
       nombre_usuario: usuario.nombre,
       rol:            usuario.rol,
+      tipo:           'Logout',
       fecha_hora:     new Date(),
-      detalle: 'Contraseña restablecida exitosamente via codigo',
+      detalle: 'Sesión cerrada: contraseña restablecida exitosamente vía código',
     });
 
     return res.status(200).json({ success: true, mensaje: 'Contraseña actualizada correctamente' });

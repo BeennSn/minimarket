@@ -7,6 +7,7 @@ import LoginPage from './modules/auth/LoginPage';
 import ResetPasswordPage from './modules/auth/ResetPasswordPage';
 import DashboardPage from './modules/dashboard/DashboardPage';
 import UsuariosPage from './modules/usuarios/UsuariosPage';
+import LogsAccesoPage from './modules/logs/LogsAccesoPage';
 import CategoriasPage from './modules/categorias/CategoriasPage';
 import ProductosPage from './modules/productos/ProductosPage';
 import ProveedoresPage from './modules/proveedores/ProveedoresPage';
@@ -48,6 +49,14 @@ export default function App() {
               element={
                 <PrivateRoute roles={['Administrador']}>
                   <UsuariosPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="logs-acceso"
+              element={
+                <PrivateRoute roles={['Administrador']}>
+                  <LogsAccesoPage />
                 </PrivateRoute>
               }
             />
