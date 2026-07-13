@@ -6,6 +6,7 @@ import {
   ScanLine, ChevronDown, ChevronUp, FileText, Camera, QrCode,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useStockSync } from '../../context/StockSyncContext';
 import { useConfiguracion } from '../../hooks/useConfiguracion';
 import api from '../../utils/axios';
 
@@ -460,6 +461,7 @@ function ModalComprobante({ venta, onCerrar, onDescargarPDF }) {
 
 export default function VentasPage() {
   const { usuario } = useAuth();
+  const { stockVersion, notificarCambioStock } = useStockSync();
   const { empresa, igv } = useConfiguracion();
   const esSoloLectura = usuario?.rol === 'Gerente';
   const [productos, setProductos] = useState([]);
@@ -510,7 +512,7 @@ export default function VentasPage() {
     });
   };
 
-  useEffect(() => { cargarProductos(); }, []);
+  useEffect(() => { cargarProductos(); }, [stockVersion]);
 
   // Mantiene buscarRef siempre actualizado para usarlo desde el scanner sin closures stale
   useEffect(() => { buscarRef.current = buscarPorCodigo; });
@@ -801,6 +803,7 @@ export default function VentasPage() {
       setModalComprobante(true);
       generarPDF(data, empresa, igv);
       cargarProductos();
+      notificarCambioStock();
     } catch (err) {
       if (!err.response) {
         setError('Sin respuesta del servidor. Verifique si la venta fue registrada antes de reintentar.');

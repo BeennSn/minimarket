@@ -5,9 +5,11 @@ import Breadcrumb from '../../components/Breadcrumb';
 import Toast from '../../components/Toast';
 import useToast from '../../hooks/useToast';
 import { useAuth } from '../../context/AuthContext';
+import { useStockSync } from '../../context/StockSyncContext';
 
 export default function HistorialVentasPage() {
   const { usuario } = useAuth();
+  const { notificarCambioStock } = useStockSync();
   const puedeAnular = usuario?.rol === 'Administrador' || usuario?.rol === 'Gerente';
   const { toast, mostrarExito, mostrarError, cerrar } = useToast();
 
@@ -112,6 +114,7 @@ export default function HistorialVentasPage() {
       setVentaAAnular(null);
       setMotivoAnular('');
       cargarVentas();
+      notificarCambioStock();
     } catch (err) {
       mostrarError(err.response?.data?.mensaje || 'Error al anular la venta');
     } finally {

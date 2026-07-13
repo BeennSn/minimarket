@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Loader2, Filter, X } from 'lucide-react';
 import api from '../../utils/axios';
 import { formatFechaHora } from '../../utils/format';
+import { useStockSync } from '../../context/StockSyncContext';
 import Breadcrumb from '../../components/Breadcrumb';
 import Spinner from '../../components/Spinner';
 import Toast from '../../components/Toast';
@@ -12,6 +13,7 @@ const MOTIVOS_BAJA = ['Vencido', 'Dañado', 'Robo o faltante', 'Consumo interno'
 
 export default function InventarioPage() {
   const { toast, mostrarExito, mostrarError, cerrar } = useToast();
+  const { stockVersion, notificarCambioStock } = useStockSync();
   const [tabActiva, setTabActiva] = useState('entradas');
 
   const [productos, setProductos] = useState([]);
@@ -83,7 +85,7 @@ export default function InventarioPage() {
     }
   };
 
-  useEffect(() => { cargarDatos(); }, []);
+  useEffect(() => { cargarDatos(); }, [stockVersion]);
 
   // ─── Filtrar entradas ─────────────────────────────────────────────────────
 
@@ -196,6 +198,7 @@ export default function InventarioPage() {
       ]);
       setProductos(Array.isArray(rP.data) ? rP.data : []);
       setEntradas(Array.isArray(rE.data) ? rE.data : []);
+      notificarCambioStock();
     } catch (err) {
       mostrarError(err.response?.data?.mensaje || err.response?.data?.message || 'Error al registrar entrada');
     } finally {
@@ -227,6 +230,7 @@ export default function InventarioPage() {
       ]);
       setProductos(Array.isArray(rP.data) ? rP.data : []);
       setBajas(Array.isArray(rB.data) ? rB.data : []);
+      notificarCambioStock();
     } catch (err) {
       mostrarError(err.response?.data?.mensaje || err.response?.data?.message || 'Error al registrar baja');
     } finally {
@@ -261,6 +265,7 @@ export default function InventarioPage() {
       ]);
       setProductos(Array.isArray(rP.data) ? rP.data : []);
       setAjustes(Array.isArray(rA.data) ? rA.data : []);
+      notificarCambioStock();
     } catch (err) {
       mostrarError(err.response?.data?.mensaje || err.response?.data?.message || 'Error al registrar ajuste');
     } finally {

@@ -3,6 +3,7 @@ import { Loader2, CheckCircle, XCircle, PackageCheck, Plus, X, Check } from 'luc
 import api from '../../utils/axios';
 import { formatFecha } from '../../utils/format';
 import { useAuth } from '../../context/AuthContext';
+import { useStockSync } from '../../context/StockSyncContext';
 import Breadcrumb from '../../components/Breadcrumb';
 import Spinner from '../../components/Spinner';
 import Toast from '../../components/Toast';
@@ -390,6 +391,7 @@ function ModalCompletar({ abierto, onCerrar, solicitud, onCompletada }) {
 export default function SolicitudesPage() {
   const { usuario } = useAuth();
   const { toast, mostrarExito, mostrarError, cerrar } = useToast();
+  const { stockVersion, notificarCambioStock } = useStockSync();
   const rol = usuario?.rol;
 
   const [solicitudes, setSolicitudes] = useState([]);
@@ -423,7 +425,7 @@ export default function SolicitudesPage() {
     }
   };
 
-  useEffect(() => { cargarDatos(); }, []);
+  useEffect(() => { cargarDatos(); }, [stockVersion]);
 
   const solicitudesFiltradas = filtroEstado === 'Todos'
     ? solicitudes
@@ -617,6 +619,7 @@ export default function SolicitudesPage() {
           setModalCompletar(null);
           mostrarExito('Mercadería registrada y stock actualizado correctamente');
           cargarDatos();
+          notificarCambioStock();
         }}
       />
     </div>

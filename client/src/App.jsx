@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
+import { StockSyncProvider } from './context/StockSyncContext';
 import PrivateRoute from './components/PrivateRoute';
 import MainLayout from './components/MainLayout';
 import LoginPage from './modules/auth/LoginPage';
@@ -26,6 +27,7 @@ function HomeRedirect() {
 export default function App() {
   return (
     <AuthProvider>
+      <StockSyncProvider>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
@@ -148,6 +150,7 @@ export default function App() {
           </Route>
         </Route>
       </Routes>
+      </StockSyncProvider>
     </AuthProvider>
   );
 }

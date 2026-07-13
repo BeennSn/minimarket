@@ -7,6 +7,7 @@ import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
 } from 'recharts';
 import { useAuth } from '../../context/AuthContext';
+import { useStockSync } from '../../context/StockSyncContext';
 import api from '../../utils/axios';
 import Breadcrumb from '../../components/Breadcrumb';
 
@@ -58,6 +59,7 @@ function formatFecha(dia) {
 
 export default function DashboardPage() {
   const { usuario } = useAuth();
+  const { stockVersion } = useStockSync();
   const [kpis, setKpis] = useState(null);
   const [inventario, setInventario] = useState(null);
   const [ventasPorDia, setVentasPorDia] = useState([]);
@@ -90,7 +92,7 @@ export default function DashboardPage() {
     }
   }, []);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => { fetchData(); }, [fetchData, stockVersion]);
 
   useEffect(() => {
     const refetchOnFocus = () => { fetchData(true); };

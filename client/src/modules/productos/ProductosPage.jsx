@@ -3,6 +3,7 @@ import { Plus, Search, Pencil, EyeOff, Eye, X, Trash2, AlertTriangle, Loader2, P
 import api from '../../utils/axios';
 import { formatMoneda, formatStock, formatFecha } from '../../utils/format';
 import { useAuth } from '../../context/AuthContext';
+import { useStockSync } from '../../context/StockSyncContext';
 import Breadcrumb from '../../components/Breadcrumb';
 import Spinner from '../../components/Spinner';
 import ConfirmDialog from '../../components/ConfirmDialog';
@@ -626,6 +627,7 @@ function ModalBaja({ abierto, onCerrar, producto, onRegistrada }) {
 export default function ProductosPage() {
   const { usuario } = useAuth();
   const { toast, mostrarExito, mostrarError, cerrar } = useToast();
+  const { stockVersion, notificarCambioStock } = useStockSync();
   const [productos, setProductos] = useState([]);
   const [categorias, setCategorias] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -667,7 +669,7 @@ export default function ProductosPage() {
     }
   };
 
-  useEffect(() => { cargarDatos(); }, []);
+  useEffect(() => { cargarDatos(); }, [stockVersion]);
 
   const abrirCrear = () => { setProductoEditando(null); setModalAbierto(true); };
   const abrirEditar = (p) => { setProductoEditando(p); setModalAbierto(true); };
@@ -1026,6 +1028,7 @@ export default function ProductosPage() {
           setModalBaja(null);
           mostrarExito('Baja registrada correctamente');
           cargarDatos();
+          notificarCambioStock();
         }}
       />
 

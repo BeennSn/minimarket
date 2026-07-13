@@ -3,6 +3,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Download, Loader2, FileText, ShoppingCart, DollarSign, TrendingUp, AlertTriangle, CheckCircle, RefreshCw } from 'lucide-react';
 import api from '../../utils/axios';
+import { useStockSync } from '../../context/StockSyncContext';
 import Breadcrumb from '../../components/Breadcrumb';
 
 function formatFecha(dia) {
@@ -19,6 +20,7 @@ function formatFechaCompleta(dia) {
 }
 
 export default function ReportesPage() {
+  const { stockVersion } = useStockSync();
   const [resumen, setResumen] = useState(null);
   const [ventasPorDia, setVentasPorDia] = useState([]);
   const [metodoPago, setMetodoPago] = useState([]);
@@ -93,7 +95,7 @@ export default function ReportesPage() {
     }
   }, []);
 
-  useEffect(() => { cargarStockCritico(umbral); }, [cargarStockCritico, umbral]);
+  useEffect(() => { cargarStockCritico(umbral); }, [cargarStockCritico, umbral, stockVersion]);
 
   const aplicarUmbral = () => {
     const val = parseInt(umbralInput, 10);
