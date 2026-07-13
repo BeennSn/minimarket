@@ -186,6 +186,11 @@ const listar = async (req, res) => {
       where.metodo_pago = metodo_pago;
     }
 
+    // Un Vendedor solo ve sus propias ventas; Administrador/Gerente ven todas.
+    if (req.usuario.rol === 'Vendedor') {
+      where.usuario_id = req.usuario.id;
+    }
+
     const page = Math.max(1, parseInt(pagina) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(limite) || 25));
     const offset = (page - 1) * limit;
@@ -221,6 +226,10 @@ const obtener = async (req, res) => {
 
     if (!venta) {
       return res.status(404).json({ mensaje: 'Venta no encontrada' });
+    }
+
+    if (req.usuario.rol === 'Vendedor' && venta.usuario_id !== req.usuario.id) {
+      return res.status(403).json({ mensaje: 'No tienes acceso a esta venta' });
     }
 
     return res.status(200).json(presentarVenta(venta));

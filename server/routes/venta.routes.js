@@ -14,7 +14,7 @@ router.post(
 
 router.get(
   '/',
-  verificarRol('Administrador', 'Gerente'),
+  verificarRol('Administrador', 'Gerente', 'Vendedor'),
   ventaController.listar
 );
 
