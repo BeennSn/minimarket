@@ -1,7 +1,7 @@
 const { Op } = require('sequelize');
 const { sequelize, Venta, DetalleVenta, Producto, Usuario, Cliente, Turno, MovimientoCaja } = require('../models');
 const { presentarVenta, presentarLista } = require('../presenters/venta.presenter');
-const { consumirStockFIFO, revertirConsumo } = require('../services/inventario.service');
+const { consumirStockFIFO, revertirConsumo, calcularStockVigente } = require('../services/inventario.service');
 const { inicioDiaPeru, finDiaPeruExclusivo } = require('../utils/fechas');
 
 const INCLUDE_VENTA = [
@@ -76,6 +76,12 @@ const registrar = async (req, res) => {
       }
       if (producto.stock < item.cantidad) {
         return res.status(400).json({ mensaje: `Stock insuficiente para: ${producto.nombre}` });
+      }
+      // Es ilegal vender producto vencido: el stock "vigente" excluye lotes
+      // ya vencidos, aunque el stock total del producto los siga contando.
+      const stockVigente = await calcularStockVigente(item.producto_id);
+      if (stockVigente < item.cantidad) {
+        return res.status(400).json({ mensaje: `"${producto.nombre}" tiene stock vencido: solo hay ${stockVigente} unidad(es) vigente(s) disponible(s). Da de baja el lote vencido para continuar.` });
       }
       monto_total_prev += parseFloat(item.cantidad * producto.precio);
     }
@@ -158,13 +164,16 @@ const registrar = async (req, res) => {
         { transaction: t, returning: true }
       );
 
-      // Descontar stock de los lotes en orden FEFO (primero vence, primero sale)
+      // Descontar stock de los lotes en orden FEFO (primero vence, primero sale).
+      // soloVigente: true — nunca se vende de un lote ya vencido, aunque el
+      // pre-chequeo de arriba ya lo haya validado (cubre la ventana de carrera).
       for (const detalle of detalles) {
         await consumirStockFIFO({
           producto_id: detalle.producto_id,
           cantidad:    detalle.cantidad,
           tipo:        'Venta',
           referencia:  { detalle_venta_id: detalle.id },
+          soloVigente: true,
         }, t);
       }
 

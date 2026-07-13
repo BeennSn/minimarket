@@ -37,9 +37,23 @@ const crearLote = async ({ producto_id, proveedor_id, cantidad, fecha_vencimient
 };
 
 // ─── Consumir stock de lotes en orden FEFO (primero vence, primero sale) ─────
-const consumirStockFIFO = async ({ producto_id, cantidad, tipo, referencia = {} }, t) => {
+// soloVigente=true excluye lotes ya vencidos de la selección (usado por
+// ventas: es ilegal vender producto vencido). Se deja en false por defecto
+// porque Bajas y Ajustes sí necesitan poder consumir lotes vencidos —de
+// hecho, dar de baja stock vencido es precisamente para eso.
+const consumirStockFIFO = async ({ producto_id, cantidad, tipo, referencia = {}, soloVigente = false }, t) => {
+  const where = { producto_id, cantidad_restante: { [Op.gt]: 0 } };
+  if (soloVigente) {
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+    where[Op.or] = [
+      { fecha_vencimiento: null },
+      { fecha_vencimiento: { [Op.gte]: hoy } },
+    ];
+  }
+
   const lotes = await EntradaMercaderia.findAll({
-    where: { producto_id, cantidad_restante: { [Op.gt]: 0 } },
+    where,
     order: [['fecha_vencimiento', 'ASC NULLS LAST'], ['createdAt', 'ASC']],
     lock: t.LOCK.UPDATE,
     transaction: t,
@@ -65,7 +79,10 @@ const consumirStockFIFO = async ({ producto_id, cantidad, tipo, referencia = {} 
   }
 
   if (restante > 0) {
-    throw { status: 400, mensaje: 'Stock insuficiente en los lotes registrados (descuadre de inventario, contactar al administrador)' };
+    const mensaje = soloVigente
+      ? 'Stock insuficiente: parte o todo el stock de este producto está vencido. Da de baja el lote vencido antes de venderlo.'
+      : 'Stock insuficiente en los lotes registrados (descuadre de inventario, contactar al administrador)';
+    throw { status: 400, mensaje };
   }
 
   await ConsumoLote.bulkCreate(consumosData, { transaction: t });
@@ -107,4 +124,25 @@ const revertirConsumo = async ({ tipo, referencia_id }, t) => {
   }
 };
 
-module.exports = { crearLote, consumirStockFIFO, revertirConsumo };
+// ─── Stock realmente vigente (no vencido) de un producto ──────────────────────
+// Suma cantidad_restante solo de lotes sin vencer (o sin fecha), para poder
+// avisar de una vez si el stock disponible está vencido, sin esperar a la
+// transacción de la venta.
+const calcularStockVigente = async (producto_id) => {
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  const lotes = await EntradaMercaderia.findAll({
+    where: {
+      producto_id,
+      cantidad_restante: { [Op.gt]: 0 },
+      [Op.or]: [
+        { fecha_vencimiento: null },
+        { fecha_vencimiento: { [Op.gte]: hoy } },
+      ],
+    },
+    attributes: ['cantidad_restante'],
+  });
+  return lotes.reduce((suma, l) => suma + l.cantidad_restante, 0);
+};
+
+module.exports = { crearLote, consumirStockFIFO, revertirConsumo, calcularStockVigente };

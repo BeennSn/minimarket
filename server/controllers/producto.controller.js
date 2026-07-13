@@ -47,10 +47,41 @@ const obtenerProximasFechasVencimiento = async (productoIds) => {
   return new Map(filas.map((f) => [f.producto_id, f.proxima_fecha_vencimiento]));
 };
 
+// Suma, por producto, el stock de lotes NO vencidos (o sin fecha) con
+// cantidad_restante > 0. A diferencia de Producto.stock (que cuenta todo,
+// incluido lo vencido), esto es lo que realmente se puede vender — se usa en
+// el POS para avisar/bloquear antes de llegar al backend de la venta.
+const obtenerStockVigente = async (productoIds) => {
+  if (!productoIds.length) return new Map();
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  const filas = await EntradaMercaderia.findAll({
+    attributes: [
+      'producto_id',
+      [sequelize.fn('SUM', sequelize.col('cantidad_restante')), 'stock_vigente'],
+    ],
+    where: {
+      producto_id: { [Op.in]: productoIds },
+      cantidad_restante: { [Op.gt]: 0 },
+      [Op.or]: [
+        { fecha_vencimiento: null },
+        { fecha_vencimiento: { [Op.gte]: hoy } },
+      ],
+    },
+    group: ['producto_id'],
+    raw: true,
+  });
+  return new Map(filas.map((f) => [f.producto_id, parseInt(f.stock_vigente, 10)]));
+};
+
 const adjuntarProximasFechas = async (productos) => {
-  const fechas = await obtenerProximasFechasVencimiento(productos.map((p) => p.id));
+  const [fechas, vigentes] = await Promise.all([
+    obtenerProximasFechasVencimiento(productos.map((p) => p.id)),
+    obtenerStockVigente(productos.map((p) => p.id)),
+  ]);
   for (const p of productos) {
     p.proxima_fecha_vencimiento = fechas.get(p.id) || null;
+    p.stock_vigente = vigentes.has(p.id) ? vigentes.get(p.id) : 0;
   }
   return productos;
 };

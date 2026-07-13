@@ -344,13 +344,18 @@ export default function VentasPage() {
   const inicio = (paginaSegura - 1) * ITEMS_PER_PAGE;
   const productosPagina = productosFiltrados.slice(inicio, inicio + ITEMS_PER_PAGE);
 
+  // Stock realmente vendible: excluye lotes ya vencidos (stock_vigente lo
+  // calcula el backend; si no viniera por algún motivo, usar stock a secas
+  // como respaldo en vez de bloquear todo).
+  const stockVendible = (p) => p?.stock_vigente ?? p?.stock ?? 0;
+
   const agregarAlCarrito = (producto) => {
     setCarrito((prev) => {
       const existente = prev.find((item) => item.id === producto.id);
       if (existente) {
         return prev.map((item) =>
           item.id === producto.id
-            ? { ...item, cantidad: Math.min(item.cantidad + 1, producto.stock) }
+            ? { ...item, cantidad: Math.min(item.cantidad + 1, stockVendible(producto)) }
             : item
         );
       }
@@ -360,7 +365,7 @@ export default function VentasPage() {
 
   const cambiarCantidad = (id, nuevaCantidad) => {
     const prod = productos.find((p) => p.id === id);
-    const max = prod?.stock ?? 99;
+    const max = stockVendible(prod) || 99;
     const cantidad = Math.max(1, Math.min(nuevaCantidad, max));
     setCarrito((prev) =>
       prev.map((item) => (item.id === id ? { ...item, cantidad } : item))
@@ -496,9 +501,14 @@ export default function VentasPage() {
       return;
     }
 
-    const itemSinStock = carrito.find((i) => i.cantidad > i.stock);
+    const itemSinStock = carrito.find((i) => i.cantidad > stockVendible(i));
     if (itemSinStock) {
-      setError(`Stock insuficiente para "${itemSinStock.nombre}". Disponible: ${itemSinStock.stock}`);
+      const disponible = stockVendible(itemSinStock);
+      setError(
+        disponible < itemSinStock.stock
+          ? `"${itemSinStock.nombre}" tiene unidades vencidas: solo hay ${disponible} vigente(s) disponible(s)`
+          : `Stock insuficiente para "${itemSinStock.nombre}". Disponible: ${disponible}`
+      );
       return;
     }
 
@@ -668,7 +678,7 @@ export default function VentasPage() {
                           type="number"
                           value={item.cantidad}
                           min={1}
-                          max={item.stock}
+                          max={stockVendible(item)}
                           onChange={(e) =>
                             cambiarCantidad(item.id, parseInt(e.target.value, 10) || 1)
                           }
@@ -749,7 +759,10 @@ export default function VentasPage() {
                 </div>
               ) : (
                 productosPagina.map((p) => {
-                  const sinStock = p.stock === 0;
+                  const disponible = stockVendible(p);
+                  const vencidoTotal = p.stock > 0 && disponible === 0;
+                  const vencidoParcial = disponible > 0 && disponible < p.stock;
+                  const sinStock = disponible === 0;
                   const enCarrito = carrito.some((item) => item.id === p.id);
                   return (
                     <div
@@ -757,13 +770,16 @@ export default function VentasPage() {
                       className={`relative flex flex-col items-start rounded-xl border p-3 text-left text-sm ${
                         sinStock
                           ? 'border-gray-100 bg-gray-50 opacity-50'
-                          : esSoloLectura
-                            ? 'border-gray-200 bg-white'
-                            : enCarrito
-                              ? 'border-indigo-300 bg-indigo-50 shadow-sm'
-                              : 'border-gray-200 bg-white hover:border-indigo-200 hover:shadow-sm'
+                          : vencidoParcial
+                            ? 'border-amber-200 bg-amber-50'
+                            : esSoloLectura
+                              ? 'border-gray-200 bg-white'
+                              : enCarrito
+                                ? 'border-indigo-300 bg-indigo-50 shadow-sm'
+                                : 'border-gray-200 bg-white hover:border-indigo-200 hover:shadow-sm'
                       } ${!esSoloLectura && !sinStock ? 'cursor-pointer transition-all' : ''}`}
                       onClick={() => !esSoloLectura && !sinStock && agregarAlCarrito(p)}
+                      title={vencidoTotal ? 'Todo el stock de este producto está vencido' : vencidoParcial ? `Solo ${disponible} unidad(es) vigente(s); el resto está vencido` : undefined}
                     >
                       <span className="font-medium text-gray-800 leading-tight">{p.nombre}</span>
                       <span className="mt-0.5 text-gray-400 text-xs">{p.marca}</span>
@@ -771,8 +787,12 @@ export default function VentasPage() {
                         <span className="font-semibold text-indigo-600">
                           S/. {Number(p.precio).toFixed(2)}
                         </span>
-                        {sinStock ? (
+                        {vencidoTotal ? (
+                          <span className="text-xs text-red-500 font-medium">Vencido</span>
+                        ) : sinStock ? (
                           <span className="text-xs text-red-400 font-medium">Sin stock</span>
+                        ) : vencidoParcial ? (
+                          <span className="text-xs text-amber-600 font-medium">⚠ {disponible} vigente(s)</span>
                         ) : (
                           <span className="text-xs text-gray-400">{p.stock} ud.</span>
                         )}
