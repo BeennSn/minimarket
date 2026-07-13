@@ -85,7 +85,7 @@ function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categor
         setCategoriaId(categorias.length > 0 ? categorias[0].id : '');
         setPrecio('');
         setStock('');
-        setStockMinimo('');
+        setStockMinimo('10');
         setUnidadCompra('Unidad');
         setFactorConversion('1');
         setCodigoBarras('');
@@ -373,17 +373,22 @@ function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categor
 
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">
-              Stock Mínimo <span className="text-gray-400 text-xs">(opcional)</span>
+              Stock Mínimo {!esCreacion && <span className="text-gray-400 text-xs">(opcional)</span>}
             </label>
             <input
               type="number"
               min="0"
               value={stockMinimo}
               onChange={(e) => setStockMinimo(e.target.value)}
+              disabled={esCreacion}
               placeholder="Umbral global si se deja vacío"
-              className="w-full rounded-lg border border-gray-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              className="w-full rounded-lg border border-gray-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:bg-gray-50 disabled:text-gray-400"
             />
-            <p className="mt-1 text-xs text-gray-400">Punto de reorden propio de este producto para el reporte de Stock Crítico.</p>
+            <p className="mt-1 text-xs text-gray-400">
+              {esCreacion
+                ? 'Valor preestablecido (10). Se puede ajustar más adelante editando el producto.'
+                : 'Punto de reorden propio de este producto para el reporte de Stock Crítico.'}
+            </p>
             {esCreacion && stockMinimo !== '' && parseInt(stockMinimo, 10) > (parseInt(stock, 10) || 0) && (
               <p className="mt-1 text-xs text-orange-500">
                 ⚠ El stock mínimo es mayor al stock inicial — este producto aparecerá como crítico de inmediato.
