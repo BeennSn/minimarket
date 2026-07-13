@@ -26,6 +26,14 @@ const seedAdmin = require('./seeders/adminSeed');
 
 const app = express();
 
+// Vercel pone la app detrás de su propio proxy/edge y agrega X-Forwarded-For
+// con la IP real del cliente. Sin esto, Express no confía en ese header y
+// express-rate-limit (usado en /api/auth) lanza ERR_ERL_UNEXPECTED_X_FORWARDED_FOR
+// y tumba la petición. "1" = confiar en exactamente un salto de proxy (el de Vercel).
+if (process.env.VERCEL) {
+  app.set('trust proxy', 1);
+}
+
 // ─── Middlewares globales ─────────────────────────────────────────────────────
 const corsOrigin = process.env.CORS_ORIGIN;
 app.use(cors(corsOrigin ? { origin: corsOrigin, credentials: true } : {}));
