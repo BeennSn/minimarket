@@ -500,6 +500,7 @@ export default function VentasPage() {
   const [buscandoDni, setBuscandoDni] = useState(false);
   const [buscandoRuc, setBuscandoRuc] = useState(false);
   const [nombreDni, setNombreDni] = useState('');
+  const [dniValidado, setDniValidado] = useState(false);
   const [rucValidado, setRucValidado] = useState(false);
   const [rucInfo, setRucInfo] = useState(null);
   const [clienteId, setClienteId] = useState(null);
@@ -666,7 +667,7 @@ export default function VentasPage() {
 
   const datosClienteValidos = () => {
     if (tipoComprobante === 'BoletaSimple') return true;
-    if (tipoComprobante === 'BoletaDNI') return /^\d{8}$/.test(clienteDni);
+    if (tipoComprobante === 'BoletaDNI') return /^\d{8}$/.test(clienteDni) && dniValidado;
     if (tipoComprobante === 'Factura') {
       return /^\d{11}$/.test(clienteRuc) && rucValidado;
     }
@@ -694,6 +695,7 @@ export default function VentasPage() {
     setClienteRazonSocial('');
     setClienteDireccion('');
     setNombreDni('');
+    setDniValidado(false);
     setRucValidado(false);
     setRucInfo(null);
     setClienteId(null);
@@ -706,10 +708,12 @@ export default function VentasPage() {
   const buscarDni = async () => {
     if (clienteDni.length !== 8) return;
     setBuscandoDni(true);
+    setDniValidado(false);
     setError('');
     try {
       const { data } = await api.get(`/consulta/dni/${clienteDni}`);
       setNombreDni(data.nombre_completo);
+      setDniValidado(true);
       try {
         const { data: cliente } = await api.post('/clientes/buscar-o-crear', {
           nombre: data.nombre_completo,
@@ -764,7 +768,9 @@ export default function VentasPage() {
 
     if (!datosClienteValidos()) {
       if (tipoComprobante === 'BoletaDNI') {
-        setError('El DNI debe tener exactamente 8 dígitos');
+        setError(/^\d{8}$/.test(clienteDni)
+          ? 'Debes verificar el DNI con RENIEC antes de continuar'
+          : 'El DNI debe tener exactamente 8 dígitos');
       } else if (tipoComprobante === 'Factura') {
         setError('El RUC debe tener 11 dígitos');
       }
@@ -1128,7 +1134,7 @@ export default function VentasPage() {
                     <input
                       type="text"
                       value={clienteDni}
-                      onChange={(e) => { setClienteDni(e.target.value.replace(/\D/g, '').slice(0, 8)); setNombreDni(''); }}
+                      onChange={(e) => { setClienteDni(e.target.value.replace(/\D/g, '').slice(0, 8)); setNombreDni(''); setDniValidado(false); }}
                       onKeyDown={(e) => e.key === 'Enter' && buscarDni()}
                       placeholder="12345678"
                       maxLength={8}

@@ -38,6 +38,16 @@ const registrar = async (req, res) => {
       return res.status(400).json({ mensaje: 'Para emitir factura se requiere un RUC válido de 11 dígitos' });
     }
 
+    if (tipo_comprobante === 'BoletaDNI') {
+      if (!/^\d{8}$/.test(cliente_dni)) {
+        return res.status(400).json({ mensaje: 'Para boleta con DNI se requiere un DNI válido de 8 dígitos' });
+      }
+      const clienteVerificado = cliente_id && await Cliente.findOne({ where: { id: cliente_id, dni: cliente_dni } });
+      if (!clienteVerificado) {
+        return res.status(400).json({ mensaje: 'El DNI debe verificarse (consulta RENIEC) antes de registrar la venta' });
+      }
+    }
+
     // ─── Validaciones previas (fuera de transacción) ──────────────────────────
     let monto_total_prev = 0;
     for (const item of items) {
