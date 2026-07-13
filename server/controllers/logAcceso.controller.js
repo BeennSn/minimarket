@@ -14,11 +14,15 @@ const listar = async (req, res) => {
     }
 
     if (fecha_inicio && fecha_hasta) {
-      where.fecha_hora = { [Op.between]: [new Date(fecha_inicio), new Date(fecha_hasta)] };
+      const hasta = new Date(fecha_hasta);
+      hasta.setDate(hasta.getDate() + 1);
+      where.fecha_hora = { [Op.between]: [new Date(fecha_inicio), hasta] };
     } else if (fecha_inicio) {
       where.fecha_hora = { [Op.gte]: new Date(fecha_inicio) };
     } else if (fecha_hasta) {
-      where.fecha_hora = { [Op.lte]: new Date(fecha_hasta) };
+      const hasta = new Date(fecha_hasta);
+      hasta.setDate(hasta.getDate() + 1);
+      where.fecha_hora = { [Op.lt]: hasta };
     }
 
     if (usuario_id) {

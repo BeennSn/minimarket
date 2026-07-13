@@ -202,11 +202,15 @@ const historial = async (req, res) => {
     const where = {};
 
     if (fecha_inicio && fecha_hasta) {
-      where.fecha_apertura = { [Op.between]: [new Date(fecha_inicio), new Date(fecha_hasta)] };
+      const hasta = new Date(fecha_hasta);
+      hasta.setDate(hasta.getDate() + 1);
+      where.fecha_apertura = { [Op.between]: [new Date(fecha_inicio), hasta] };
     } else if (fecha_inicio) {
       where.fecha_apertura = { [Op.gte]: new Date(fecha_inicio) };
     } else if (fecha_hasta) {
-      where.fecha_apertura = { [Op.lte]: new Date(fecha_hasta) };
+      const hasta = new Date(fecha_hasta);
+      hasta.setDate(hasta.getDate() + 1);
+      where.fecha_apertura = { [Op.lt]: hasta };
     }
 
     if (usuario_id) where.usuario_id = usuario_id;

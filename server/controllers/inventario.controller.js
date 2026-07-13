@@ -97,11 +97,15 @@ const listarEntradas = async (req, res) => {
     const where = {};
 
     if (fecha_inicio && fecha_hasta) {
-      where.createdAt = { [Op.between]: [new Date(fecha_inicio), new Date(fecha_hasta)] };
+      const hasta = new Date(fecha_hasta);
+      hasta.setDate(hasta.getDate() + 1);
+      where.createdAt = { [Op.between]: [new Date(fecha_inicio), hasta] };
     } else if (fecha_inicio) {
       where.createdAt = { [Op.gte]: new Date(fecha_inicio) };
     } else if (fecha_hasta) {
-      where.createdAt = { [Op.lte]: new Date(fecha_hasta) };
+      const hasta = new Date(fecha_hasta);
+      hasta.setDate(hasta.getDate() + 1);
+      where.createdAt = { [Op.lt]: hasta };
     }
 
     if (producto_id) {
@@ -188,11 +192,15 @@ const listarBajas = async (req, res) => {
     const where = {};
 
     if (fecha_inicio && fecha_hasta) {
-      where.createdAt = { [Op.between]: [new Date(fecha_inicio), new Date(fecha_hasta)] };
+      const hasta = new Date(fecha_hasta);
+      hasta.setDate(hasta.getDate() + 1);
+      where.createdAt = { [Op.between]: [new Date(fecha_inicio), hasta] };
     } else if (fecha_inicio) {
       where.createdAt = { [Op.gte]: new Date(fecha_inicio) };
     } else if (fecha_hasta) {
-      where.createdAt = { [Op.lte]: new Date(fecha_hasta) };
+      const hasta = new Date(fecha_hasta);
+      hasta.setDate(hasta.getDate() + 1);
+      where.createdAt = { [Op.lt]: hasta };
     }
 
     if (producto_id) {
@@ -292,11 +300,15 @@ const listarAjustes = async (req, res) => {
     const where = {};
 
     if (fecha_inicio && fecha_hasta) {
-      where.createdAt = { [Op.between]: [new Date(fecha_inicio), new Date(fecha_hasta)] };
+      const hasta = new Date(fecha_hasta);
+      hasta.setDate(hasta.getDate() + 1);
+      where.createdAt = { [Op.between]: [new Date(fecha_inicio), hasta] };
     } else if (fecha_inicio) {
       where.createdAt = { [Op.gte]: new Date(fecha_inicio) };
     } else if (fecha_hasta) {
-      where.createdAt = { [Op.lte]: new Date(fecha_hasta) };
+      const hasta = new Date(fecha_hasta);
+      hasta.setDate(hasta.getDate() + 1);
+      where.createdAt = { [Op.lt]: hasta };
     }
 
     if (producto_id) {
