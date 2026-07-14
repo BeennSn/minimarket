@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { CheckCircle, ChevronDown, ChevronUp, AlertCircle, Loader, X } from 'lucide-react';
 import api from '../../utils/axios';
 import { useAuth } from '../../context/AuthContext';
+import { rolSatisface } from '../../utils/roles';
 
 const fmt = (n) => (n == null ? '—' : `S/ ${parseFloat(n).toFixed(2)}`);
 const fmtFecha = (d) => d ? new Date(d).toLocaleString('es-PE', { dateStyle: 'short', timeStyle: 'short' }) : '—';
@@ -143,7 +144,10 @@ export default function HistorialCajaPage() {
   const [filtroFechaFin, setFiltroFechaFin]       = useState('');
   const [filtroEstado, setFiltroEstado]           = useState('');
 
-  const puedeAprobar = ['Administrador', 'Gerente'].includes(usuario?.rol);
+  // rolSatisface (no una comparación cruda contra el array): así SuperAdmin
+  // también puede aprobar, igual que ya lo permite el backend
+  // (verificarRol('Administrador', 'Gerente') deja pasar a SuperAdmin).
+  const puedeAprobar = rolSatisface(usuario?.rol, ['Administrador', 'Gerente']);
 
   const cargar = async () => {
     setCargando(true);

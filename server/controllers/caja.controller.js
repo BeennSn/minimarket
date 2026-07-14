@@ -8,7 +8,7 @@ const { calcularEsperados } = require('../services/caja.service');
 // desde la primera venta del día. Mismo valor duplicado (a propósito, no hay
 // mecanismo de config compartida cliente/servidor en este proyecto) en
 // client/src/modules/caja/CajaPage.jsx — si se cambia acá, cambiar también ahí.
-const MONTO_MINIMO_APERTURA_CAJA = 20;
+const MONTO_MINIMO_APERTURA_CAJA = 200;
 
 const INCLUDE_TURNO = [
   { association: 'cajero',    attributes: ['id', 'nombre'] },

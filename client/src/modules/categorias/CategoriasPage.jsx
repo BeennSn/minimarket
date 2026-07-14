@@ -8,7 +8,7 @@ import ConfirmDialog from '../../components/ConfirmDialog';
 import Toast from '../../components/Toast';
 import useToast from '../../hooks/useToast';
 
-function ModalCategoria({ abierto, onCerrar, onGuardar, categoriaEditando }) {
+function ModalCategoria({ abierto, onCerrar, onGuardar, categoriaEditando, categorias }) {
   const [nombre, setNombre] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -26,13 +26,30 @@ function ModalCategoria({ abierto, onCerrar, onGuardar, categoriaEditando }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    setLoading(true);
 
+    const nombreLimpio = nombre.trim();
+    if (!nombreLimpio) {
+      setError('El nombre no puede estar vacío');
+      return;
+    }
+
+    // Chequeo local antes de golpear al backend: mismo criterio (sin
+    // mayúsculas/espacios) para que el aviso salga al instante en vez de
+    // esperar el viaje de red — el backend igual lo vuelve a validar.
+    const duplicada = categorias?.some(
+      (c) => c.id !== categoriaEditando?.id && c.nombre.trim().toLowerCase() === nombreLimpio.toLowerCase()
+    );
+    if (duplicada) {
+      setError('Ya existe una categoría con ese nombre');
+      return;
+    }
+
+    setLoading(true);
     try {
       if (esCreacion) {
-        await api.post('/categorias', { nombre });
+        await api.post('/categorias', { nombre: nombreLimpio });
       } else {
-        await api.put(`/categorias/${categoriaEditando.id}`, { nombre });
+        await api.put(`/categorias/${categoriaEditando.id}`, { nombre: nombreLimpio });
       }
       onGuardar();
     } catch (err) {
@@ -225,6 +242,7 @@ export default function CategoriasPage() {
         onCerrar={() => { setModalAbierto(false); setCategoriaEditando(null); }}
         onGuardar={handleGuardar}
         categoriaEditando={categoriaEditando}
+        categorias={categorias}
       />
 
       <ConfirmDialog

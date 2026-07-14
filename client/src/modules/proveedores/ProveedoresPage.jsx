@@ -45,7 +45,7 @@ function validarCelular(numero, pais) {
   return { ok: true, valor: telefono.number };
 }
 
-function ModalProveedor({ abierto, onCerrar, onGuardar, proveedorEditando }) {
+function ModalProveedor({ abierto, onCerrar, onGuardar, proveedorEditando, proveedores }) {
   const [nombre, setNombre] = useState('');
   const [ruc, setRuc] = useState('');
   const [tipoContacto, setTipoContacto] = useState('celular');
@@ -156,10 +156,26 @@ function ModalProveedor({ abierto, onCerrar, onGuardar, proveedorEditando }) {
     }
     setErrorContacto('');
 
+    const nombreLimpio = nombre.trim();
+    if (!nombreLimpio) {
+      setError('El nombre no puede estar vacío');
+      return;
+    }
+    // Chequeo local antes de golpear al backend (mismo criterio: sin
+    // mayúsculas/espacios) — relevante sobre todo cuando se usa "Editar
+    // manualmente" para salir del nombre bloqueado por SUNAT.
+    const duplicado = proveedores?.some(
+      (p) => p.id !== proveedorEditando?.id && p.nombre.trim().toLowerCase() === nombreLimpio.toLowerCase()
+    );
+    if (duplicado) {
+      setError('Ya existe un proveedor con ese nombre');
+      return;
+    }
+
     setLoading(true);
 
     try {
-      const payload = { nombre, ruc, contacto: resultadoContacto.valor };
+      const payload = { nombre: nombreLimpio, ruc, contacto: resultadoContacto.valor };
       if (esCreacion) {
         await api.post('/proveedores', payload);
       } else {
@@ -530,6 +546,7 @@ export default function ProveedoresPage() {
         onCerrar={() => { setModalAbierto(false); setProveedorEditando(null); }}
         onGuardar={handleGuardar}
         proveedorEditando={proveedorEditando}
+        proveedores={proveedores}
       />
 
       <ConfirmDialog

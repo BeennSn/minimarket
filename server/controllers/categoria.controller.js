@@ -16,10 +16,16 @@ const listar = async (req, res) => {
 // ─── Crear una nueva categoría ────────────────────────────────────────────────
 const crear = async (req, res) => {
   try {
-    const { nombre } = req.body;
+    const nombre = req.body.nombre?.trim();
+    if (!nombre) {
+      return res.status(400).json({ mensaje: 'El nombre no puede estar vacío' });
+    }
 
-    // Verificar que la categoría no exista
-    const existe = await Categoria.findOne({ where: { nombre } });
+    // Comparación insensible a mayúsculas/minúsculas (iLike, sin comodines
+    // funciona como igualdad case-insensitive en Postgres): antes el chequeo
+    // era exacto y sin trim, así que "Bebidas", "bebidas" y "Bebidas " con
+    // espacio quedaban como categorías distintas.
+    const existe = await Categoria.findOne({ where: { nombre: { [Op.iLike]: nombre } } });
     if (existe) {
       return res.status(400).json({ mensaje: 'La categoría ya existe' });
     }
@@ -40,16 +46,22 @@ const actualizar = async (req, res) => {
       return res.status(404).json({ mensaje: 'Categoría no encontrada' });
     }
 
-    const { nombre } = req.body;
+    if (req.body.nombre !== undefined) {
+      const nombre = req.body.nombre.trim();
+      if (!nombre) {
+        return res.status(400).json({ mensaje: 'El nombre no puede estar vacío' });
+      }
 
-    if (nombre !== undefined) {
-      const existe = await Categoria.findOne({ where: { nombre, id: { [Op.ne]: categoria.id } } });
+      const existe = await Categoria.findOne({
+        where: { nombre: { [Op.iLike]: nombre }, id: { [Op.ne]: categoria.id } },
+      });
       if (existe) {
         return res.status(400).json({ mensaje: 'Ya existe una categoría con ese nombre' });
       }
+
+      await categoria.update({ nombre });
     }
 
-    await categoria.update({ nombre });
     return res.status(200).json(presentarCategoria(categoria));
   } catch (err) {
     console.error('Error en actualizar categoría:', err);

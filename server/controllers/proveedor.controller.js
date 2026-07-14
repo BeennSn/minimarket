@@ -44,7 +44,12 @@ const obtener = async (req, res) => {
 
 const crear = async (req, res) => {
   try {
-    const { nombre, ruc, contacto } = req.body;
+    const { ruc, contacto } = req.body;
+    const nombre = req.body.nombre?.trim();
+
+    if (!nombre) {
+      return res.status(400).json({ mensaje: 'El nombre no puede estar vacío' });
+    }
 
     if (!/^\d{11}$/.test(ruc)) {
       return res.status(400).json({ mensaje: 'El RUC debe tener 11 dígitos' });
@@ -63,7 +68,10 @@ const crear = async (req, res) => {
       return res.status(400).json({ mensaje: 'El RUC ya está registrado' });
     }
 
-    const porNombre = await Proveedor.findOne({ where: { nombre: nombre?.trim() } });
+    // iLike: comparación insensible a mayúsculas/minúsculas (antes "Bimbo" y
+    // "bimbo" quedaban como proveedores distintos, ya que el chequeo sí
+    // recortaba espacios pero comparaba el texto tal cual).
+    const porNombre = await Proveedor.findOne({ where: { nombre: { [Op.iLike]: nombre } } });
     if (porNombre) {
       return res.status(400).json({ mensaje: 'Ya existe un proveedor con ese nombre' });
     }
@@ -103,12 +111,20 @@ const actualizar = async (req, res) => {
       proveedor.ruc = ruc;
     }
 
-    if (nombre !== undefined && nombre.trim() !== proveedor.nombre) {
-      const porNombre = await Proveedor.findOne({ where: { nombre: nombre.trim(), id: { [Op.ne]: proveedor.id } } });
-      if (porNombre) {
-        return res.status(400).json({ mensaje: 'Ya existe un proveedor con ese nombre' });
+    if (nombre !== undefined) {
+      const nombreLimpio = nombre.trim();
+      if (!nombreLimpio) {
+        return res.status(400).json({ mensaje: 'El nombre no puede estar vacío' });
       }
-      proveedor.nombre = nombre.trim();
+      if (nombreLimpio.toLowerCase() !== proveedor.nombre.toLowerCase()) {
+        const porNombre = await Proveedor.findOne({
+          where: { nombre: { [Op.iLike]: nombreLimpio }, id: { [Op.ne]: proveedor.id } },
+        });
+        if (porNombre) {
+          return res.status(400).json({ mensaje: 'Ya existe un proveedor con ese nombre' });
+        }
+      }
+      proveedor.nombre = nombreLimpio;
     }
     if (contacto !== undefined) proveedor.contacto = contacto;
 
