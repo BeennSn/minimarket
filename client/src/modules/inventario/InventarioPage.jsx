@@ -39,7 +39,6 @@ export default function InventarioPage() {
   const [productoId, setProductoId] = useState('');
   const [proveedorId, setProveedorId] = useState('');
   const [cantidad, setCantidad] = useState('');
-  const [costoUnitario, setCostoUnitario] = useState('');
   const [motivo, setMotivo] = useState('Vencido');
   const [motivoDetalle, setMotivoDetalle] = useState('');
   const [fechaVencimiento, setFechaVencimiento] = useState('');
@@ -224,10 +223,6 @@ export default function InventarioPage() {
         return;
       }
     }
-    if (costoUnitario !== '' && Number(costoUnitario) <= 0) {
-      setError('El costo unitario debe ser mayor a 0');
-      return;
-    }
     setEnviando(true);
     try {
       await api.post('/inventario/entradas', {
@@ -235,7 +230,7 @@ export default function InventarioPage() {
         proveedor_id: proveedorId || null,
         cantidad: parseInt(cantidad, 10),
         fecha_vencimiento: manejaVencimientoEntrada ? (fechaVencimiento || null) : null,
-        costo_unitario: costoUnitario !== '' ? Number(costoUnitario) : null,
+        costo_unitario: null,
         // Si el usuario borró el campo, se genera uno al vuelo: siempre debe
         // quedar un código, generado o propio.
         codigo_lote: codigoLote.trim() || generarCodigoLote(),
@@ -244,7 +239,6 @@ export default function InventarioPage() {
       setProductoId('');
       setProveedorId('');
       setCantidad('');
-      setCostoUnitario('');
       setFechaVencimiento('');
       setCodigoLote(generarCodigoLote());
       const [rP, rE] = await Promise.all([
@@ -515,21 +509,6 @@ export default function InventarioPage() {
                       = {parseInt(cantidad, 10) * productoSeleccionado.factor_conversion} unidades de venta
                     </p>
                   )}
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">
-                    Costo unitario (S/) <span className="text-xs font-normal text-gray-400">(opcional)</span>
-                  </label>
-                  <input
-                    type="number"
-                    min="0.01"
-                    step="0.01"
-                    value={costoUnitario}
-                    onChange={(e) => setCostoUnitario(e.target.value)}
-                    placeholder="Ej: 2.50"
-                    className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                  />
-                  <p className="mt-1 text-xs text-gray-400">Si lo indicas, se recalcula el costo promedio del producto.</p>
                 </div>
                 <div>
                   <label className="mb-1 block text-sm font-medium text-gray-700">
