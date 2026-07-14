@@ -47,12 +47,21 @@ const crearLote = async ({ producto_id, proveedor_id, cantidad, fecha_vencimient
 // vez de dejar que el sistema elija automáticamente por FEFO (usado por
 // Bajas cuando el usuario quiere dar de baja un lote específico, ej. uno
 // dañado que no es necesariamente el que vence primero).
-const consumirStockFIFO = async ({ producto_id, cantidad, tipo, referencia = {}, soloVigente = false, entrada_id = null }, t) => {
+// soloVencido=true restringe el consumo SOLO a lotes ya vencidos (usado por
+// Bajas con motivo "Vencido" en modo automático): así una baja "por
+// vencimiento" nunca puede terminar descontando de stock todavía vigente,
+// aunque la cantidad pedida sea mayor a lo realmente vencido — en ese caso
+// esta función corta con "stock insuficiente" antes de tocar nada vigente.
+const consumirStockFIFO = async ({ producto_id, cantidad, tipo, referencia = {}, soloVigente = false, soloVencido = false, entrada_id = null }, t) => {
   const where = { producto_id, cantidad_restante: { [Op.gt]: 0 } };
   if (entrada_id) {
     where.id = entrada_id;
-  }
-  if (soloVigente) {
+  } else if (soloVencido) {
+    // Mismo corte que "vigente" (vence HOY ya cuenta como vencido), pero en
+    // sentido inverso, y excluyendo lotes sin fecha (un lote sin vencimiento
+    // nunca puede considerarse "vencido").
+    where.fecha_vencimiento = { [Op.ne]: null, [Op.lte]: hoyPeru() };
+  } else if (soloVigente) {
     // Estrictamente después de hoy (en hora de Perú): un lote que vence hoy
     // mismo ya NO se considera vigente (decisión de negocio: no se vende lo
     // que vence hoy). Comparación fecha-contra-fecha (string), no
@@ -94,8 +103,11 @@ const consumirStockFIFO = async ({ producto_id, cantidad, tipo, referencia = {},
   }
 
   if (restante > 0) {
+    const disponible = cantidad - restante;
     const mensaje = entrada_id
       ? 'El lote seleccionado no tiene suficiente stock restante para esta cantidad'
+      : soloVencido
+      ? `Solo existen ${disponible} unidad(es) vencida(s) disponible(s) para dar de baja. Modifica la cantidad seleccionada.`
       : soloVigente
       ? 'Stock insuficiente: parte o todo el stock de este producto está vencido. Da de baja el lote vencido antes de venderlo.'
       : 'Stock insuficiente en los lotes registrados (descuadre de inventario, contactar al administrador)';
