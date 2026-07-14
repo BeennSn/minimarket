@@ -11,6 +11,17 @@ import useToast from '../../hooks/useToast';
 const DIAS_ALERTA_VENCIMIENTO_CERCANO = 7;
 const MOTIVOS_BAJA = ['Vencido', 'Dañado', 'Robo o faltante', 'Consumo interno', 'Error de registro', 'Otro'];
 
+// Código de lote legible generado con fecha y hora locales del navegador —
+// siempre hay un código listo, pero el usuario puede sobrescribirlo con el
+// suyo (ej. el código del proveedor) antes de registrar la entrada.
+const generarCodigoLote = () => {
+  const ahora = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  const fecha = `${ahora.getFullYear()}${pad(ahora.getMonth() + 1)}${pad(ahora.getDate())}`;
+  const hora = `${pad(ahora.getHours())}${pad(ahora.getMinutes())}${pad(ahora.getSeconds())}`;
+  return `L-${fecha}-${hora}`;
+};
+
 export default function InventarioPage() {
   const { toast, mostrarExito, mostrarError, cerrar } = useToast();
   const { stockVersion, notificarCambioStock } = useStockSync();
@@ -31,7 +42,7 @@ export default function InventarioPage() {
   const [motivo, setMotivo] = useState('Vencido');
   const [motivoDetalle, setMotivoDetalle] = useState('');
   const [fechaVencimiento, setFechaVencimiento] = useState('');
-  const [codigoLote, setCodigoLote] = useState('');
+  const [codigoLote, setCodigoLote] = useState(() => generarCodigoLote());
   const [loteId, setLoteId] = useState('');
   const [lotesProductoSeleccionado, setLotesProductoSeleccionado] = useState([]);
   const [cantidadContada, setCantidadContada] = useState('');
@@ -218,14 +229,16 @@ export default function InventarioPage() {
         proveedor_id: proveedorId || null,
         cantidad: parseInt(cantidad, 10),
         fecha_vencimiento: manejaVencimientoEntrada ? (fechaVencimiento || null) : null,
-        codigo_lote: codigoLote.trim() || null,
+        // Si el usuario borró el campo, se genera uno al vuelo: siempre debe
+        // quedar un código, generado o propio.
+        codigo_lote: codigoLote.trim() || generarCodigoLote(),
       });
       mostrarExito('Entrada registrada correctamente');
       setProductoId('');
       setProveedorId('');
       setCantidad('');
       setFechaVencimiento('');
-      setCodigoLote('');
+      setCodigoLote(generarCodigoLote());
       const [rP, rE] = await Promise.all([
         api.get('/productos/activos'),
         api.get('/inventario/entradas'),
@@ -249,22 +262,18 @@ export default function InventarioPage() {
       setError('Para dar de baja un producto dañado debes elegir el lote específico afectado');
       return;
     }
-    if (motivo === 'Vencido') {
-      if (loteId) {
-        if (!loteSeleccionado?.vencido) {
-          setError('El lote seleccionado no está vencido. Elige otro motivo o selecciona un lote vencido.');
-          return;
-        }
-      } else if (Number(cantidad) > stockVencidoProducto) {
-        setError(`Solo existen ${stockVencidoProducto} unidad(es) vencida(s) disponible(s) para dar de baja. Modifica la cantidad seleccionada.`);
-        return;
-      }
+    // Con motivo "Vencido" no se tipea cantidad: siempre se da de baja TODO
+    // lo vencido (del producto, o del lote elegido si se especificó uno).
+    if (motivo === 'Vencido' && cantidadVencidaEfectiva < 1) {
+      setError('Este producto no tiene stock vencido disponible para dar de baja');
+      return;
     }
+    const cantidadFinal = motivo === 'Vencido' ? cantidadVencidaEfectiva : parseInt(cantidad, 10);
     setEnviando(true);
     try {
       await api.post('/inventario/bajas', {
         producto_id: productoId,
-        cantidad: parseInt(cantidad, 10),
+        cantidad: cantidadFinal,
         motivo,
         motivo_detalle: motivoDetalle || null,
         entrada_id: loteId || null,
@@ -325,11 +334,15 @@ export default function InventarioPage() {
     .map((p) => ({ ...p, stockVencido: p.stock - (p.stock_vigente ?? p.stock) }))
     .filter((p) => p.stockVencido > 0);
 
-  // Total vencido del producto elegido en Bajas — para el atajo "dar de baja
-  // todo lo vencido" (Motivo = Vencido).
+  // Total vencido del producto elegido en Bajas.
   const stockVencidoProducto = productoSeleccionado
     ? productoSeleccionado.stock - (productoSeleccionado.stock_vigente ?? productoSeleccionado.stock)
     : 0;
+
+  // Con motivo "Vencido" no tiene sentido dar de baja una parte: siempre es
+  // todo lo vencido (del producto entero, o del lote elegido si se
+  // especificó uno). Por eso no se tipea cantidad para este motivo.
+  const cantidadVencidaEfectiva = loteSeleccionado ? loteSeleccionado.cantidad_restante : stockVencidoProducto;
 
   // Advertencia no bloqueante (no error) cuando la fecha ingresada cae muy
   // cerca de hoy — para atrapar errores de digitación sin impedir el registro
@@ -494,17 +507,17 @@ export default function InventarioPage() {
                 <div>
                   <label className="mb-1 block text-sm font-medium text-gray-700">
                     Código de lote
-                    <span className="ml-1 text-xs font-normal text-gray-400">(opcional)</span>
+                    <span className="ml-1 text-xs font-normal text-gray-400">(generado, puedes cambiarlo)</span>
                   </label>
                   <input
                     type="text"
                     value={codigoLote}
                     onChange={(e) => setCodigoLote(e.target.value)}
                     maxLength={100}
-                    placeholder="Ej: L-2026-07-A o el del proveedor"
-                    className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    placeholder="Ej: el código del proveedor"
+                    className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-400"
                   />
-                  <p className="mt-1 text-xs text-gray-400">Ayuda a distinguir este lote de otros del mismo producto.</p>
+                  <p className="mt-1 text-xs text-gray-400">Ya viene con uno generado — escribe encima si prefieres el tuyo (ej. el del proveedor).</p>
                 </div>
               </div>
               {error && (
@@ -760,20 +773,31 @@ export default function InventarioPage() {
                 </div>
                 <div>
                   <label className="mb-1 block text-sm font-medium text-gray-700">Cantidad</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max={loteSeleccionado ? loteSeleccionado.cantidad_restante : motivo === 'Vencido' ? stockVencidoProducto : undefined}
-                    value={cantidad}
-                    onChange={(e) => setCantidad(e.target.value)}
-                    required
-                    className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                  />
-                  {loteSeleccionado ? (
-                    <p className="mt-1 text-xs text-gray-400">Máximo en este lote: {loteSeleccionado.cantidad_restante}</p>
-                  ) : motivo === 'Vencido' && productoId ? (
-                    <p className="mt-1 text-xs text-gray-400">Máximo vencido disponible: {stockVencidoProducto}</p>
-                  ) : null}
+                  {motivo === 'Vencido' ? (
+                    <>
+                      <div className="flex w-full items-center rounded-lg border border-gray-200 bg-gray-50 px-4 py-2 text-sm text-gray-600">
+                        {productoId ? `${cantidadVencidaEfectiva} unidad(es) — todo lo vencido` : '—'}
+                      </div>
+                      <p className="mt-1 text-xs text-gray-400">
+                        Con este motivo se da de baja todo lo vencido{loteSeleccionado ? ' de este lote' : ''}, no una parte.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <input
+                        type="number"
+                        min="1"
+                        max={loteSeleccionado ? loteSeleccionado.cantidad_restante : undefined}
+                        value={cantidad}
+                        onChange={(e) => setCantidad(e.target.value)}
+                        required
+                        className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                      />
+                      {loteSeleccionado && (
+                        <p className="mt-1 text-xs text-gray-400">Máximo en este lote: {loteSeleccionado.cantidad_restante}</p>
+                      )}
+                    </>
+                  )}
                 </div>
                 <div>
                   <label className="mb-1 block text-sm font-medium text-gray-700">Motivo</label>
@@ -801,20 +825,6 @@ export default function InventarioPage() {
                   />
                 </div>
               </div>
-              {motivo === 'Vencido' && productoId && stockVencidoProducto > 0 && (
-                <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-red-100 bg-red-50 px-4 py-2 text-sm">
-                  <span className="text-red-700">
-                    Este producto tiene <strong>{stockVencidoProducto}</strong> unidad(es) vencida(s) en total (puede ser más de un lote).
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => { setCantidad(String(stockVencidoProducto)); setLoteId(''); }}
-                    className="rounded-lg bg-red-500 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-red-600"
-                  >
-                    Dar de baja todo lo vencido
-                  </button>
-                </div>
-              )}
               {error && (
                 <div className="rounded-lg bg-red-50 px-4 py-2 text-sm text-red-600">{error}</div>
               )}

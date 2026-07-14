@@ -2,6 +2,16 @@ const { Op } = require('sequelize');
 const { EntradaMercaderia, ConsumoLote, Producto } = require('../models');
 const { hoyPeru } = require('../utils/fechas');
 
+// Respaldo por si un lote llega sin código propio (el formulario de Entradas
+// ya genera uno solo, pero esto cubre cualquier otro camino que cree un lote
+// — solicitudes recibidas, ajustes positivos — para que ninguno quede sin
+// forma de identificarlo).
+const generarCodigoLote = () => {
+  const fecha = hoyPeru().replace(/-/g, '');
+  const sufijo = Math.random().toString(36).slice(2, 6).toUpperCase();
+  return `L-${fecha}-${sufijo}`;
+};
+
 // ─── Crear lote (entrada de mercadería) ───────────────────────────────────────
 const crearLote = async ({ producto_id, proveedor_id, cantidad, fecha_vencimiento, usuario_id, solicitud_id, costo_unitario, ajuste_id, cantidad_unidad_compra, unidad_compra_snapshot, codigo_lote }, t) => {
   const lote = await EntradaMercaderia.create({
@@ -16,7 +26,7 @@ const crearLote = async ({ producto_id, proveedor_id, cantidad, fecha_vencimient
     costo_unitario: costo_unitario ?? null,
     cantidad_unidad_compra: cantidad_unidad_compra ?? null,
     unidad_compra_snapshot: unidad_compra_snapshot ?? null,
-    codigo_lote: codigo_lote?.trim() || null,
+    codigo_lote: codigo_lote?.trim() || generarCodigoLote(),
   }, { transaction: t });
 
   const producto = await Producto.findByPk(producto_id, { transaction: t, lock: t.LOCK.UPDATE });
