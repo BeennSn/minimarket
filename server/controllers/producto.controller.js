@@ -380,13 +380,29 @@ const reactivar = async (req, res) => {
   }
 };
 
+// Suma días a una fecha 'YYYY-MM-DD' sin pasar por conversión UTC (construye
+// y lee la fecha siempre en hora local del proceso, nunca via toISOString):
+// así el resultado no depende de en qué zona horaria corre el servidor.
+const sumarDias = (fechaStr, dias) => {
+  const [anio, mes, dia] = fechaStr.split('-').map(Number);
+  const d = new Date(anio, mes - 1, dia);
+  d.setDate(d.getDate() + dias);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+};
+
 // ─── Productos próximos a vencer ──────────────────────────────────────────────
 const listarProximosVencer = async (req, res) => {
   try {
     const dias = parseInt(req.query.dias, 10) || 30;
-    const hoy = new Date();
-    const fechaLimite = new Date(hoy);
-    fechaLimite.setDate(fechaLimite.getDate() + dias);
+    // Comparación fecha-contra-fecha (strings 'YYYY-MM-DD', hora Perú), no
+    // fecha-contra-instante: usar `new Date()` del proceso aquí dependía de
+    // la zona horaria del servidor, igual que el bug ya corregido en
+    // inventario.controller.js → validarFechaVencimiento.
+    const hoy = hoyPeru();
+    const fechaLimite = sumarDias(hoy, dias);
 
     const entradas = await EntradaMercaderia.findAll({
       where: {
@@ -398,12 +414,10 @@ const listarProximosVencer = async (req, res) => {
       ],
     });
 
-    const vencidos = [];
-    const porVencer = [];
     const mapa = {};
 
     for (const e of entradas) {
-      const fv = new Date(e.fecha_vencimiento);
+      const fv = e.fecha_vencimiento; // DATEONLY: ya viene como 'YYYY-MM-DD'
       if (!mapa[e.producto_id]) {
         mapa[e.producto_id] = {
           id: e.producto.id,
@@ -418,9 +432,8 @@ const listarProximosVencer = async (req, res) => {
         mapa[e.producto_id].stock_vencido += e.cantidad_restante;
       } else if (fv <= fechaLimite) {
         mapa[e.producto_id].stock_por_vencer += e.cantidad_restante;
-        const d = fv.toISOString().split('T')[0];
-        if (!mapa[e.producto_id].proxima_fecha || d < mapa[e.producto_id].proxima_fecha) {
-          mapa[e.producto_id].proxima_fecha = d;
+        if (!mapa[e.producto_id].proxima_fecha || fv < mapa[e.producto_id].proxima_fecha) {
+          mapa[e.producto_id].proxima_fecha = fv;
         }
       }
     }

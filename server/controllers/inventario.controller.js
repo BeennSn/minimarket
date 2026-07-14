@@ -11,7 +11,7 @@ const {
 } = require('../models');
 const { presentarEntrada, presentarBaja, presentarSolicitud, presentarAjuste } = require('../presenters/inventario.presenter');
 const { crearLote, consumirStockFIFO } = require('../services/inventario.service');
-const { inicioDiaPeru, finDiaPeruExclusivo } = require('../utils/fechas');
+const { inicioDiaPeru, finDiaPeruExclusivo, hoyPeru } = require('../utils/fechas');
 
 const AÑOS_MAXIMOS_VENCIMIENTO = 15;
 
@@ -24,17 +24,25 @@ const AÑOS_MAXIMOS_VENCIMIENTO = 15;
 // legítimos (pan del día, lácteos) que vencen mañana mismo — ese caso se
 // advierte en el frontend, no se bloquea aquí. Sí se pone un tope superior
 // para atrapar errores de tipeo obvios (ej. poner "2099" sin querer).
+//
+// Comparación fecha-contra-fecha (strings 'YYYY-MM-DD', vía hoyPeru()), no
+// fecha-contra-instante: comparar contra `new Date()` sin más se rompe si el
+// proceso corre en una zona horaria distinta a Perú (ej. UTC en el server).
+// Por la noche en Perú, UTC ya rodó al día siguiente, así que "hoy" quedaba
+// adelantado un día y el sistema rechazaba como "anterior a hoy" una fecha
+// que en Perú sí era hoy mismo.
 const validarFechaVencimiento = (fechaStr, manejaVencimiento = true) => {
   if (!manejaVencimiento) return null;
   if (!fechaStr) return 'La fecha de vencimiento es obligatoria para este producto';
-  const fecha = new Date(fechaStr + 'T00:00:00');
-  if (isNaN(fecha.getTime())) return 'Fecha de vencimiento inválida';
-  const hoy = new Date();
-  hoy.setHours(0, 0, 0, 0);
-  if (fecha < hoy) return 'La fecha de vencimiento no puede ser anterior a hoy';
-  const fechaMaxima = new Date(hoy);
-  fechaMaxima.setFullYear(fechaMaxima.getFullYear() + AÑOS_MAXIMOS_VENCIMIENTO);
-  if (fecha > fechaMaxima) return `La fecha de vencimiento no puede ser mayor a ${AÑOS_MAXIMOS_VENCIMIENTO} años a partir de hoy`;
+  if (isNaN(new Date(`${fechaStr}T00:00:00`).getTime())) return 'Fecha de vencimiento inválida';
+
+  const hoy = hoyPeru();
+  if (fechaStr < hoy) return 'La fecha de vencimiento no puede ser anterior a hoy';
+
+  const [anioHoy, mesHoy, diaHoy] = hoy.split('-');
+  const fechaMaxima = `${Number(anioHoy) + AÑOS_MAXIMOS_VENCIMIENTO}-${mesHoy}-${diaHoy}`;
+  if (fechaStr > fechaMaxima) return `La fecha de vencimiento no puede ser mayor a ${AÑOS_MAXIMOS_VENCIMIENTO} años a partir de hoy`;
+
   return null;
 };
 
