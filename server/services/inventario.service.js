@@ -119,7 +119,9 @@ const consumirStockFIFO = async ({ producto_id, cantidad, tipo, referencia = {},
       : soloVencido
       ? `Solo existen ${disponible} unidad(es) vencida(s) disponible(s) para dar de baja. Modifica la cantidad seleccionada.`
       : soloVigente
-      ? 'Stock insuficiente: parte o todo el stock de este producto está vencido. Da de baja el lote vencido antes de venderlo.'
+      ? (tipo === 'Venta'
+        ? 'Stock insuficiente: parte o todo el stock de este producto está vencido. Da de baja el lote vencido antes de venderlo.'
+        : `Solo existen ${disponible} unidad(es) vigente(s) disponible(s) para este motivo. Lo vencido se da de baja aparte con el motivo "Vencido".`)
       : 'Stock insuficiente en los lotes registrados (descuadre de inventario, contactar al administrador)';
     throw { status: 400, mensaje };
   }

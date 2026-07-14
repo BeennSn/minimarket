@@ -262,6 +262,10 @@ export default function InventarioPage() {
       setError('Para dar de baja un producto dañado debes elegir el lote específico afectado');
       return;
     }
+    if (motivo !== 'Vencido' && loteSeleccionado?.vencido) {
+      setError('El lote seleccionado ya está vencido. Usa el motivo "Vencido" para darlo de baja.');
+      return;
+    }
     // Con motivo "Vencido" no se tipea cantidad: siempre se da de baja TODO
     // lo vencido (del producto, o del lote elegido si se especificó uno).
     if (motivo === 'Vencido' && cantidadVencidaEfectiva < 1) {
@@ -321,10 +325,13 @@ export default function InventarioPage() {
   // se descuenta automático por FEFO, como antes).
   const loteSeleccionado = lotesConEstado.find((l) => String(l.id) === String(loteId));
 
-  // Con motivo "Vencido" solo se puede elegir un lote que esté realmente
-  // vencido — elegir uno vigente contradiría el motivo (el backend valida lo
-  // mismo si de todos modos llegara a enviarse).
-  const lotesOpcionesBaja = motivo === 'Vencido' ? lotesConEstado.filter((l) => l.vencido) : lotesConEstado;
+  // "Vencido" es el único motivo que puede tocar stock vencido: con ese
+  // motivo solo se listan lotes vencidos; con cualquier otro (Dañado, Robo,
+  // etc.) solo se listan los vigentes, para no poder marcar como "Dañado"
+  // algo que en realidad ya venció (el backend valida lo mismo).
+  const lotesOpcionesBaja = motivo === 'Vencido'
+    ? lotesConEstado.filter((l) => l.vencido)
+    : lotesConEstado.filter((l) => !l.vencido);
 
   // Productos (de los ya cargados) que tienen stock vencido: stock total
   // menos el vigente (stock_vigente ya excluye vencidos y "vence hoy"). Se
@@ -744,7 +751,7 @@ export default function InventarioPage() {
                         ? 'Selecciona el lote dañado...'
                         : motivo === 'Vencido'
                         ? 'Automático (solo lotes vencidos)'
-                        : 'Automático (el sistema elige el que vence antes)'}
+                        : 'Automático (solo stock vigente, el que vence antes primero)'}
                     </option>
                     {lotesOpcionesBaja.map((l) => (
                       <option key={l.id} value={l.id}>
@@ -763,11 +770,15 @@ export default function InventarioPage() {
                     </p>
                   ) : motivo === 'Dañado' ? (
                     <p className="mt-1 text-xs text-red-500">
-                      Un daño afecta un lote puntual: elige cuál, para no descontar por error de uno sano.
+                      Un daño afecta un lote puntual: elige cuál, para no descontar por error de uno sano. Los lotes ya vencidos no aparecen acá — esos se dan de baja con el motivo "Vencido".
                     </p>
                   ) : motivo === 'Vencido' && productoId ? (
                     <p className="mt-1 text-xs text-gray-400">
                       Sin elegir lote, la baja solo puede tomar de lo ya vencido — nunca de stock vigente.
+                    </p>
+                  ) : productoId ? (
+                    <p className="mt-1 text-xs text-gray-400">
+                      Sin elegir lote, la baja solo puede tomar de stock vigente — lo vencido se da de baja aparte con el motivo "Vencido".
                     </p>
                   ) : null}
                 </div>

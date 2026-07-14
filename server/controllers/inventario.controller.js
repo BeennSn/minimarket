@@ -206,12 +206,17 @@ const registrarBaja = async (req, res) => {
         if (!lote || lote.producto_id !== Number(producto_id)) {
           throw { status: 404, mensaje: 'El lote seleccionado no existe o no pertenece a este producto' };
         }
-        // Motivo "Vencido" con lote elegido a mano: el lote elegido tiene que
-        // estar realmente vencido, si no la etiqueta "Vencido" en el
-        // historial quedaría mintiendo sobre stock que en realidad sigue
-        // vigente.
-        if (motivo === 'Vencido' && !(lote.fecha_vencimiento && lote.fecha_vencimiento <= hoyPeru())) {
+        // "Vencido" es el único motivo que puede tocar stock vencido: un
+        // lote ya vencido no puede darse de baja con otro motivo (Dañado,
+        // Robo, etc.) porque su causa real y verificable ya es el
+        // vencimiento, y mezclar motivos ensuciaría cualquier reporte que
+        // dependa de esta clasificación.
+        const loteVencido = !!(lote.fecha_vencimiento && lote.fecha_vencimiento <= hoyPeru());
+        if (motivo === 'Vencido' && !loteVencido) {
           throw { status: 400, mensaje: 'El lote seleccionado no está vencido. Elige otro motivo o selecciona un lote vencido.' };
+        }
+        if (motivo !== 'Vencido' && loteVencido) {
+          throw { status: 400, mensaje: 'El lote seleccionado ya está vencido. Usa el motivo "Vencido" para darlo de baja.' };
         }
         entradaIdValidado = lote.id;
       }
@@ -230,11 +235,14 @@ const registrarBaja = async (req, res) => {
         tipo: 'Baja',
         referencia: { baja_id: bajaCreada.id },
         entrada_id: entradaIdValidado,
-        // Sin lote elegido a mano, "Vencido" solo puede tomar de lotes
-        // realmente vencidos — si la cantidad pedida supera lo vencido
-        // disponible, consumirStockFIFO corta con un mensaje claro y la
-        // transacción entera se revierte, sin tocar stock vigente.
+        // Sin lote elegido a mano: "Vencido" solo puede tomar de lotes
+        // realmente vencidos; cualquier otro motivo solo puede tomar de
+        // stock vigente (nunca de lo ya vencido, que se da de baja aparte
+        // con motivo "Vencido"). Si la cantidad pedida no alcanza dentro de
+        // ese subconjunto, consumirStockFIFO corta con un mensaje claro y la
+        // transacción entera se revierte, sin dejar stock a medio consumir.
         soloVencido: motivo === 'Vencido' && !entradaIdValidado,
+        soloVigente: motivo !== 'Vencido' && !entradaIdValidado,
       }, t);
 
       return bajaCreada;
