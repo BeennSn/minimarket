@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { Plus, Search, Pencil, EyeOff, Eye, X, Trash2, AlertTriangle, Loader2, Package, ScanLine } from 'lucide-react';
+import { Plus, Search, Pencil, EyeOff, Eye, X, Trash2, AlertTriangle, Loader2, Package, ScanLine, Layers } from 'lucide-react';
 import api from '../../utils/axios';
-import { formatMoneda, formatStock, formatFecha } from '../../utils/format';
+import { formatMoneda, formatStock, formatFecha, fechaLocalISO } from '../../utils/format';
 import { useAuth } from '../../context/AuthContext';
 import { useStockSync } from '../../context/StockSyncContext';
 import Breadcrumb from '../../components/Breadcrumb';
@@ -406,6 +406,129 @@ function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categor
   );
 }
 
+// Muestra los lotes (EntradaMercaderia) de un producto uno por uno —
+// cantidad restante, vencimiento y estado — para que se pueda verificar a
+// simple vista qué hay detrás del stock total y evitar confusiones cuando
+// coexisten lotes vencidos y vigentes del mismo producto.
+function ModalLotes({ abierto, onCerrar, producto }) {
+  const [lotes, setLotes] = useState([]);
+  const [cargando, setCargando] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (abierto && producto) {
+      setCargando(true);
+      setError('');
+      api.get('/inventario/entradas', { params: { producto_id: producto.id } })
+        .then(({ data }) => setLotes(Array.isArray(data) ? data : []))
+        .catch(() => setError('Error al cargar los lotes de este producto'))
+        .finally(() => setCargando(false));
+    }
+  }, [abierto, producto]);
+
+  if (!abierto || !producto) return null;
+
+  const hoy = fechaLocalISO(new Date());
+
+  const estadoLote = (l) => {
+    if (l.cantidad_restante === 0) return { texto: 'Agotado', clase: 'bg-gray-100 text-gray-500' };
+    if (!l.fecha_vencimiento) return { texto: 'Sin vencimiento', clase: 'bg-gray-100 text-gray-600' };
+    if (l.fecha_vencimiento <= hoy) return { texto: 'Vencido', clase: 'bg-red-100 text-red-700' };
+    return { texto: 'Vigente', clase: 'bg-green-100 text-green-700' };
+  };
+
+  // Mismo orden que usa el sistema al vender (FEFO): vencimiento más próximo
+  // primero, sin vencimiento al final, y los agotados siempre al fondo.
+  const lotesOrdenados = [...lotes].sort((a, b) => {
+    if ((a.cantidad_restante === 0) !== (b.cantidad_restante === 0)) {
+      return a.cantidad_restante === 0 ? 1 : -1;
+    }
+    const fa = a.fecha_vencimiento || '9999-99-99';
+    const fb = b.fecha_vencimiento || '9999-99-99';
+    if (fa !== fb) return fa < fb ? -1 : 1;
+    return new Date(a.createdAt) - new Date(b.createdAt);
+  });
+
+  const totalRestante = lotes.reduce((s, l) => s + l.cantidad_restante, 0);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-2xl bg-white shadow-xl">
+        <div className="flex items-center justify-between border-b border-gray-100 p-6 pb-4">
+          <div>
+            <h2 className="text-lg font-bold text-gray-800">Lotes de {producto.nombre}</h2>
+            <p className="text-xs text-gray-400">{producto.marca}</p>
+          </div>
+          <button onClick={onCerrar} className="text-gray-400 hover:text-gray-600">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto p-6">
+          {cargando ? (
+            <Spinner texto="Cargando lotes..." />
+          ) : error ? (
+            <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>
+          ) : lotes.length === 0 ? (
+            <div className="py-10 text-center text-sm text-gray-400">
+              Este producto no tiene entradas de inventario registradas.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="text-xs uppercase text-gray-400">
+                    <th className="px-3 py-2 font-medium">Vencimiento</th>
+                    <th className="px-3 py-2 font-medium">Restante</th>
+                    <th className="px-3 py-2 font-medium">Original</th>
+                    <th className="px-3 py-2 font-medium">Proveedor</th>
+                    <th className="px-3 py-2 font-medium">Ingreso</th>
+                    <th className="px-3 py-2 font-medium">Estado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lotesOrdenados.map((l) => {
+                    const est = estadoLote(l);
+                    return (
+                      <tr
+                        key={l.id}
+                        className={`border-t border-gray-50 ${l.cantidad_restante === 0 ? 'text-gray-300' : 'text-gray-700'}`}
+                      >
+                        <td className="px-3 py-2">{l.fecha_vencimiento ? formatFecha(l.fecha_vencimiento) : '—'}</td>
+                        <td className="px-3 py-2 font-medium">{l.cantidad_restante}</td>
+                        <td className="px-3 py-2 text-gray-400">{l.cantidad}</td>
+                        <td className="px-3 py-2">{l.proveedor?.nombre || '—'}</td>
+                        <td className="px-3 py-2">{formatFecha(l.createdAt)}</td>
+                        <td className="px-3 py-2">
+                          <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${est.clase}`}>
+                            {est.texto}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              <p className="mt-3 text-right text-xs text-gray-400">
+                Suma de restantes: <span className="font-semibold text-gray-600">{totalRestante}</span> — el orden de la tabla es el que usa el sistema al vender (FEFO)
+              </p>
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-end border-t border-gray-100 p-6 pt-4">
+          <button
+            onClick={onCerrar}
+            className="rounded-lg bg-gray-100 px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-200"
+          >
+            Cerrar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ModalSolicitud({ abierto, onCerrar, producto, proveedores, onCreada }) {
   const [cantidad, setCantidad] = useState('');
   const [proveedorId, setProveedorId] = useState('');
@@ -639,6 +762,7 @@ export default function ProductosPage() {
   const [confirmarEstado, setConfirmarEstado] = useState(null);
   const [modalBaja, setModalBaja] = useState(null);
   const [modalSolicitud, setModalSolicitud] = useState(null);
+  const [modalLotes, setModalLotes] = useState(null);
   const [proveedores, setProveedores] = useState([]);
   const [datosVencimiento, setDatosVencimiento] = useState([]);
   const [filtroAlerta, setFiltroAlerta] = useState('Todos');
@@ -932,6 +1056,13 @@ export default function ProductosPage() {
                           <Pencil className="h-4 w-4" />
                         </button>
                         <button
+                          onClick={() => setModalLotes(p)}
+                          className="rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100"
+                          title="Ver lotes"
+                        >
+                          <Layers className="h-4 w-4" />
+                        </button>
+                        <button
                           onClick={() => setConfirmarEstado(p)}
                           className={`rounded-lg p-1.5 transition-colors ${
                             esActivo(p)
@@ -1032,6 +1163,12 @@ export default function ProductosPage() {
           cargarDatos();
           notificarCambioStock();
         }}
+      />
+
+      <ModalLotes
+        abierto={!!modalLotes}
+        onCerrar={() => setModalLotes(null)}
+        producto={modalLotes}
       />
 
       <ModalSolicitud
