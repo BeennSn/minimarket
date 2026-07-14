@@ -173,6 +173,13 @@ const registrarBaja = async (req, res) => {
       return res.status(400).json({ mensaje: 'El motivo de baja no es válido' });
     }
 
+    // Un producto dañado es un lote físico puntual, no "todo lo vencido" ni
+    // un promedio general: forzar a elegir el lote exacto evita que el
+    // sistema descuente por FEFO de un lote sano en vez del realmente dañado.
+    if (motivo === 'Dañado' && !entrada_id) {
+      return res.status(400).json({ mensaje: 'Para dar de baja un producto dañado debes indicar el lote específico afectado' });
+    }
+
     const baja = await sequelize.transaction(async (t) => {
       const producto = await Producto.findByPk(producto_id, { transaction: t });
       if (!producto || !producto.activo) {

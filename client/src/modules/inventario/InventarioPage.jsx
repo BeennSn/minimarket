@@ -240,8 +240,12 @@ export default function InventarioPage() {
 
   const registrarBaja = async (e) => {
     e.preventDefault();
-    setEnviando(true);
     setError('');
+    if (motivo === 'Dañado' && !loteId) {
+      setError('Para dar de baja un producto dañado debes elegir el lote específico afectado');
+      return;
+    }
+    setEnviando(true);
     try {
       await api.post('/inventario/bajas', {
         producto_id: productoId,
@@ -300,6 +304,12 @@ export default function InventarioPage() {
   const productosConVencido = productos
     .map((p) => ({ ...p, stockVencido: p.stock - (p.stock_vigente ?? p.stock) }))
     .filter((p) => p.stockVencido > 0);
+
+  // Total vencido del producto elegido en Bajas — para el atajo "dar de baja
+  // todo lo vencido" (Motivo = Vencido).
+  const stockVencidoProducto = productoSeleccionado
+    ? productoSeleccionado.stock - (productoSeleccionado.stock_vigente ?? productoSeleccionado.stock)
+    : 0;
 
   // Advertencia no bloqueante (no error) cuando la fecha ingresada cae muy
   // cerca de hoy — para atrapar errores de digitación sin impedir el registro
@@ -706,15 +716,23 @@ export default function InventarioPage() {
                 </div>
                 <div>
                   <label className="mb-1 block text-sm font-medium text-gray-700">
-                    Lote <span className="text-xs font-normal text-gray-400">(opcional)</span>
+                    Lote{' '}
+                    {motivo === 'Dañado' ? (
+                      <span className="text-red-500">*</span>
+                    ) : (
+                      <span className="text-xs font-normal text-gray-400">(opcional)</span>
+                    )}
                   </label>
                   <select
                     value={loteId}
                     onChange={(e) => setLoteId(e.target.value)}
                     disabled={!productoId}
+                    required={motivo === 'Dañado'}
                     className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:bg-gray-50 disabled:text-gray-400"
                   >
-                    <option value="">Automático (el sistema elige el que vence antes)</option>
+                    <option value="">
+                      {motivo === 'Dañado' ? 'Selecciona el lote dañado...' : 'Automático (el sistema elige el que vence antes)'}
+                    </option>
                     {lotesConEstado.map((l) => (
                       <option key={l.id} value={l.id}>
                         {l.vencido ? '⚠ VENCIDO — ' : ''}
@@ -724,13 +742,17 @@ export default function InventarioPage() {
                       </option>
                     ))}
                   </select>
-                  {loteId && (
+                  {loteId ? (
                     <p className={`mt-1 text-xs ${loteSeleccionado?.vencido ? 'text-red-500 font-medium' : 'text-gray-400'}`}>
                       {loteSeleccionado?.vencido
                         ? '⚠ Este lote ya está vencido — la baja se descontará únicamente de él.'
                         : 'La baja se descontará únicamente de este lote.'}
                     </p>
-                  )}
+                  ) : motivo === 'Dañado' ? (
+                    <p className="mt-1 text-xs text-red-500">
+                      Un daño afecta un lote puntual: elige cuál, para no descontar por error de uno sano.
+                    </p>
+                  ) : null}
                 </div>
                 <div>
                   <label className="mb-1 block text-sm font-medium text-gray-700">Cantidad</label>
@@ -773,6 +795,20 @@ export default function InventarioPage() {
                   />
                 </div>
               </div>
+              {motivo === 'Vencido' && productoId && stockVencidoProducto > 0 && (
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-red-100 bg-red-50 px-4 py-2 text-sm">
+                  <span className="text-red-700">
+                    Este producto tiene <strong>{stockVencidoProducto}</strong> unidad(es) vencida(s) en total (puede ser más de un lote).
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => { setCantidad(String(stockVencidoProducto)); setLoteId(''); }}
+                    className="rounded-lg bg-red-500 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-red-600"
+                  >
+                    Dar de baja todo lo vencido
+                  </button>
+                </div>
+              )}
               {error && (
                 <div className="rounded-lg bg-red-50 px-4 py-2 text-sm text-red-600">{error}</div>
               )}
