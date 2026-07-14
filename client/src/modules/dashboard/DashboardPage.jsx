@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   ShoppingCart, DollarSign, TrendingUp, Package,
-  AlertTriangle, ClipboardList, Loader2, RefreshCw,
+  AlertTriangle, ClipboardList, Loader2, RefreshCw, X, ChevronRight,
 } from 'lucide-react';
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
@@ -10,12 +10,15 @@ import { useAuth } from '../../context/AuthContext';
 import { useStockSync } from '../../context/StockSyncContext';
 import api from '../../utils/axios';
 import Breadcrumb from '../../components/Breadcrumb';
+import { formatMoneda, formatFecha, formatFechaHora, fechaLocalISO } from '../../utils/format';
 
-function KpiCard({ titulo, valor, icono: Icono, color, prefijo }) {
+function KpiCard({ titulo, valor, icono: Icono, color, prefijo, onClick }) {
   return (
-    <div
-      className="relative rounded-2xl border border-gray-100 bg-white p-5 shadow-sm"
-      style={{ borderLeft: `4px solid ${color}` }}
+    <button
+      type="button"
+      onClick={onClick}
+      className="group relative w-full rounded-2xl border border-gray-100 bg-white p-5 text-left shadow-sm transition-shadow hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+      style={{ borderLeft: `4px solid ${color}`, '--tw-ring-color': color }}
     >
       <div className="flex items-start justify-between">
         <div>
@@ -24,14 +27,231 @@ function KpiCard({ titulo, valor, icono: Icono, color, prefijo }) {
             {prefijo && <span className="text-lg">{prefijo} </span>}
             {typeof valor === 'number' ? valor.toFixed(2) : valor ?? 0}
           </p>
+          <p
+            className="mt-2 flex items-center gap-0.5 text-xs font-medium opacity-0 transition-opacity group-hover:opacity-100"
+            style={{ color }}
+          >
+            Ver detalle <ChevronRight className="h-3 w-3" />
+          </p>
         </div>
         <div
-          className="flex h-10 w-10 items-center justify-center rounded-full"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
           style={{ backgroundColor: `${color}1A` }}
         >
           <Icono className="h-5 w-5" style={{ color }} />
         </div>
       </div>
+    </button>
+  );
+}
+
+// ─── Modal de detalle genérico ────────────────────────────────────────────────
+// Mismo patrón visual que ya usan los modales de Productos/Solicitudes
+// (overlay + panel rounded-2xl bg-white shadow-xl), reutilizado para las 6
+// tarjetas del dashboard en vez de crear un modal distinto por cada una.
+function ModalDetalle({ abierto, onCerrar, titulo, icono: Icono, color, cargando, error, children }) {
+  if (!abierto) return null;
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={onCerrar}
+    >
+      <div
+        className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-2xl bg-white shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-gray-100 p-6 pb-4">
+          <div className="flex items-center gap-3">
+            <div
+              className="flex h-9 w-9 items-center justify-center rounded-full"
+              style={{ backgroundColor: `${color}1A` }}
+            >
+              <Icono className="h-5 w-5" style={{ color }} />
+            </div>
+            <h2 className="text-lg font-bold text-gray-800">{titulo}</h2>
+          </div>
+          <button onClick={onCerrar} className="text-gray-400 hover:text-gray-600">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-6">
+          {cargando ? (
+            <div className="flex items-center justify-center py-16">
+              <Loader2 className="h-6 w-6 animate-spin text-[#6366f1]" />
+            </div>
+          ) : error ? (
+            <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>
+          ) : (
+            children
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Contenidos de cada detalle ───────────────────────────────────────────────
+
+function TablaVentas({ ventas, notaSuperior }) {
+  if (!ventas || ventas.length === 0) {
+    return <div className="py-10 text-center text-sm text-gray-400">No hay ventas registradas este mes.</div>;
+  }
+  return (
+    <div>
+      {notaSuperior}
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-sm">
+          <thead>
+            <tr className="text-xs uppercase text-gray-400">
+              <th className="px-3 py-2 font-medium">Fecha</th>
+              <th className="px-3 py-2 font-medium">Cliente / Vendedor</th>
+              <th className="px-3 py-2 font-medium">Método</th>
+              <th className="px-3 py-2 font-medium">Monto</th>
+              <th className="px-3 py-2 font-medium">Estado</th>
+            </tr>
+          </thead>
+          <tbody>
+            {ventas.map((v) => (
+              <tr key={v.id} className="border-t border-gray-50">
+                <td className="px-3 py-2 text-gray-500">{formatFechaHora(v.createdAt)}</td>
+                <td className="px-3 py-2 text-gray-700">
+                  {v.cliente?.nombre || v.usuario?.nombre || '—'}
+                </td>
+                <td className="px-3 py-2 text-gray-500">{v.metodo_pago}</td>
+                <td className="px-3 py-2 font-medium text-gray-800">{formatMoneda(v.monto_total)}</td>
+                <td className="px-3 py-2">
+                  <span
+                    className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
+                      v.estado === 'Anulada' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
+                    }`}
+                  >
+                    {v.estado}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function TablaIngresosPorMetodo({ datos }) {
+  if (!datos || datos.length === 0) {
+    return <div className="py-10 text-center text-sm text-gray-400">No hay ingresos registrados este mes.</div>;
+  }
+  const total = datos.reduce((s, d) => s + d.monto_total, 0);
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-left text-sm">
+        <thead>
+          <tr className="text-xs uppercase text-gray-400">
+            <th className="px-3 py-2 font-medium">Método de pago</th>
+            <th className="px-3 py-2 font-medium">N° ventas</th>
+            <th className="px-3 py-2 font-medium">Monto</th>
+          </tr>
+        </thead>
+        <tbody>
+          {datos.map((d) => (
+            <tr key={d.metodo_pago} className="border-t border-gray-50">
+              <td className="px-3 py-2 text-gray-700">{d.metodo_pago}</td>
+              <td className="px-3 py-2 text-gray-500">{d.total_ventas}</td>
+              <td className="px-3 py-2 font-medium text-gray-800">{formatMoneda(d.monto_total)}</td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot>
+          <tr className="border-t border-gray-200 font-semibold text-gray-800">
+            <td className="px-3 py-2">Total</td>
+            <td className="px-3 py-2">{datos.reduce((s, d) => s + d.total_ventas, 0)}</td>
+            <td className="px-3 py-2">{formatMoneda(total)}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  );
+}
+
+function TablaProductos({ productos, soloSinStock }) {
+  const lista = soloSinStock ? productos.filter((p) => p.stock === 0) : productos;
+  if (!lista || lista.length === 0) {
+    return (
+      <div className="py-10 text-center text-sm text-gray-400">
+        {soloSinStock ? 'No hay productos sin stock. ✓' : 'No hay productos activos.'}
+      </div>
+    );
+  }
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-left text-sm">
+        <thead>
+          <tr className="text-xs uppercase text-gray-400">
+            <th className="px-3 py-2 font-medium">Producto</th>
+            <th className="px-3 py-2 font-medium">Categoría</th>
+            <th className="px-3 py-2 font-medium">Stock</th>
+            <th className="px-3 py-2 font-medium">Precio</th>
+          </tr>
+        </thead>
+        <tbody>
+          {lista.map((p) => (
+            <tr key={p.id} className="border-t border-gray-50">
+              <td className="px-3 py-2 text-gray-700">
+                {p.nombre} <span className="text-gray-400">{p.marca}</span>
+              </td>
+              <td className="px-3 py-2 text-gray-500">{p.categoria?.nombre || '—'}</td>
+              <td className="px-3 py-2">
+                <span
+                  className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
+                    p.stock === 0
+                      ? 'bg-red-100 text-red-700'
+                      : p.stock_minimo != null && p.stock <= p.stock_minimo
+                      ? 'bg-yellow-100 text-yellow-700'
+                      : 'bg-gray-100 text-gray-600'
+                  }`}
+                >
+                  {p.stock} und.
+                </span>
+              </td>
+              <td className="px-3 py-2 text-gray-700">{formatMoneda(p.precio)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function TablaSolicitudes({ solicitudes }) {
+  if (!solicitudes || solicitudes.length === 0) {
+    return <div className="py-10 text-center text-sm text-gray-400">No hay solicitudes pendientes. ✓</div>;
+  }
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-left text-sm">
+        <thead>
+          <tr className="text-xs uppercase text-gray-400">
+            <th className="px-3 py-2 font-medium">Producto</th>
+            <th className="px-3 py-2 font-medium">Cantidad</th>
+            <th className="px-3 py-2 font-medium">Proveedor sugerido</th>
+            <th className="px-3 py-2 font-medium">Solicitante</th>
+            <th className="px-3 py-2 font-medium">Fecha</th>
+          </tr>
+        </thead>
+        <tbody>
+          {solicitudes.map((s) => (
+            <tr key={s.id} className="border-t border-gray-50">
+              <td className="px-3 py-2 text-gray-700">
+                {s.producto?.nombre} <span className="text-gray-400">{s.producto?.marca}</span>
+              </td>
+              <td className="px-3 py-2 text-gray-500">{s.cantidad} und(s)</td>
+              <td className="px-3 py-2 text-gray-500">{s.proveedor?.nombre || '—'}</td>
+              <td className="px-3 py-2 text-gray-500">{s.solicitante?.nombre}</td>
+              <td className="px-3 py-2 text-gray-400">{formatFecha(s.createdAt)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -52,7 +272,18 @@ function CustomTooltip({ active, payload, label }) {
   );
 }
 
-function formatFecha(dia) {
+// Título/ícono/color de cada modal de detalle, en el mismo orden que las
+// tarjetas — para no repetir esta info en cada sitio donde se renderiza.
+const MODAL_CONFIG = {
+  ventas:      { titulo: 'Detalle de Ventas del Mes', icono: ShoppingCart, color: '#6366f1' },
+  ingresos:    { titulo: 'Ingresos del Mes por Método de Pago', icono: DollarSign, color: '#10b981' },
+  ticket:      { titulo: 'Ticket Promedio', icono: TrendingUp, color: '#f59e0b' },
+  productos:   { titulo: 'Productos Activos', icono: Package, color: '#3b82f6' },
+  sinStock:    { titulo: 'Productos Sin Stock', icono: AlertTriangle, color: '#ef4444' },
+  solicitudes: { titulo: 'Solicitudes Pendientes', icono: ClipboardList, color: '#8b5cf6' },
+};
+
+function formatFechaEje(dia) {
   const date = new Date(dia + 'T00:00:00');
   return `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}`;
 }
@@ -68,6 +299,17 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
+
+  // Detalle por tarjeta: se carga bajo demanda al abrir cada modal (no en la
+  // carga inicial del dashboard) y se cachea en estado para no re-pedirlo
+  // cada vez que se reabre la misma tarjeta en la misma visita.
+  const [modalActivo, setModalActivo] = useState(null); // 'ventas' | 'ingresos' | 'ticket' | 'productos' | 'sinStock' | 'solicitudes' | null
+  const [detalleCargando, setDetalleCargando] = useState(false);
+  const [detalleError, setDetalleError] = useState('');
+  const [ventasDelMes, setVentasDelMes] = useState(null);
+  const [ventasPorMetodo, setVentasPorMetodo] = useState(null);
+  const [productosActivosDetalle, setProductosActivosDetalle] = useState(null);
+  const [solicitudesPendientesDetalle, setSolicitudesPendientesDetalle] = useState(null);
 
   const fetchData = useCallback(async (esRefresco = false) => {
     if (esRefresco) setRefreshing(true);
@@ -99,6 +341,50 @@ export default function DashboardPage() {
     window.addEventListener('focus', refetchOnFocus);
     return () => window.removeEventListener('focus', refetchOnFocus);
   }, [fetchData]);
+
+  // Carga el detalle de la tarjeta recién abierta, una sola vez (se cachea
+  // en estado y no se vuelve a pedir si se cierra y se reabre la misma).
+  useEffect(() => {
+    if (!modalActivo) return;
+    const cargarDetalle = async () => {
+      setDetalleCargando(true);
+      setDetalleError('');
+      try {
+        const hoy = new Date();
+        const inicioMes = fechaLocalISO(new Date(hoy.getFullYear(), hoy.getMonth(), 1));
+        const hastaHoy = fechaLocalISO(hoy);
+
+        if ((modalActivo === 'ventas' || modalActivo === 'ticket') && !ventasDelMes) {
+          const { data } = await api.get('/ventas', {
+            params: { fecha_inicio: inicioMes, fecha_hasta: hastaHoy, limite: 100 },
+          });
+          setVentasDelMes(Array.isArray(data.data) ? data.data : []);
+        } else if (modalActivo === 'ingresos' && !ventasPorMetodo) {
+          const { data } = await api.get('/reportes/ventas/por-metodo-pago', {
+            params: { fecha_inicio: inicioMes, fecha_hasta: hastaHoy },
+          });
+          setVentasPorMetodo(Array.isArray(data) ? data : []);
+        } else if ((modalActivo === 'productos' || modalActivo === 'sinStock') && !productosActivosDetalle) {
+          const { data } = await api.get('/productos/activos');
+          setProductosActivosDetalle(Array.isArray(data) ? data : []);
+        } else if (modalActivo === 'solicitudes' && !solicitudesPendientesDetalle) {
+          const { data } = await api.get('/inventario/solicitudes', { params: { estado: 'Pendiente' } });
+          setSolicitudesPendientesDetalle(Array.isArray(data) ? data : []);
+        }
+      } catch (err) {
+        setDetalleError(err.response?.data?.mensaje || 'Error al cargar el detalle');
+      } finally {
+        setDetalleCargando(false);
+      }
+    };
+    cargarDetalle();
+    // Deliberadamente solo depende de modalActivo: los demás son cachés que
+    // se consultan (no se listan como dependencia) para pedir cada detalle
+    // una única vez por visita a la página.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modalActivo]);
+
+  const cerrarModal = () => setModalActivo(null);
 
   if (loading) {
     return (
@@ -153,6 +439,7 @@ export default function DashboardPage() {
           valor={kpis?.total_ventas}
           icono={ShoppingCart}
           color="#6366f1"
+          onClick={() => setModalActivo('ventas')}
         />
         <KpiCard
           titulo="Ingresos del Mes"
@@ -160,6 +447,7 @@ export default function DashboardPage() {
           icono={DollarSign}
           color="#10b981"
           prefijo="S./"
+          onClick={() => setModalActivo('ingresos')}
         />
         <KpiCard
           titulo="Ticket Promedio"
@@ -167,24 +455,28 @@ export default function DashboardPage() {
           icono={TrendingUp}
           color="#f59e0b"
           prefijo="S./"
+          onClick={() => setModalActivo('ticket')}
         />
         <KpiCard
           titulo="Productos Activos"
           valor={inventario?.total_productos}
           icono={Package}
           color="#3b82f6"
+          onClick={() => setModalActivo('productos')}
         />
         <KpiCard
           titulo="Sin Stock"
           valor={inventario?.productos_sin_stock}
           icono={AlertTriangle}
           color="#ef4444"
+          onClick={() => setModalActivo('sinStock')}
         />
         <KpiCard
           titulo="Solicitudes Pendientes"
           valor={inventario?.solicitudes_pendientes}
           icono={ClipboardList}
           color="#8b5cf6"
+          onClick={() => setModalActivo('solicitudes')}
         />
       </div>
 
@@ -202,7 +494,7 @@ export default function DashboardPage() {
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis
                 dataKey="fecha"
-                tickFormatter={formatFecha}
+                tickFormatter={formatFechaEje}
                 tick={{ fontSize: 12, fill: '#9ca3af' }}
                 axisLine={false}
                 tickLine={false}
@@ -291,6 +583,49 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+
+      {modalActivo && (
+        <ModalDetalle
+          abierto
+          onCerrar={cerrarModal}
+          titulo={MODAL_CONFIG[modalActivo].titulo}
+          icono={MODAL_CONFIG[modalActivo].icono}
+          color={MODAL_CONFIG[modalActivo].color}
+          cargando={detalleCargando}
+          error={detalleError}
+        >
+          {modalActivo === 'ventas' && (
+            <TablaVentas
+              ventas={ventasDelMes}
+              notaSuperior={
+                <p className="mb-3 text-sm text-gray-500">
+                  {kpis?.total_ventas ?? 0} venta{kpis?.total_ventas === 1 ? '' : 's'} completada{kpis?.total_ventas === 1 ? '' : 's'} este mes.
+                  {ventasDelMes && kpis?.total_ventas > ventasDelMes.length && (
+                    <> Mostrando las primeras {ventasDelMes.length}.</>
+                  )}
+                </p>
+              }
+            />
+          )}
+          {modalActivo === 'ticket' && (
+            <TablaVentas
+              ventas={ventasDelMes ? [...ventasDelMes].sort((a, b) => b.monto_total - a.monto_total) : null}
+              notaSuperior={
+                <p className="mb-3 text-sm text-gray-500">
+                  Promedio: <strong className="text-gray-700">{formatMoneda(kpis?.promedio_venta ?? 0)}</strong> sobre {kpis?.total_ventas ?? 0} venta(s) — ordenadas de mayor a menor monto.
+                  {ventasDelMes && kpis?.total_ventas > ventasDelMes.length && (
+                    <> Mostrando las primeras {ventasDelMes.length}.</>
+                  )}
+                </p>
+              }
+            />
+          )}
+          {modalActivo === 'ingresos' && <TablaIngresosPorMetodo datos={ventasPorMetodo} />}
+          {modalActivo === 'productos' && <TablaProductos productos={productosActivosDetalle || []} />}
+          {modalActivo === 'sinStock' && <TablaProductos productos={productosActivosDetalle || []} soloSinStock />}
+          {modalActivo === 'solicitudes' && <TablaSolicitudes solicitudes={solicitudesPendientesDetalle} />}
+        </ModalDetalle>
+      )}
     </div>
   );
 }
