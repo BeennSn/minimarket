@@ -616,7 +616,7 @@ function ModalSolicitud({ abierto, onCerrar, producto, proveedores, onCreada }) 
   );
 }
 
-const MOTIVOS_BAJA = ['Vencido', 'Dañado', 'Robo o faltante', 'Consumo interno', 'Error de registro', 'Otro'];
+const MOTIVOS_BAJA = ['Vencido', 'Dañado', 'Robo o faltante', 'Consumo interno', 'Otro'];
 
 function ModalBaja({ abierto, onCerrar, producto, onRegistrada }) {
   const [cantidad, setCantidad] = useState('');

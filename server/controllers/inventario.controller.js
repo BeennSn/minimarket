@@ -154,7 +154,7 @@ const listarEntradas = async (req, res) => {
 
 // ─── Bajas ────────────────────────────────────────────────────────────────────
 
-const MOTIVOS_BAJA = ['Vencido', 'Dañado', 'Robo o faltante', 'Consumo interno', 'Error de registro', 'Otro'];
+const MOTIVOS_BAJA = ['Vencido', 'Dañado', 'Robo o faltante', 'Consumo interno', 'Otro'];
 
 // Incluye los ConsumoLote de cada baja (con su lote de origen) para poder
 // mostrar de qué lote(s) exacto salió cada baja — así queda vinculado con lo
