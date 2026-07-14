@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Search, X, ChevronLeft, ChevronRight, Download, Eye, FileText, CheckCircle, XCircle, Banknote, Smartphone, Loader2, Ban } from 'lucide-react';
+import { Search, X, ChevronLeft, ChevronRight, Eye, FileText, CheckCircle, XCircle, Banknote, Smartphone, Loader2, Ban } from 'lucide-react';
 import api from '../../utils/axios';
 import Breadcrumb from '../../components/Breadcrumb';
 import Toast from '../../components/Toast';
@@ -26,7 +26,6 @@ export default function HistorialVentasPage() {
   const [filtroMetodo, setFiltroMetodo] = useState('');
   const [paginaActual, setPaginaActual] = useState(1);
   const [detalleVenta, setDetalleVenta] = useState(null);
-  const [exportando, setExportando] = useState(false);
   const [descargandoComprobante, setDescargandoComprobante] = useState(false);
   const [ventaAAnular, setVentaAAnular] = useState(null);
   const [motivoAnular, setMotivoAnular] = useState('');
@@ -64,52 +63,6 @@ export default function HistorialVentasPage() {
 
   const handleFiltrar = () => { setPaginaActual(1); };
   const handleLimpiar = () => { setFechaInicio(''); setFechaHasta(''); setFiltroMetodo(''); setPaginaActual(1); };
-
-  const exportarCSV = async () => {
-    if (rangoFechaInvalido) {
-      mostrarError('La fecha "Desde" no puede ser posterior a la fecha "Hasta"');
-      return;
-    }
-    setExportando(true);
-    try {
-      const params = {};
-      if (fechaInicio) params.fecha_inicio = fechaInicio;
-      if (fechaHasta) params.fecha_hasta = fechaHasta;
-      if (filtroMetodo) params.metodo_pago = filtroMetodo;
-
-      const { data } = await api.get('/ventas', { params });
-      const todas = data.data || [];
-
-      const headers = ['N° Venta', 'Fecha', 'Hora', 'Cajero', 'Método Pago', 'Monto Total', 'Yape Verificado', 'Cant. Productos'];
-      const rows = todas.map((v) => [
-        v.id,
-        new Date(v.createdAt).toLocaleDateString('es-PE'),
-        new Date(v.createdAt).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }),
-        v.usuario?.nombre || '-',
-        v.metodo_pago,
-        Number(v.monto_total).toFixed(2),
-        v.metodo_pago === 'Yape' ? (v.yape_verificado ? 'Sí' : 'No') : '-',
-        (v.detalles || []).length,
-      ]);
-
-      const csvContent = [
-        headers.join(','),
-        ...rows.map((r) => r.map((c) => `"${c}"`).join(',')),
-      ].join('\n');
-
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `historial_ventas_${new Date().toISOString().slice(0, 10)}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      setError('Error al exportar');
-    } finally {
-      setExportando(false);
-    }
-  };
 
   const verDetalle = async (id) => {
     try {
@@ -156,14 +109,6 @@ export default function HistorialVentasPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-800">Historial de Ventas</h1>
-        <button
-          onClick={exportarCSV}
-          disabled={exportando || rangoFechaInvalido}
-          className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:opacity-50"
-        >
-          {exportando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-          Exportar Excel
-        </button>
       </div>
 
       {/* Filtros */}
