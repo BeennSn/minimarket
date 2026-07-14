@@ -25,6 +25,15 @@ function ModalCrearSolicitud({ abierto, onCerrar, productos, proveedores, onCrea
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState('');
 
+  const productoSeleccionado = productos.find((p) => p.id === Number(productoId));
+  // Advertencia no bloqueante: el producto ya tiene un proveedor habitual
+  // registrado (Producto.proveedor_id), pero no hay catálogo de "qué
+  // productos maneja cada proveedor" en el modelo, así que no se puede
+  // bloquear con certeza — un minimarket real a veces sí compra a un
+  // proveedor alterno. Solo se avisa.
+  const proveedorNoHabitual =
+    productoSeleccionado?.proveedor && proveedorId && Number(proveedorId) !== productoSeleccionado.proveedor.id;
+
   useEffect(() => {
     if (abierto) {
       setProductoId('');
@@ -33,6 +42,14 @@ function ModalCrearSolicitud({ abierto, onCerrar, productos, proveedores, onCrea
       setError('');
     }
   }, [abierto]);
+
+  // Al elegir un producto, precarga su proveedor habitual (si tiene uno
+  // registrado) en vez de dejar el select en blanco.
+  const handleProductoChange = (id) => {
+    setProductoId(id);
+    const producto = productos.find((p) => p.id === Number(id));
+    setProveedorId(producto?.proveedor ? String(producto.proveedor.id) : '');
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -66,7 +83,7 @@ function ModalCrearSolicitud({ abierto, onCerrar, productos, proveedores, onCrea
             <label className="mb-1 block text-sm font-medium text-gray-700">Producto</label>
             <select
               value={productoId}
-              onChange={(e) => setProductoId(e.target.value)}
+              onChange={(e) => handleProductoChange(e.target.value)}
               required
               className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
             >
@@ -97,6 +114,11 @@ function ModalCrearSolicitud({ abierto, onCerrar, productos, proveedores, onCrea
                 <option key={p.id} value={p.id}>{p.nombre}</option>
               ))}
             </select>
+            {proveedorNoHabitual && (
+              <p className="mt-1 text-xs text-amber-600">
+                El proveedor habitual de este producto es {productoSeleccionado.proveedor.nombre}. Puedes continuar igual si corresponde.
+              </p>
+            )}
           </div>
           {error && <div className="rounded-lg bg-red-50 px-4 py-2 text-sm text-red-600">{error}</div>}
           <div className="flex justify-end">
@@ -114,18 +136,26 @@ function ModalCrearSolicitud({ abierto, onCerrar, productos, proveedores, onCrea
   );
 }
 
-function ModalAprobar({ abierto, onCerrar, solicitud, proveedores, onAprobada }) {
+function ModalAprobar({ abierto, onCerrar, solicitud, productos, proveedores, onAprobada }) {
   const [proveedorId, setProveedorId] = useState('');
   const [fechaEstimada, setFechaEstimada] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState('');
 
+  // El include de /inventario/solicitudes no trae el proveedor_id del
+  // producto, así que se cruza con la lista de productos ya cargada en la
+  // página para saber cuál es su proveedor habitual.
+  const productoCompleto = productos?.find((p) => p.id === solicitud?.producto?.id);
+  const proveedorNoHabitual =
+    productoCompleto?.proveedor && proveedorId && Number(proveedorId) !== productoCompleto.proveedor.id;
+
   useEffect(() => {
     if (abierto) {
-      setProveedorId('');
+      setProveedorId(productoCompleto?.proveedor ? String(productoCompleto.proveedor.id) : '');
       setFechaEstimada('');
       setError('');
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [abierto]);
 
   const handleSubmit = async (e) => {
@@ -173,6 +203,11 @@ function ModalAprobar({ abierto, onCerrar, solicitud, proveedores, onAprobada })
                 <option key={p.id} value={p.id}>{p.nombre}</option>
               ))}
             </select>
+            {proveedorNoHabitual && (
+              <p className="mt-1 text-xs text-amber-600">
+                El proveedor habitual de este producto es {productoCompleto.proveedor.nombre}. Puedes continuar igual si corresponde.
+              </p>
+            )}
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">Fecha estimada de llegada</label>
@@ -613,6 +648,7 @@ export default function SolicitudesPage() {
         abierto={modalAprobar}
         onCerrar={() => { setModalAprobar(false); setSolicitudSeleccionada(null); }}
         solicitud={solicitudSeleccionada}
+        productos={productos}
         proveedores={proveedores}
         onAprobada={() => {
           setModalAprobar(false);

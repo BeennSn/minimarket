@@ -289,6 +289,15 @@ function formatFechaEje(dia) {
   return `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}`;
 }
 
+// Rango por defecto: mes en curso — coincide con lo que ya prometían los
+// títulos de las tarjetas ("Total Ventas del Mes", "Ingresos del Mes"), que
+// antes se llenaban con datos de *todo* el historial porque el fetch no
+// mandaba ningún filtro de fecha al backend.
+function primerDiaDelMes() {
+  const hoy = new Date();
+  return fechaLocalISO(new Date(hoy.getFullYear(), hoy.getMonth(), 1));
+}
+
 export default function DashboardPage() {
   const { usuario } = useAuth();
   const { stockVersion } = useStockSync();
@@ -301,6 +310,16 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
+
+  // Filtro de fecha del dashboard: por defecto el mes en curso. Los inputs
+  // (fechaInicioInput/fechaHastaInput) son el borrador que edita el usuario;
+  // fechaInicio/fechaHasta son el rango efectivamente aplicado (el que se
+  // manda al backend) — se separan para que escribir en los inputs no
+  // dispare un refetch en cada tecla, solo al presionar "Aplicar".
+  const [fechaInicio, setFechaInicio] = useState(primerDiaDelMes());
+  const [fechaHasta, setFechaHasta] = useState(fechaLocalISO(new Date()));
+  const [fechaInicioInput, setFechaInicioInput] = useState(fechaInicio);
+  const [fechaHastaInput, setFechaHastaInput] = useState(fechaHasta);
 
   // Detalle por tarjeta: se carga bajo demanda al abrir cada modal (no en la
   // carga inicial del dashboard) y se cachea en estado para no re-pedirlo
@@ -316,12 +335,13 @@ export default function DashboardPage() {
   const fetchData = useCallback(async (esRefresco = false) => {
     if (esRefresco) setRefreshing(true);
     try {
+      const rango = { fecha_inicio: fechaInicio, fecha_hasta: fechaHasta };
       const [resVentas, resInventario, resPorDia, resStock, resTop] = await Promise.all([
-        api.get('/reportes/ventas/resumen'),
+        api.get('/reportes/ventas/resumen', { params: rango }),
         api.get('/reportes/inventario/resumen'),
-        api.get('/reportes/ventas/por-dia'),
+        api.get('/reportes/ventas/por-dia', { params: rango }),
         api.get('/reportes/inventario/stock-critico', { params: { umbral: 5 } }),
-        api.get('/reportes/ventas/productos-top', { params: { limite: 5 } }),
+        api.get('/reportes/ventas/productos-top', { params: { ...rango, limite: 5 } }),
       ]);
       setKpis(resVentas.data);
       setInventario(resInventario.data);
@@ -334,7 +354,7 @@ export default function DashboardPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [fechaInicio, fechaHasta]);
 
   useEffect(() => { fetchData(); }, [fetchData, stockVersion]);
 
@@ -344,6 +364,28 @@ export default function DashboardPage() {
     return () => window.removeEventListener('focus', refetchOnFocus);
   }, [fetchData]);
 
+  // Al aplicar un nuevo rango de fechas, los detalles de las tarjetas
+  // (ventas del mes, ingresos por método, etc.) quedan de un rango viejo —
+  // se limpia la caché para que el próximo modal que se abra pida de nuevo
+  // con el rango correcto en vez de mostrar datos de otro período.
+  const aplicarFiltroFecha = () => {
+    setFechaInicio(fechaInicioInput);
+    setFechaHasta(fechaHastaInput);
+    setVentasDelMes(null);
+    setVentasPorMetodo(null);
+  };
+
+  const limpiarFiltroFecha = () => {
+    const inicio = primerDiaDelMes();
+    const hasta = fechaLocalISO(new Date());
+    setFechaInicioInput(inicio);
+    setFechaHastaInput(hasta);
+    setFechaInicio(inicio);
+    setFechaHasta(hasta);
+    setVentasDelMes(null);
+    setVentasPorMetodo(null);
+  };
+
   // Carga el detalle de la tarjeta recién abierta, una sola vez (se cachea
   // en estado y no se vuelve a pedir si se cierra y se reabre la misma).
   useEffect(() => {
@@ -352,18 +394,14 @@ export default function DashboardPage() {
       setDetalleCargando(true);
       setDetalleError('');
       try {
-        const hoy = new Date();
-        const inicioMes = fechaLocalISO(new Date(hoy.getFullYear(), hoy.getMonth(), 1));
-        const hastaHoy = fechaLocalISO(hoy);
-
         if ((modalActivo === 'ventas' || modalActivo === 'ticket') && !ventasDelMes) {
           const { data } = await api.get('/ventas', {
-            params: { fecha_inicio: inicioMes, fecha_hasta: hastaHoy, limite: 100 },
+            params: { fecha_inicio: fechaInicio, fecha_hasta: fechaHasta, limite: 100 },
           });
           setVentasDelMes(Array.isArray(data.data) ? data.data : []);
         } else if (modalActivo === 'ingresos' && !ventasPorMetodo) {
           const { data } = await api.get('/reportes/ventas/por-metodo-pago', {
-            params: { fecha_inicio: inicioMes, fecha_hasta: hastaHoy },
+            params: { fecha_inicio: fechaInicio, fecha_hasta: fechaHasta },
           });
           setVentasPorMetodo(Array.isArray(data) ? data : []);
         } else if ((modalActivo === 'productos' || modalActivo === 'sinStock') && !productosActivosDetalle) {
@@ -427,11 +465,16 @@ export default function DashboardPage() {
 
   const topVendido = productosTop.length > 0 ? Math.max(...productosTop.map((p) => p.total_vendido)) : 1;
 
+  // Las tarjetas dicen "del Mes" solo mientras el rango aplicado sea, de
+  // hecho, el mes en curso — con un rango distinto seria una etiqueta falsa.
+  const esRangoMesActual = fechaInicio === primerDiaDelMes() && fechaHasta === fechaLocalISO(new Date());
+  const etiquetaPeriodo = esRangoMesActual ? 'del Mes' : 'del Período';
+
   return (
     <div className="space-y-6">
       <Breadcrumb items={[{ label: 'Inicio', path: '/dashboard' }, { label: 'Dashboard' }]} />
 
-      <div className="flex items-start justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Dashboard</h1>
           <p className="mt-1 text-sm text-gray-500">
@@ -448,16 +491,58 @@ export default function DashboardPage() {
         </button>
       </div>
 
+      {/* Filtro de fecha: afecta ventas/ingresos/ticket promedio/top productos.
+          Inventario (productos activos, sin stock, stock crítico) es un
+          estado actual, no algo que tenga sentido acotar por fecha. */}
+      <div className="flex flex-wrap items-end gap-3 rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-500">Desde</label>
+          <input
+            type="date"
+            value={fechaInicioInput}
+            max={fechaHastaInput}
+            onChange={(e) => setFechaInicioInput(e.target.value)}
+            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:border-indigo-500 focus:outline-none"
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-500">Hasta</label>
+          <input
+            type="date"
+            value={fechaHastaInput}
+            min={fechaInicioInput}
+            max={fechaLocalISO(new Date())}
+            onChange={(e) => setFechaHastaInput(e.target.value)}
+            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:border-indigo-500 focus:outline-none"
+          />
+        </div>
+        <button
+          onClick={aplicarFiltroFecha}
+          className="rounded-lg bg-[#6366f1] px-4 py-1.5 text-sm font-medium text-white hover:bg-indigo-600"
+        >
+          Aplicar
+        </button>
+        <button
+          onClick={limpiarFiltroFecha}
+          className="rounded-lg border border-gray-200 px-4 py-1.5 text-sm text-gray-500 transition-colors hover:bg-gray-100"
+        >
+          Este mes
+        </button>
+        <span className="text-xs text-gray-400">
+          Mostrando ventas del {formatFecha(fechaInicio)} al {formatFecha(fechaHasta)}
+        </span>
+      </div>
+
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
         <KpiCard
-          titulo="Total Ventas del Mes"
+          titulo={`Total Ventas ${etiquetaPeriodo}`}
           valor={kpis?.total_ventas}
           icono={ShoppingCart}
           color="#6366f1"
           onClick={() => setModalActivo('ventas')}
         />
         <KpiCard
-          titulo="Ingresos del Mes"
+          titulo={`Ingresos ${etiquetaPeriodo}`}
           valor={kpis?.monto_total}
           icono={DollarSign}
           color="#10b981"
@@ -619,7 +704,11 @@ export default function DashboardPage() {
         <ModalDetalle
           abierto
           onCerrar={cerrarModal}
-          titulo={MODAL_CONFIG[modalActivo].titulo}
+          titulo={
+            modalActivo === 'ventas' ? `Detalle de Ventas ${etiquetaPeriodo}`
+            : modalActivo === 'ingresos' ? `Ingresos ${etiquetaPeriodo} por Método de Pago`
+            : MODAL_CONFIG[modalActivo].titulo
+          }
           icono={MODAL_CONFIG[modalActivo].icono}
           color={MODAL_CONFIG[modalActivo].color}
           cargando={detalleCargando}

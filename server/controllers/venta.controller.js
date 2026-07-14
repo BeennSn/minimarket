@@ -2,7 +2,21 @@ const { Op } = require('sequelize');
 const { sequelize, Venta, DetalleVenta, Producto, Usuario, Cliente, Turno, MovimientoCaja } = require('../models');
 const { presentarVenta, presentarLista } = require('../presenters/venta.presenter');
 const { consumirStockFIFO, revertirConsumo, calcularStockVigente } = require('../services/inventario.service');
+const { calcularEsperados } = require('../services/caja.service');
 const { inicioDiaPeru, finDiaPeruExclusivo } = require('../utils/fechas');
+
+// Efectivo realmente disponible en el turno para dar vuelto: apertura +
+// movimientos en efectivo (ventas, ingresos manuales) - egresos/anulaciones.
+// Sin este chequeo, el sistema aceptaba una venta en efectivo aunque la caja
+// físicamente no tuviera cómo dar el cambio (ej. abren con S/20 y alguien
+// paga con un billete de S/100 la primera venta del día).
+const efectivoDisponibleEnTurno = async (turnoId, transaction) => {
+  const [turno, movimientos] = await Promise.all([
+    Turno.findByPk(turnoId, { attributes: ['monto_apertura'], transaction }),
+    MovimientoCaja.findAll({ where: { turno_id: turnoId }, transaction }),
+  ]);
+  return calcularEsperados(movimientos, turno.monto_apertura).monto_esperado_efectivo;
+};
 
 const INCLUDE_VENTA = [
   { association: 'usuario', attributes: ['id', 'nombre'] },
@@ -94,6 +108,16 @@ const registrar = async (req, res) => {
       if (montoRecibidoNum < monto_total_prev) {
         return res.status(400).json({ mensaje: 'Monto recibido insuficiente' });
       }
+
+      const vueltoPrev = montoRecibidoNum - monto_total_prev;
+      if (vueltoPrev > 0) {
+        const disponiblePrev = await efectivoDisponibleEnTurno(turnoActivo.id);
+        if (disponiblePrev < vueltoPrev) {
+          return res.status(400).json({
+            mensaje: `Monto en caja insuficiente para dar el vuelto. Efectivo disponible: S/ ${disponiblePrev.toFixed(2)}, vuelto necesario: S/ ${vueltoPrev.toFixed(2)}. Registra un ingreso en Caja antes de continuar.`,
+          });
+        }
+      }
     }
 
     const venta = await sequelize.transaction(async (t) => {
@@ -136,6 +160,19 @@ const registrar = async (req, res) => {
       const vuelto = metodo_pago === 'Efectivo'
         ? parseFloat(monto_recibido) - monto_total
         : null;
+
+      // Reverifica el efectivo disponible ya con el turno bloqueado (cubre la
+      // ventana entre el pre-chequeo de arriba y este punto, por si otra
+      // venta en efectivo del mismo turno se coló en el medio).
+      if (metodo_pago === 'Efectivo' && vuelto > 0) {
+        const disponible = await efectivoDisponibleEnTurno(turno.id, t);
+        if (disponible < vuelto) {
+          throw {
+            status: 400,
+            mensaje: `Monto en caja insuficiente para dar el vuelto. Efectivo disponible: S/ ${disponible.toFixed(2)}, vuelto necesario: S/ ${vuelto.toFixed(2)}. Registra un ingreso en Caja antes de continuar.`,
+          };
+        }
+      }
 
       const esYapeVerificado = metodo_pago === 'Yape' && yape_verificado === true;
 

@@ -2,6 +2,7 @@ const { Op } = require('sequelize');
 const { sequelize, Turno, MovimientoCaja, Usuario } = require('../models');
 const { presentarTurno, presentarMovimiento } = require('../presenters/caja.presenter');
 const { inicioDiaPeru, finDiaPeruExclusivo } = require('../utils/fechas');
+const { calcularEsperados } = require('../services/caja.service');
 
 // Mínimo exigido para abrir un turno de caja: debe alcanzar para dar vueltos
 // desde la primera venta del día. Mismo valor duplicado (a propósito, no hay
@@ -18,29 +19,6 @@ const INCLUDE_TURNO = [
     order: [['createdAt', 'ASC']],
   },
 ];
-
-// ─── Calcular montos esperados a partir de movimientos ─────────────────────────
-function calcularEsperados(movimientos, montoApertura) {
-  let efectivo = parseFloat(montoApertura);
-  let yape = 0;
-
-  for (const m of movimientos) {
-    const monto = parseFloat(m.monto);
-    if (m.tipo === 'Egreso' || m.tipo === 'Anulacion') {
-      if (m.metodo === 'Efectivo') efectivo -= monto;
-      if (m.metodo === 'Yape')     yape     -= monto;
-    } else if (m.metodo === 'Efectivo') {
-      efectivo += monto;
-    } else if (m.metodo === 'Yape') {
-      yape += monto;
-    }
-  }
-
-  return {
-    monto_esperado_efectivo: parseFloat(efectivo.toFixed(2)),
-    monto_esperado_yape:     parseFloat(yape.toFixed(2)),
-  };
-}
 
 // ─── Abrir turno ───────────────────────────────────────────────────────────────
 const abrir = async (req, res) => {

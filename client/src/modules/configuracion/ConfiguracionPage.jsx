@@ -22,6 +22,13 @@ export default function ConfiguracionPage() {
   // resetea apenas cambia el RUC, porque ese nombre ya no corresponde al
   // RUC que quedó escrito.
   const [nombreDesdeSunat, setNombreDesdeSunat] = useState(false);
+  // RUC tal como estaba guardado al cargar la página — sirve para detectar si
+  // el usuario lo está cambiando a uno distinto, ya que el sistema no tiene
+  // forma de verificar que un RUC realmente le pertenezca al negocio (no hay
+  // integración con SUNAT para eso), así que lo único que se puede hacer es
+  // pedir confirmación explícita antes de guardar un RUC nuevo.
+  const [rucOriginal, setRucOriginal] = useState('');
+  const [confirmarCambioRuc, setConfirmarCambioRuc] = useState(false);
 
   useEffect(() => {
     api.get('/configuracion')
@@ -35,6 +42,7 @@ export default function ConfiguracionPage() {
           serie_boleta: data.serie_boleta || 'B001',
           serie_factura: data.serie_factura || 'F001',
         });
+        setRucOriginal(data.ruc);
       })
       .catch(() => setError('Error al cargar la configuración'))
       .finally(() => setCargando(false));
@@ -66,6 +74,8 @@ export default function ConfiguracionPage() {
     }
   };
 
+  const TELEFONO_REGEX = /^(9\d{8}|0\d{1,3}-?\d{6,7})$/;
+
   const guardar = async (e) => {
     e.preventDefault();
     setError('');
@@ -73,6 +83,10 @@ export default function ConfiguracionPage() {
 
     if (!/^20\d{9}$/.test(form.ruc)) {
       return setError('El RUC debe tener 11 dígitos y empezar con 20 (persona jurídica)');
+    }
+
+    if (!TELEFONO_REGEX.test(form.telefono.trim())) {
+      return setError('El teléfono debe ser un celular (9XXXXXXXX) o un fijo con código de área (ej. 044-123456)');
     }
 
     const igvNum = Number(form.igv);
@@ -88,15 +102,31 @@ export default function ConfiguracionPage() {
       return setError('La serie de factura debe tener el formato: 1 letra + 3 dígitos (ej. F001)');
     }
 
+    // El RUC cambió respecto al guardado: no hay forma de verificar que el
+    // nuevo número realmente pertenezca a este negocio, así que se pide
+    // confirmación explícita antes de sobreescribirlo (una sola vez; si el
+    // usuario ya confirmó, se procede directo al guardado).
+    if (form.ruc !== rucOriginal && !confirmarCambioRuc) {
+      setConfirmarCambioRuc(true);
+      return;
+    }
+
     setGuardando(true);
     try {
       await api.put('/configuracion', { ...form, igv: igvNum });
       setExito('Configuración guardada correctamente');
+      setRucOriginal(form.ruc);
+      setConfirmarCambioRuc(false);
     } catch (err) {
       setError(err.response?.data?.mensaje || 'Error al guardar configuración');
     } finally {
       setGuardando(false);
     }
+  };
+
+  const cancelarCambioRuc = () => {
+    setForm((f) => ({ ...f, ruc: rucOriginal }));
+    setConfirmarCambioRuc(false);
   };
 
   if (cargando) {
@@ -162,6 +192,7 @@ export default function ConfiguracionPage() {
                 onChange={(e) => {
                   cambiar({ target: { name: 'ruc', value: e.target.value.replace(/\D/g, '').slice(0, 11) } });
                   setNombreDesdeSunat(false);
+                  setConfirmarCambioRuc(false);
                 }}
                 onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), buscarRuc())}
                 maxLength={11}
@@ -212,6 +243,7 @@ export default function ConfiguracionPage() {
               placeholder="044-123456"
               className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
             />
+            <p className="mt-1 text-xs text-gray-400">Celular (9XXXXXXXX) o fijo con código de área (ej. 044-123456)</p>
           </div>
 
           <div>
@@ -275,6 +307,31 @@ export default function ConfiguracionPage() {
           )}
           {exito && (
             <div className="rounded-lg bg-green-50 px-4 py-2 text-sm text-green-600">{exito}</div>
+          )}
+
+          {confirmarCambioRuc && (
+            <div className="rounded-lg border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-800">
+              <p className="font-medium">¿Este RUC ({form.ruc}) es el de tu negocio?</p>
+              <p className="mt-1 text-xs text-yellow-700">
+                Vas a reemplazar el RUC actual ({rucOriginal}) por uno distinto. El sistema no puede
+                verificar la titularidad, así que confirma antes de continuar.
+              </p>
+              <div className="mt-2 flex gap-2">
+                <button
+                  type="submit"
+                  className="rounded-lg bg-yellow-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-yellow-700"
+                >
+                  Sí, guardar este RUC
+                </button>
+                <button
+                  type="button"
+                  onClick={cancelarCambioRuc}
+                  className="rounded-lg border border-yellow-300 px-3 py-1.5 text-xs text-yellow-800 hover:bg-yellow-100"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
           )}
 
           <button

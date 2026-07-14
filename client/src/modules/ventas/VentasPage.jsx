@@ -349,6 +349,48 @@ export default function VentasPage() {
   // como respaldo en vez de bloquear todo).
   const stockVendible = (p) => p?.stock_vigente ?? p?.stock ?? 0;
 
+  // ─── Caché del carrito en localStorage ─────────────────────────────────────
+  // Si se recarga la página a medio armar una venta (F5, cierre accidental de
+  // pestaña, caída de red), el carrito no debería perderse. Se guarda por
+  // usuario (distintos cajeros en el mismo equipo no comparten carrito) y se
+  // reconcilia contra el stock real apenas cargan los productos, por si algo
+  // cambió mientras la pestaña estuvo cerrada.
+  const carritoStorageKey = usuario ? `pos_carrito_${usuario.id}` : null;
+  const carritoRestaurado = useRef(false);
+  const carritoReconciliado = useRef(false);
+
+  useEffect(() => {
+    if (!carritoStorageKey || esSoloLectura || carritoRestaurado.current) return;
+    carritoRestaurado.current = true;
+    try {
+      const guardado = JSON.parse(localStorage.getItem(carritoStorageKey) || '[]');
+      if (Array.isArray(guardado) && guardado.length > 0) setCarrito(guardado);
+    } catch {
+      // localStorage corrupto o inaccesible: se ignora, el carrito arranca vacío
+    }
+  }, [carritoStorageKey, esSoloLectura]);
+
+  useEffect(() => {
+    if (carritoReconciliado.current || productos.length === 0 || carrito.length === 0) return;
+    carritoReconciliado.current = true;
+    setCarrito((prev) =>
+      prev
+        .map((item) => {
+          const actual = productos.find((p) => p.id === item.id);
+          if (!actual || actual.activo === false) return null;
+          const disponible = stockVendible(actual);
+          if (disponible <= 0) return null;
+          return { ...actual, cantidad: Math.min(item.cantidad, disponible) };
+        })
+        .filter(Boolean)
+    );
+  }, [productos]);
+
+  useEffect(() => {
+    if (!carritoStorageKey || esSoloLectura) return;
+    localStorage.setItem(carritoStorageKey, JSON.stringify(carrito));
+  }, [carrito, carritoStorageKey, esSoloLectura]);
+
   const agregarAlCarrito = (producto) => {
     setCarrito((prev) => {
       const existente = prev.find((item) => item.id === producto.id);
@@ -379,6 +421,27 @@ export default function VentasPage() {
   const total = carrito.reduce((sum, item) => sum + item.precio * item.cantidad, 0);
   const vuelto = montoRecibido ? parsearMontoRecibido(montoRecibido) - total : 0;
 
+  // Efectivo disponible ahora mismo en el turno (apertura + movimientos en
+  // efectivo) — solo una guía de UX, igual que turnoActivo: el backend
+  // vuelve a validarlo con el turno bloqueado antes de aceptar la venta.
+  const efectivoDisponibleTurno = () => {
+    if (!turnoActivo?.movimientos) return null;
+    let efectivo = parseFloat(turnoActivo.monto_apertura) || 0;
+    for (const m of turnoActivo.movimientos) {
+      const monto = parseFloat(m.monto);
+      if (m.tipo === 'Egreso' || m.tipo === 'Anulacion') {
+        if (m.metodo === 'Efectivo') efectivo -= monto;
+      } else if (m.metodo === 'Efectivo') {
+        efectivo += monto;
+      }
+    }
+    return efectivo;
+  };
+
+  const efectivoDisponible = metodoPago === 'Efectivo' ? efectivoDisponibleTurno() : null;
+  const vueltoInsuficiente =
+    metodoPago === 'Efectivo' && vuelto > 0 && efectivoDisponible != null && efectivoDisponible < vuelto;
+
   const datosClienteValidos = () => {
     if (tipoComprobante === 'BoletaSimple') return true;
     if (tipoComprobante === 'BoletaDNI') return /^\d{8}$/.test(clienteDni) && dniValidado;
@@ -395,11 +458,13 @@ export default function VentasPage() {
     !sinTurno &&
     carrito.length > 0 &&
     (metodoPago !== 'Efectivo' || (montoRecibido && parsearMontoRecibido(montoRecibido) >= total)) &&
+    !vueltoInsuficiente &&
     (metodoPago !== 'Yape' || yapeVerificado) &&
     datosClienteValidos();
 
   const resetear = () => {
     setCarrito([]);
+    if (carritoStorageKey) localStorage.removeItem(carritoStorageKey);
     setMontoRecibido('');
     setYapeVerificado(false);
     setVentaExitosa(null);
@@ -487,6 +552,11 @@ export default function VentasPage() {
 
     if (sinTurno) {
       setError('No puedes realizar ventas porque no tienes un turno de caja abierto. Abre un turno para continuar.');
+      return;
+    }
+
+    if (vueltoInsuficiente) {
+      setError(`Monto en caja insuficiente para dar el vuelto. Efectivo disponible: S/. ${efectivoDisponible.toFixed(2)}. Registra un ingreso en Caja antes de continuar.`);
       return;
     }
 
@@ -1098,6 +1168,12 @@ export default function VentasPage() {
                       </>
                     )}
                   </div>
+                  {vueltoInsuficiente && (
+                    <div className="flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">
+                      <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                      Monto en caja insuficiente para el vuelto. Disponible: S/. {efectivoDisponible.toFixed(2)}
+                    </div>
+                  )}
                 </div>
               )}
 

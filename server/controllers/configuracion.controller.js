@@ -11,6 +11,10 @@ const DEFAULTS = {
 };
 
 const SERIE_REGEX = /^[A-Z]\d{3}$/;
+// Celular peruano (9 + 8 dígitos) o fijo con código de área (0XX-XXXXXXX):
+// antes solo se exigía no-vacío, así que cualquier patrón de dígitos pasaba
+// (incluyendo números claramente inservibles como "111" o "0000000000").
+const TELEFONO_REGEX = /^(9\d{8}|0\d{1,3}-?\d{6,7})$/;
 
 const obtener = async (req, res) => {
   try {
@@ -32,6 +36,9 @@ const actualizar = async (req, res) => {
     if (!/^20\d{9}$/.test(ruc)) return res.status(400).json({ mensaje: 'El RUC debe tener 11 dígitos y empezar con 20 (persona jurídica)' });
     if (!direccion?.trim()) return res.status(400).json({ mensaje: 'La dirección es requerida' });
     if (!telefono?.trim()) return res.status(400).json({ mensaje: 'El teléfono es requerido' });
+    if (!TELEFONO_REGEX.test(telefono.trim())) {
+      return res.status(400).json({ mensaje: 'El teléfono debe ser un celular (9XXXXXXXX) o un fijo con código de área (ej. 044-123456)' });
+    }
     const igvNum = Number(igv);
     if (!Number.isFinite(igvNum) || igvNum < 0 || igvNum > 100) {
       return res.status(400).json({ mensaje: 'El IGV debe ser un número entre 0 y 100' });
