@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Loader2, Filter, X } from 'lucide-react';
+import { Loader2, Filter, X, AlertTriangle } from 'lucide-react';
 import api from '../../utils/axios';
 import { formatFechaHora, fechaLocalISO, sanitizarMonto } from '../../utils/format';
 import { useStockSync } from '../../context/StockSyncContext';
@@ -277,9 +277,29 @@ export default function InventarioPage() {
     ? parseInt(cantidadContada, 10) - productoSeleccionado.stock
     : null;
 
+  // Lotes del producto elegido en Bajas, marcando cuáles ya están vencidos
+  // (misma regla que el resto del sistema: vence HOY ya no es vigente) y
+  // mostrando los vencidos primero — así es fácil identificar cuál dar de baja.
+  const lotesConEstado = [...lotesProductoSeleccionado]
+    .map((l) => ({ ...l, vencido: !!l.fecha_vencimiento && l.fecha_vencimiento <= fechaHoy }))
+    .sort((a, b) => {
+      if (a.vencido !== b.vencido) return a.vencido ? -1 : 1;
+      const fa = a.fecha_vencimiento || '9999-99-99';
+      const fb = b.fecha_vencimiento || '9999-99-99';
+      return fa < fb ? -1 : fa > fb ? 1 : 0;
+    });
+
   // Lote elegido en el formulario de Bajas (si no se elige ninguno, la baja
   // se descuenta automático por FEFO, como antes).
-  const loteSeleccionado = lotesProductoSeleccionado.find((l) => String(l.id) === String(loteId));
+  const loteSeleccionado = lotesConEstado.find((l) => String(l.id) === String(loteId));
+
+  // Productos (de los ya cargados) que tienen stock vencido: stock total
+  // menos el vigente (stock_vigente ya excluye vencidos y "vence hoy"). Se
+  // muestra en Bajas para ver de un vistazo qué hay para dar de baja, sin
+  // tener que ir primero a Productos a buscarlo.
+  const productosConVencido = productos
+    .map((p) => ({ ...p, stockVencido: p.stock - (p.stock_vigente ?? p.stock) }))
+    .filter((p) => p.stockVencido > 0);
 
   // Advertencia no bloqueante (no error) cuando la fecha ingresada cae muy
   // cerca de hoy — para atrapar errores de digitación sin impedir el registro
@@ -634,6 +654,35 @@ export default function InventarioPage() {
         </>
       ) : tabActiva === 'bajas' ? (
         <>
+          {/* ─── Productos con stock vencido ───────────────────────────────────── */}
+          {productosConVencido.length > 0 && (
+            <div className="rounded-2xl border border-red-100 bg-red-50 p-4">
+              <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-red-700">
+                <AlertTriangle className="h-4 w-4" />
+                {productosConVencido.length} producto{productosConVencido.length !== 1 ? 's' : ''} con stock vencido
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {productosConVencido.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => setProductoId(String(p.id))}
+                    className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                      String(productoId) === String(p.id)
+                        ? 'border-red-400 bg-red-500 text-white'
+                        : 'border-red-200 bg-white text-red-700 hover:bg-red-100'
+                    }`}
+                  >
+                    {p.nombre} - {p.marca} ({p.stockVencido} vencida{p.stockVencido !== 1 ? 's' : ''})
+                  </button>
+                ))}
+              </div>
+              <p className="mt-2 text-xs text-red-600">
+                Haz clic en un producto para seleccionarlo abajo y elegir su lote vencido en "Lote".
+              </p>
+            </div>
+          )}
+
           {/* ─── Formulario Baja ──────────────────────────────────────────────── */}
           <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
             <h2 className="mb-4 font-semibold text-gray-700">Registrar Baja</h2>
@@ -666,8 +715,9 @@ export default function InventarioPage() {
                     className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:bg-gray-50 disabled:text-gray-400"
                   >
                     <option value="">Automático (el sistema elige el que vence antes)</option>
-                    {lotesProductoSeleccionado.map((l) => (
+                    {lotesConEstado.map((l) => (
                       <option key={l.id} value={l.id}>
+                        {l.vencido ? '⚠ VENCIDO — ' : ''}
                         {l.codigo_lote ? `${l.codigo_lote} — ` : ''}
                         {l.fecha_vencimiento ? `Vence ${l.fecha_vencimiento}` : 'Sin vencimiento'}
                         {' '}(restante: {l.cantidad_restante})
@@ -675,8 +725,10 @@ export default function InventarioPage() {
                     ))}
                   </select>
                   {loteId && (
-                    <p className="mt-1 text-xs text-gray-400">
-                      La baja se descontará únicamente de este lote.
+                    <p className={`mt-1 text-xs ${loteSeleccionado?.vencido ? 'text-red-500 font-medium' : 'text-gray-400'}`}>
+                      {loteSeleccionado?.vencido
+                        ? '⚠ Este lote ya está vencido — la baja se descontará únicamente de él.'
+                        : 'La baja se descontará únicamente de este lote.'}
                     </p>
                   )}
                 </div>
