@@ -38,6 +38,12 @@ const TIPO_COLOR = {
 
 const ES_NEGATIVO = (tipo) => tipo === 'Egreso' || tipo === 'Anulacion';
 
+// Debe coincidir con MONTO_MINIMO_APERTURA_CAJA en
+// server/controllers/caja.controller.js (no hay config compartida
+// cliente/servidor en este proyecto) — esto solo evita el viaje de red
+// para el caso obvio; el backend es quien realmente lo exige.
+const MONTO_MINIMO_APERTURA_CAJA = 20;
+
 export default function CajaPage() {
   const { usuario } = useAuth();
   const [turno, setTurno]         = useState(undefined); // undefined = cargando, null = sin turno
@@ -81,10 +87,15 @@ export default function CajaPage() {
   // ─── Abrir turno ────────────────────────────────────────────────────────────
   const handleAbrir = async (e) => {
     e.preventDefault();
-    setEnviando(true);
     setError('');
+    const monto = parseFloat(montoApertura);
+    if (!Number.isFinite(monto) || monto < MONTO_MINIMO_APERTURA_CAJA) {
+      setError(`El monto mínimo de apertura es S/ ${MONTO_MINIMO_APERTURA_CAJA.toFixed(2)}.`);
+      return;
+    }
+    setEnviando(true);
     try {
-      const { data } = await api.post('/caja/abrir', { monto_apertura: parseFloat(montoApertura) });
+      const { data } = await api.post('/caja/abrir', { monto_apertura: monto });
       setTurno(data);
       setModalAbrir(false);
       setMontoApertura('');
@@ -314,6 +325,9 @@ export default function CajaPage() {
                 placeholder="Ej: 200.00"
                 autoFocus
               />
+              <p className="mt-1 text-xs text-gray-400">
+                Mínimo S/ {MONTO_MINIMO_APERTURA_CAJA.toFixed(2)}, para poder dar vueltos.
+              </p>
             </div>
             <div className="flex justify-end gap-2">
               <button type="button" onClick={() => setModalAbrir(false)}

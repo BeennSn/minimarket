@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Plus, Search, Pencil, EyeOff, Eye, X, Trash2, AlertTriangle, Loader2, Package, ScanLine, Layers } from 'lucide-react';
 import api from '../../utils/axios';
 import { formatMoneda, formatStock, formatFecha, fechaLocalISO } from '../../utils/format';
@@ -11,6 +12,17 @@ import Toast from '../../components/Toast';
 import useToast from '../../hooks/useToast';
 
 const UNIDADES_COMPRA = ['Unidad', 'Caja', 'Paquete', 'Docena', 'Otro'];
+
+// Valores que puede traer la URL en ?alerta=... (ej. al llegar desde el
+// Dashboard) mapeados al valor interno de filtroAlerta. Cualquier otro valor
+// (o ausencia del parámetro) deja el filtro en su default ("Todos").
+const ALERTA_POR_QUERY = {
+  critico: 'Crítico',
+  agotado: 'Agotado',
+  stockBajo: 'Stock bajo',
+  vencido: 'Vencido',
+  porVencer: 'Por vencer',
+};
 const PRECIO_MAX = 999999.99;
 
 // Deja solo dígitos y un único punto decimal (bloquea "e", "+", "-", letras, etc.)
@@ -680,19 +692,20 @@ function ModalBaja({ abierto, onCerrar, producto, onRegistrada }) {
               <input
                 type="number"
                 min={1}
-                max={producto.stock}
                 value={cantidad}
                 onChange={(e) => setCantidad(e.target.value)}
                 required
                 className="flex-1 rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
               />
-              <button
-                type="button"
-                onClick={() => setCantidad(String(producto.stock))}
-                className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50"
-              >
-                Todo
-              </button>
+              {producto.stock > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setCantidad(String(producto.stock))}
+                  className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50"
+                >
+                  Todo
+                </button>
+              )}
             </div>
           </div>
 
@@ -752,13 +765,18 @@ export default function ProductosPage() {
   const { usuario } = useAuth();
   const { toast, mostrarExito, mostrarError, cerrar } = useToast();
   const { stockVersion, notificarCambioStock } = useStockSync();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [productos, setProductos] = useState([]);
   const [categorias, setCategorias] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [modalAbierto, setModalAbierto] = useState(false);
   const [productoEditando, setProductoEditando] = useState(null);
-  const [busqueda, setBusqueda] = useState('');
+  // Se leen una sola vez al entrar (ej. llegando desde el Dashboard con
+  // ?alerta=stockBajo&buscar=Coca+Cola): el inicializador de useState solo
+  // corre en el primer render, así que cambios posteriores del usuario en
+  // estos filtros nunca vuelven a competir con la URL.
+  const [busqueda, setBusqueda] = useState(() => searchParams.get('buscar') || '');
   const [filtroCategoria, setFiltroCategoria] = useState('Todas');
   const [filtroEstado, setFiltroEstado] = useState('Todos');
   const [confirmarEstado, setConfirmarEstado] = useState(null);
@@ -767,8 +785,19 @@ export default function ProductosPage() {
   const [modalLotes, setModalLotes] = useState(null);
   const [proveedores, setProveedores] = useState([]);
   const [datosVencimiento, setDatosVencimiento] = useState([]);
-  const [filtroAlerta, setFiltroAlerta] = useState('Todos');
+  const [filtroAlerta, setFiltroAlerta] = useState(
+    () => ALERTA_POR_QUERY[searchParams.get('alerta')] || 'Todos'
+  );
   const [paginaActual, setPaginaActual] = useState(1);
+
+  // Una vez consumidos, se limpian de la URL — así un refresh posterior no
+  // vuelve a forzar el mismo filtro si el usuario ya lo cambió a mano.
+  useEffect(() => {
+    if (searchParams.toString()) {
+      setSearchParams({}, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const ITEMS_POR_PAGINA = 12;
   const rol = usuario?.rol;
   const puedeDarBaja = rol === 'Almacenero' || rol === 'Administrador';
@@ -826,6 +855,14 @@ export default function ProductosPage() {
     }
   };
 
+  // Mismo umbral por producto que usa el Dashboard (stock_minimo propio, o 5
+  // si no tiene uno definido) — antes acá se usaba un "≤5" fijo para todos,
+  // que no coincidía con el "Stock crítico" del Dashboard para productos con
+  // su propio stock_minimo, y rompía la navegación entre ambas pantallas.
+  const umbralStockBajo = (p) => p.stock_minimo ?? 5;
+  const esAgotado = (p) => esActivo(p) && p.stock === 0;
+  const esStockBajo = (p) => esActivo(p) && p.stock > 0 && p.stock <= umbralStockBajo(p);
+
   const conteoAlertas = useMemo(() => {
     const hoy = new Date();
     hoy.setHours(0, 0, 0, 0);
@@ -844,10 +881,11 @@ export default function ProductosPage() {
       else if (fv <= limite) idsPorVencerProducto.add(p.id);
     }
 
-    const stockBajo = productos.filter((p) => esActivo(p) && p.stock <= 5).length;
+    const agotado = productos.filter(esAgotado).length;
+    const stockBajo = productos.filter(esStockBajo).length;
     const idsVencidos = new Set([...idsVencEntrada, ...idsVencProducto]);
     const idsPorVencer = new Set([...idsPorVencerEntrada, ...idsPorVencerProducto]);
-    return { stockBajo, idsVencidos, idsPorVencer };
+    return { agotado, stockBajo, idsVencidos, idsPorVencer };
   }, [productos, datosVencimiento]);
 
   const filtrados = productos.filter((p) => {
@@ -869,7 +907,9 @@ export default function ProductosPage() {
       (filtroEstado === 'Inactivo' && !esActivo(p));
     const coincideAlerta =
       filtroAlerta === 'Todos' ||
-      (filtroAlerta === 'Stock bajo' && esActivo(p) && p.stock <= 5) ||
+      (filtroAlerta === 'Crítico' && (esAgotado(p) || esStockBajo(p))) ||
+      (filtroAlerta === 'Agotado' && esAgotado(p)) ||
+      (filtroAlerta === 'Stock bajo' && esStockBajo(p)) ||
       (filtroAlerta === 'Vencido' && (conteoAlertas.idsVencidos.has(p.id) || (fvProd && fvProd < hoy))) ||
       (filtroAlerta === 'Por vencer' && (conteoAlertas.idsPorVencer.has(p.id) || (fvProd && fvProd >= hoy && fvProd <= limite)));
     return coincideTexto && coincideCategoria && coincideEstado && coincideAlerta;
@@ -894,8 +934,21 @@ export default function ProductosPage() {
       <Toast mensaje={toast.mensaje} tipo={toast.tipo} visible={toast.visible} onCerrar={cerrar} />
       <Breadcrumb items={[{ label: 'Inicio', path: '/dashboard' }, { label: 'Productos' }]} />
 
-      {(conteoAlertas.stockBajo > 0 || conteoAlertas.idsVencidos.size > 0 || conteoAlertas.idsPorVencer.size > 0) && (
+      {(conteoAlertas.agotado > 0 || conteoAlertas.stockBajo > 0 || conteoAlertas.idsVencidos.size > 0 || conteoAlertas.idsPorVencer.size > 0) && (
         <div className="flex flex-wrap gap-2 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+          {conteoAlertas.agotado > 0 && (
+            <button
+              onClick={() => setFiltroAlerta(filtroAlerta === 'Agotado' ? 'Todos' : 'Agotado')}
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                filtroAlerta === 'Agotado'
+                  ? 'bg-red-200 text-red-900'
+                  : 'bg-red-100 text-red-700 hover:bg-red-200'
+              }`}
+            >
+              <AlertTriangle className="h-3 w-3" />
+              {conteoAlertas.agotado} producto{conteoAlertas.agotado !== 1 ? 's' : ''} agotado{conteoAlertas.agotado !== 1 ? 's' : ''}
+            </button>
+          )}
           {conteoAlertas.stockBajo > 0 && (
             <button
               onClick={() => setFiltroAlerta(filtroAlerta === 'Stock bajo' ? 'Todos' : 'Stock bajo')}
@@ -988,7 +1041,9 @@ export default function ProductosPage() {
           className="rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
         >
           <option value="Todos">Sin filtro</option>
-          <option value="Stock bajo">Stock bajo (&le;5)</option>
+          <option value="Crítico">Crítico (agotado + bajo)</option>
+          <option value="Agotado">Agotado (sin stock)</option>
+          <option value="Stock bajo">Stock bajo</option>
           <option value="Vencido">Vencido</option>
           <option value="Por vencer">Por vencer</option>
         </select>

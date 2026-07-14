@@ -59,6 +59,11 @@ function ModalProveedor({ abierto, onCerrar, onGuardar, proveedorEditando }) {
   const [verificandoRuc, setVerificandoRuc] = useState(false);
   const [rucValidado, setRucValidado] = useState(false);
   const [razonSocialRuc, setRazonSocialRuc] = useState('');
+  // true cuando "nombre" refleja la razón social oficial de SUNAT: en ese
+  // caso el campo queda de solo lectura. Independiente de rucValidado (que
+  // gobierna si se puede enviar el formulario) para poder ofrecer un escape
+  // manual sin invalidar la verificación del RUC.
+  const [nombreBloqueado, setNombreBloqueado] = useState(false);
   const esCreacion = !proveedorEditando;
 
   useEffect(() => {
@@ -82,6 +87,7 @@ function ModalProveedor({ abierto, onCerrar, onGuardar, proveedorEditando }) {
 
       // Un proveedor ya guardado se asume verificado; solo se re-exige si cambian el RUC.
       setRucValidado(esCreacion ? false : true);
+      setNombreBloqueado(esCreacion ? false : true);
       setRazonSocialRuc('');
       setError('');
       setErrorRuc('');
@@ -96,6 +102,7 @@ function ModalProveedor({ abierto, onCerrar, onGuardar, proveedorEditando }) {
     if (ruc.length !== 11) return;
     setErrorRuc('');
     setRucValidado(false);
+    setNombreBloqueado(false);
     setRazonSocialRuc('');
     if (ruc.startsWith('10')) {
       setErrorRuc('RUC de persona natural (10) no válido para proveedor; debe ser RUC de empresa (20)');
@@ -114,7 +121,13 @@ function ModalProveedor({ abierto, onCerrar, onGuardar, proveedorEditando }) {
       }
       setRazonSocialRuc(data.razon_social || '');
       setRucValidado(true);
-      if (!nombre.trim() && data.razon_social) setNombre(data.razon_social);
+      // A partir de acá el campo Nombre queda de solo lectura (ver input más
+      // abajo), así que el nombre real siempre debe ser el oficial de SUNAT,
+      // no lo que el usuario haya tecleado antes de verificar.
+      if (data.razon_social) {
+        setNombre(data.razon_social);
+        setNombreBloqueado(true);
+      }
     } catch (err) {
       setErrorRuc(err.response?.data?.mensaje || 'No se encontró información para ese RUC en SUNAT');
     } finally {
@@ -179,9 +192,24 @@ function ModalProveedor({ abierto, onCerrar, onGuardar, proveedorEditando }) {
               type="text"
               value={nombre}
               onChange={(e) => setNombre(e.target.value)}
+              readOnly={nombreBloqueado}
               required
-              className="w-full rounded-lg border border-gray-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              className={`w-full rounded-lg border px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 ${
+                nombreBloqueado ? 'border-gray-200 bg-gray-50 text-gray-600' : 'border-gray-200'
+              }`}
             />
+            {nombreBloqueado && (
+              <p className="mt-1 text-xs text-gray-400">
+                Nombre oficial según SUNAT — no editable.{' '}
+                <button
+                  type="button"
+                  onClick={() => setNombreBloqueado(false)}
+                  className="font-medium text-indigo-500 hover:underline"
+                >
+                  Editar manualmente
+                </button>
+              </p>
+            )}
           </div>
 
           <div>
@@ -194,6 +222,7 @@ function ModalProveedor({ abierto, onCerrar, onGuardar, proveedorEditando }) {
                 onChange={(e) => {
                   setRuc(e.target.value.replace(/\D/g, ''));
                   setRucValidado(false);
+                  setNombreBloqueado(false);
                   setRazonSocialRuc('');
                   setErrorRuc('');
                 }}

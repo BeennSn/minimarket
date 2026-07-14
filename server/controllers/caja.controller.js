@@ -3,6 +3,12 @@ const { sequelize, Turno, MovimientoCaja, Usuario } = require('../models');
 const { presentarTurno, presentarMovimiento } = require('../presenters/caja.presenter');
 const { inicioDiaPeru, finDiaPeruExclusivo } = require('../utils/fechas');
 
+// Mínimo exigido para abrir un turno de caja: debe alcanzar para dar vueltos
+// desde la primera venta del día. Mismo valor duplicado (a propósito, no hay
+// mecanismo de config compartida cliente/servidor en este proyecto) en
+// client/src/modules/caja/CajaPage.jsx — si se cambia acá, cambiar también ahí.
+const MONTO_MINIMO_APERTURA_CAJA = 20;
+
 const INCLUDE_TURNO = [
   { association: 'cajero',    attributes: ['id', 'nombre'] },
   { association: 'aprobador', attributes: ['id', 'nombre'] },
@@ -40,9 +46,12 @@ function calcularEsperados(movimientos, montoApertura) {
 const abrir = async (req, res) => {
   try {
     const { monto_apertura } = req.body;
+    const montoAperturaNum = parseFloat(monto_apertura);
 
-    if (!monto_apertura || isNaN(monto_apertura) || parseFloat(monto_apertura) < 0) {
-      return res.status(400).json({ mensaje: 'El monto de apertura debe ser un número mayor o igual a 0' });
+    if (!monto_apertura || isNaN(montoAperturaNum) || montoAperturaNum < MONTO_MINIMO_APERTURA_CAJA) {
+      return res.status(400).json({
+        mensaje: `El monto mínimo de apertura es S/ ${MONTO_MINIMO_APERTURA_CAJA.toFixed(2)}, para poder dar vueltos durante el turno.`,
+      });
     }
 
     const turnoAbierto = await Turno.findOne({
@@ -57,7 +66,7 @@ const abrir = async (req, res) => {
       turno = await sequelize.transaction(async (t) => {
         const nuevoTurno = await Turno.create({
           usuario_id:     req.usuario.id,
-          monto_apertura: parseFloat(monto_apertura),
+          monto_apertura: montoAperturaNum,
           estado:         'Abierto',
           fecha_apertura: new Date(),
         }, { transaction: t });
@@ -67,7 +76,7 @@ const abrir = async (req, res) => {
           tipo:        'Apertura',
           descripcion: 'Apertura de turno',
           metodo:      'Efectivo',
-          monto:       parseFloat(monto_apertura),
+          monto:       montoAperturaNum,
           usuario_id:  req.usuario.id,
         }, { transaction: t });
 

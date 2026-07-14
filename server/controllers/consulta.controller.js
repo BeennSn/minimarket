@@ -58,15 +58,36 @@ const consultarRuc = async (req, res) => {
     const rawText = await response.text();
     console.log(`[consulta RUC] status=${response.status} body=${rawText}`);
 
-    if (response.status === 404) {
-      return res.status(404).json({ mensaje: 'RUC no encontrado en SUNAT' });
+    // decolecta.com (el proveedor detrás de BASE_URL) no siempre usa 404
+    // para "el RUC no existe" — un RUC bien formado pero inexistente o
+    // inválido en SUNAT suele volver como 400 o 422 con un mensaje en el
+    // body, no como 404. Sin este chequeo, esos casos caían al branch de
+    // "!response.ok" de abajo y el usuario veía un código de estado crudo
+    // ("Error al consultar SUNAT (422)") en vez de una explicación.
+    if ([400, 404, 422].includes(response.status)) {
+      return res.status(404).json({ mensaje: 'RUC inaceptable: no se encontró información para ese número en SUNAT.' });
     }
 
     if (!response.ok) {
-      return res.status(502).json({ mensaje: `Error al consultar SUNAT (${response.status})` });
+      // Acá sí es un problema del servicio (5xx, límite de la API, etc.),
+      // no del RUC ingresado — mensaje distinto a propósito.
+      console.error(`Error al consultar SUNAT: status=${response.status} body=${rawText}`);
+      return res.status(502).json({ mensaje: 'No se pudo consultar SUNAT en este momento. Intenta nuevamente más tarde.' });
     }
 
-    const data = JSON.parse(rawText);
+    let data;
+    try {
+      data = JSON.parse(rawText);
+    } catch {
+      console.error('Respuesta de SUNAT no es JSON válido:', rawText);
+      return res.status(502).json({ mensaje: 'No se pudo consultar SUNAT en este momento. Intenta nuevamente más tarde.' });
+    }
+
+    // Algunos RUC inexistentes vuelven con 200 OK pero sin razón social en
+    // vez de un status de error — sin ese dato no hay nada útil que devolver.
+    if (!data.razon_social) {
+      return res.status(404).json({ mensaje: 'RUC inaceptable: no se encontró información para ese número en SUNAT.' });
+    }
 
     return res.status(200).json({
       ruc: data.numero_documento,
@@ -80,7 +101,7 @@ const consultarRuc = async (req, res) => {
     });
   } catch (err) {
     console.error('Error en consultarRuc:', err);
-    return res.status(503).json({ mensaje: 'Servicio de consulta de RUC no disponible' });
+    return res.status(503).json({ mensaje: 'No se pudo conectar con el servicio de SUNAT. Intenta nuevamente en unos minutos.' });
   }
 };
 

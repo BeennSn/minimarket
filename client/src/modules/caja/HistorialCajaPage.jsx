@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { CheckCircle, ChevronDown, ChevronUp, AlertCircle, Loader } from 'lucide-react';
+import { CheckCircle, ChevronDown, ChevronUp, AlertCircle, Loader, X } from 'lucide-react';
 import api from '../../utils/axios';
 import { useAuth } from '../../context/AuthContext';
 
@@ -163,6 +163,20 @@ export default function HistorialCajaPage() {
 
   useEffect(() => { cargar(); }, []);
 
+  const limpiarFiltros = () => {
+    setFiltroFechaInicio('');
+    setFiltroFechaFin('');
+    setFiltroEstado('');
+    setCargando(true);
+    setError('');
+    api.get('/caja/historial')
+      .then(({ data }) => setTurnos(data))
+      .catch(() => setError('No se pudo cargar el historial.'))
+      .finally(() => setCargando(false));
+  };
+
+  const hayFiltrosActivos = filtroFechaInicio || filtroFechaFin || filtroEstado;
+
   const handleAprobado = (turnoActualizado) => {
     setTurnos((prev) => prev.map((t) => (t.id === turnoActualizado.id ? turnoActualizado : t)));
   };
@@ -194,6 +208,15 @@ export default function HistorialCajaPage() {
           className="rounded-lg bg-indigo-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-indigo-700">
           Buscar
         </button>
+        {hayFiltrosActivos && (
+          <button
+            onClick={limpiarFiltros}
+            className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-500 transition-colors hover:bg-gray-100"
+          >
+            <X className="h-3.5 w-3.5" />
+            Limpiar filtros
+          </button>
+        )}
       </div>
 
       {error && (

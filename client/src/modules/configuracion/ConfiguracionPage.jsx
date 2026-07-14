@@ -17,6 +17,11 @@ export default function ConfiguracionPage() {
   const [buscandoRuc, setBuscandoRuc] = useState(false);
   const [exito, setExito] = useState('');
   const [error, setError] = useState('');
+  // true cuando nombre_empresa vino de una consulta a SUNAT exitosa: el
+  // nombre oficial no debería poder editarse a mano en ese caso. Se
+  // resetea apenas cambia el RUC, porque ese nombre ya no corresponde al
+  // RUC que quedó escrito.
+  const [nombreDesdeSunat, setNombreDesdeSunat] = useState(false);
 
   useEffect(() => {
     api.get('/configuracion')
@@ -53,6 +58,7 @@ export default function ConfiguracionPage() {
         nombre_empresa: data.razon_social || f.nombre_empresa,
         direccion: data.direccion || f.direccion,
       }));
+      if (data.razon_social) setNombreDesdeSunat(true);
     } catch (err) {
       setError(err.response?.data?.mensaje || 'No se encontró información para ese RUC');
     } finally {
@@ -124,9 +130,24 @@ export default function ConfiguracionPage() {
               name="nombre_empresa"
               value={form.nombre_empresa}
               onChange={cambiar}
+              readOnly={nombreDesdeSunat}
               required
-              className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              className={`w-full rounded-lg border px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 ${
+                nombreDesdeSunat ? 'border-gray-200 bg-gray-50 text-gray-600' : 'border-gray-200'
+              }`}
             />
+            {nombreDesdeSunat ? (
+              <p className="mt-1 text-xs text-gray-400">
+                Nombre oficial según SUNAT — no editable.{' '}
+                <button
+                  type="button"
+                  onClick={() => setNombreDesdeSunat(false)}
+                  className="font-medium text-indigo-500 hover:underline"
+                >
+                  Editar manualmente
+                </button>
+              </p>
+            ) : null}
           </div>
 
           <div>
@@ -138,9 +159,10 @@ export default function ConfiguracionPage() {
                 type="text"
                 name="ruc"
                 value={form.ruc}
-                onChange={(e) =>
-                  cambiar({ target: { name: 'ruc', value: e.target.value.replace(/\D/g, '').slice(0, 11) } })
-                }
+                onChange={(e) => {
+                  cambiar({ target: { name: 'ruc', value: e.target.value.replace(/\D/g, '').slice(0, 11) } });
+                  setNombreDesdeSunat(false);
+                }}
                 onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), buscarRuc())}
                 maxLength={11}
                 required

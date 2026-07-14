@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   ShoppingCart, DollarSign, TrendingUp, Package,
   AlertTriangle, ClipboardList, Loader2, RefreshCw, X, ChevronRight,
@@ -291,6 +292,7 @@ function formatFechaEje(dia) {
 export default function DashboardPage() {
   const { usuario } = useAuth();
   const { stockVersion } = useStockSync();
+  const navigate = useNavigate();
   const [kpis, setKpis] = useState(null);
   const [inventario, setInventario] = useState(null);
   const [ventasPorDia, setVentasPorDia] = useState([]);
@@ -385,6 +387,19 @@ export default function DashboardPage() {
   }, [modalActivo]);
 
   const cerrarModal = () => setModalActivo(null);
+
+  // Navega a Productos con el filtro de estado de stock ya aplicado (y,
+  // opcionalmente, el nombre del producto precargado en la búsqueda). Usa
+  // query params — ProductosPage los lee una sola vez al montar y limpia la
+  // URL después, así que no interfiere si el usuario ya tenía otros filtros
+  // puestos en una visita anterior.
+  const irAProductos = (alerta, buscar) => {
+    const params = new URLSearchParams();
+    if (alerta) params.set('alerta', alerta);
+    if (buscar) params.set('buscar', buscar);
+    const query = params.toString();
+    navigate(query ? `/productos?${query}` : '/productos');
+  };
 
   if (loading) {
     return (
@@ -558,21 +573,37 @@ export default function DashboardPage() {
         </div>
 
         <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-          <h2 className="mb-4 font-semibold text-gray-700">Stock crítico</h2>
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="font-semibold text-gray-700">Stock crítico</h2>
+            {stockCritico.length > 0 && (
+              <button
+                onClick={() => irAProductos('critico')}
+                className="flex items-center gap-0.5 text-xs font-medium text-[#6366f1] hover:underline"
+              >
+                Ver todos en Productos <ChevronRight className="h-3 w-3" />
+              </button>
+            )}
+          </div>
           {stockCritico.length > 0 ? (
-            <ul className="space-y-3">
+            <ul className="space-y-1">
               {stockCritico.slice(0, 5).map((p, i) => (
-                <li key={i} className="flex items-center justify-between">
-                  <span className="text-sm text-gray-700">{p.nombre}</span>
-                  <span
-                    className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                      p.stock === 0
-                        ? 'bg-red-100 text-red-700'
-                        : 'bg-yellow-100 text-yellow-700'
-                    }`}
+                <li key={i}>
+                  <button
+                    onClick={() => irAProductos(p.stock === 0 ? 'agotado' : 'stockBajo', p.nombre)}
+                    className="flex w-full items-center justify-between rounded-lg px-2 py-2 text-left transition-colors hover:bg-gray-50"
+                    title={`Ver "${p.nombre}" en Productos`}
                   >
-                    {p.stock === 0 ? 'Sin stock' : `${p.stock} und.`}
-                  </span>
+                    <span className="text-sm text-gray-700">{p.nombre}</span>
+                    <span
+                      className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                        p.stock === 0
+                          ? 'bg-red-100 text-red-700'
+                          : 'bg-yellow-100 text-yellow-700'
+                      }`}
+                    >
+                      {p.stock === 0 ? 'Sin stock' : `${p.stock} und.`}
+                    </span>
+                  </button>
                 </li>
               ))}
             </ul>
@@ -622,7 +653,19 @@ export default function DashboardPage() {
           )}
           {modalActivo === 'ingresos' && <TablaIngresosPorMetodo datos={ventasPorMetodo} />}
           {modalActivo === 'productos' && <TablaProductos productos={productosActivosDetalle || []} />}
-          {modalActivo === 'sinStock' && <TablaProductos productos={productosActivosDetalle || []} soloSinStock />}
+          {modalActivo === 'sinStock' && (
+            <>
+              <TablaProductos productos={productosActivosDetalle || []} soloSinStock />
+              {(productosActivosDetalle || []).some((p) => p.stock === 0) && (
+                <button
+                  onClick={() => { cerrarModal(); irAProductos('agotado'); }}
+                  className="mt-4 flex items-center gap-0.5 text-sm font-medium text-[#6366f1] hover:underline"
+                >
+                  Ver y gestionar en Productos <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </>
+          )}
           {modalActivo === 'solicitudes' && <TablaSolicitudes solicitudes={solicitudesPendientesDetalle} />}
         </ModalDetalle>
       )}
