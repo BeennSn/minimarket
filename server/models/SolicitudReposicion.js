@@ -55,6 +55,18 @@ const SolicitudReposicion = sequelize.define('SolicitudReposicion', {
       key: 'id',
     },
   },
+  // Si esta solicitud se generó automáticamente porque otra se completó con
+  // cantidad parcial (ver inventario.controller.js:completarSolicitud), acá
+  // queda la referencia a esa solicitud original — para poder rastrear por
+  // qué existe esta segunda solicitud del mismo producto.
+  solicitud_origen_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: 'solicitudes_reposicion',
+      key: 'id',
+    },
+  },
 }, {
   tableName: 'solicitudes_reposicion',
   timestamps: true,

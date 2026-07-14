@@ -134,6 +134,12 @@ const validatePassword = (password) => {
   return null;
 };
 
+// Mismo mensaje y status (200) exista o no la cuenta: revelar la diferencia
+// (como hacía antes con un 404 aparte) permite enumerar qué correos están
+// registrados probando contra este endpoint, sin necesitar contraseña —
+// login() ya evita esto mismo con "Credenciales incorrectas" genérico.
+const MSG_FORGOT_PASSWORD = 'Si el correo está registrado, se envió un código de recuperación.';
+
 const forgotPassword = async (req, res) => {
   try {
     const email = req.body.email?.trim();
@@ -142,7 +148,7 @@ const forgotPassword = async (req, res) => {
       ? await Usuario.findOne({ where: { email: { [Op.iLike]: email }, activo: true } })
       : null;
     if (!usuario) {
-      return res.status(404).json({ mensaje: 'No existe un usuario registrado con ese correo electrónico' });
+      return res.status(200).json({ mensaje: MSG_FORGOT_PASSWORD });
     }
 
     const codigo = Math.floor(1000 + Math.random() * 9000).toString();
@@ -181,7 +187,7 @@ const forgotPassword = async (req, res) => {
       detalle: 'Solicitud de código de recuperación',
     });
 
-    return res.status(200).json({ mensaje: 'Código enviado correctamente' });
+    return res.status(200).json({ mensaje: MSG_FORGOT_PASSWORD });
   } catch (err) {
     console.error('Error en forgotPassword:', err);
     return res.status(500).json({ mensaje: 'Error interno del servidor' });
@@ -209,7 +215,24 @@ const resetPassword = async (req, res) => {
       return res.status(400).json({ mensaje: 'Código inválido o expirado' });
     }
 
+    // Mismo candado que login(): sin esto, el código de reset (solo 4 dígitos,
+    // 10 000 combinaciones) quedaba protegido únicamente por el rate-limit de
+    // IP del router — alguien rotando de IP podía probar miles de códigos
+    // contra la misma cuenta dentro de la ventana de 15 minutos del código.
+    if (usuario.bloqueo_hasta && new Date() < new Date(usuario.bloqueo_hasta)) {
+      const minutosRestantes = Math.ceil((new Date(usuario.bloqueo_hasta) - new Date()) / 60000);
+      return res.status(401).json({
+        mensaje: `Cuenta bloqueada temporalmente. Intente en ${minutosRestantes} minuto${minutosRestantes !== 1 ? 's' : ''}.`,
+      });
+    }
+
     if (usuario.reset_code !== codigo) {
+      usuario.intentos_fallidos = (usuario.intentos_fallidos || 0) + 1;
+      if (usuario.intentos_fallidos >= INTENTOS_MAX) {
+        usuario.bloqueo_hasta = new Date(Date.now() + BLOQUEO_MINUTOS * 60 * 1000);
+        usuario.intentos_fallidos = 0;
+      }
+      await usuario.save();
       return res.status(400).json({ mensaje: 'Código inválido o expirado' });
     }
 

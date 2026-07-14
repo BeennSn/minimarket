@@ -41,7 +41,12 @@ const presentarMargenProducto = (row) => {
     ingreso_total: ingreso,
     costo_total:   costo,
     margen,
-    margen_pct:    costo > 0 ? parseFloat(((margen / costo) * 100).toFixed(2)) : null,
+    // Costo 0 con ingreso > 0 es 100% de margen (se vendió sin costo
+    // registrado), no "sin dato" — null queda solo para cuando tampoco hay
+    // ingreso (nada que calcular).
+    margen_pct: costo > 0
+      ? parseFloat(((margen / costo) * 100).toFixed(2))
+      : (ingreso > 0 ? 100 : null),
   };
 };
 

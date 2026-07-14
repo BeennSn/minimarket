@@ -42,6 +42,21 @@ const Configuracion = sequelize.define('Configuracion', {
     allowNull: false,
     defaultValue: 'F001',
   },
+  // Correlativo real por serie: cada venta nueva incrementa el contador de su
+  // tipo (Boleta o Factura) dentro de la misma transacción que la crea (ver
+  // venta.controller.js). Antes de esto, el número de comprobante era el id
+  // autoincremental de Venta, compartido entre ambas series — al intercalarse
+  // boletas y facturas quedaban huecos en la numeración de cada una.
+  correlativo_boleta: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0,
+  },
+  correlativo_factura: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0,
+  },
 }, {
   tableName: 'configuracion',
   timestamps: false,

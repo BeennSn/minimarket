@@ -4,6 +4,7 @@ import api from '../../utils/axios';
 import { formatFecha, fechaLocalISO } from '../../utils/format';
 import { useAuth } from '../../context/AuthContext';
 import { useStockSync } from '../../context/StockSyncContext';
+import { rolSatisface } from '../../utils/roles';
 import Breadcrumb from '../../components/Breadcrumb';
 import Spinner from '../../components/Spinner';
 import Toast from '../../components/Toast';
@@ -308,6 +309,7 @@ const DIAS_ALERTA_VENCIMIENTO_CERCANO = 7;
 function ModalCompletar({ abierto, onCerrar, solicitud, onCompletada }) {
   const [cantidadRecibida, setCantidadRecibida] = useState('');
   const [fechaVencimiento, setFechaVencimiento] = useState('');
+  const [costoUnitario, setCostoUnitario] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState('');
 
@@ -323,6 +325,7 @@ function ModalCompletar({ abierto, onCerrar, solicitud, onCompletada }) {
     if (abierto && solicitud) {
       setCantidadRecibida(String(solicitud.cantidad));
       setFechaVencimiento('');
+      setCostoUnitario('');
       setError('');
     }
   }, [abierto, solicitud]);
@@ -343,14 +346,19 @@ function ModalCompletar({ abierto, onCerrar, solicitud, onCompletada }) {
         return;
       }
     }
+    if (costoUnitario !== '' && Number(costoUnitario) <= 0) {
+      setError('El costo unitario debe ser mayor a 0');
+      return;
+    }
     setEnviando(true);
     setError('');
     try {
-      await api.patch(`/inventario/solicitudes/${solicitud.id}/completar`, {
+      const { data } = await api.patch(`/inventario/solicitudes/${solicitud.id}/completar`, {
         cantidad_recibida: cr,
         fecha_vencimiento: manejaVencimiento ? (fechaVencimiento || null) : null,
+        costo_unitario: costoUnitario !== '' ? Number(costoUnitario) : null,
       });
-      onCompletada();
+      onCompletada(data);
     } catch (err) {
       setError(err.response?.data?.mensaje || 'Error al completar solicitud');
     } finally {
@@ -415,6 +423,22 @@ function ModalCompletar({ abierto, onCerrar, solicitud, onCompletada }) {
                 ⚠ Este producto vence muy pronto (en {diasParaVencer} día{diasParaVencer !== 1 ? 's' : ''}). Verifica la fecha.
               </p>
             )}
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Costo unitario (S/) <span className="text-xs font-normal text-gray-400">(opcional)</span>
+            </label>
+            <input
+              type="number"
+              min="0.01"
+              step="0.01"
+              value={costoUnitario}
+              onChange={(e) => setCostoUnitario(e.target.value)}
+              placeholder="Ej: 2.50"
+              className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            />
+            <p className="mt-1 text-xs text-gray-400">Si lo indicas, se recalcula el costo promedio del producto.</p>
           </div>
 
           {error && <div className="rounded-lg bg-red-50 px-4 py-2 text-sm text-red-600">{error}</div>}
@@ -489,7 +513,7 @@ export default function SolicitudesPage() {
     ? solicitudes
     : solicitudes.filter((s) => s.estado === filtroEstado);
 
-  const puedeCrear = rol === 'Almacenero' || rol === 'Administrador';
+  const puedeCrear = rolSatisface(rol, ['Almacenero', 'Administrador']);
 
   if (loading) {
     return <Spinner texto="Cargando solicitudes..." />;
@@ -591,7 +615,7 @@ export default function SolicitudesPage() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1">
-                      {s.estado === 'Pendiente' && (rol === 'Administrador' || rol === 'Gerente') && (
+                      {s.estado === 'Pendiente' && rolSatisface(rol, ['Administrador', 'Gerente']) && (
                         <>
                           <button
                             onClick={() => { setSolicitudSeleccionada(s); setModalAprobar(true); }}
@@ -609,7 +633,7 @@ export default function SolicitudesPage() {
                           </button>
                         </>
                       )}
-                      {s.estado === 'Aprobada' && (rol === 'Almacenero' || rol === 'Administrador') && (
+                      {s.estado === 'Aprobada' && rolSatisface(rol, ['Almacenero', 'Administrador']) && (
                         <button
                           onClick={() => setModalCompletar(s)}
                           className="rounded p-1 text-[#6366f1] transition-colors hover:bg-indigo-50"
@@ -674,9 +698,16 @@ export default function SolicitudesPage() {
         abierto={!!modalCompletar}
         onCerrar={() => setModalCompletar(null)}
         solicitud={modalCompletar}
-        onCompletada={() => {
+        onCompletada={(data) => {
           setModalCompletar(null);
-          mostrarExito('Mercadería registrada y stock actualizado correctamente');
+          // Si llegó menos de lo pedido, el backend generó automáticamente
+          // una solicitud "Pendiente" por el restante — se avisa acá para
+          // que quede claro que el faltante no se perdió, sigue gestionable.
+          mostrarExito(
+            data?.solicitud_seguimiento
+              ? `Mercadería registrada. Se creó una nueva solicitud pendiente por ${data.solicitud_seguimiento.cantidad} und(s) restante(s).`
+              : 'Mercadería registrada y stock actualizado correctamente'
+          );
           cargarDatos();
           notificarCambioStock();
         }}

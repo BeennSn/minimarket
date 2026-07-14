@@ -10,8 +10,20 @@ const {
 } = require('../presenters/reporte.presenter');
 const { inicioDiaPeru, finDiaPeruExclusivo } = require('../utils/fechas');
 
+// Mismo chequeo que ya hace venta.controller.js (listar) — antes acá un
+// rango invertido no explotaba pero devolvía silenciosamente un resultado
+// vacío (Op.between con extremos cruzados) en vez de avisar al usuario.
+const validarRangoFecha = (fecha_inicio, fecha_hasta) => {
+  if (fecha_inicio && fecha_hasta && new Date(fecha_inicio) > new Date(fecha_hasta)) {
+    return 'La fecha de inicio no puede ser posterior a la fecha final';
+  }
+  return null;
+};
+
 const armarWhereFecha = (req) => {
   const { fecha_inicio, fecha_hasta } = req.query;
+  const errorRango = validarRangoFecha(fecha_inicio, fecha_hasta);
+  if (errorRango) throw { status: 400, mensaje: errorRango };
   if (!fecha_inicio && !fecha_hasta) return {};
 
   if (fecha_inicio && fecha_hasta) {
@@ -39,6 +51,7 @@ const resumenVentas = async (req, res) => {
 
     return res.status(200).json(presentarResumenVentas(data[0]));
   } catch (err) {
+    if (err.status && err.mensaje) return res.status(err.status).json({ mensaje: err.mensaje });
     console.error('Error en resumenVentas:', err);
     return res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
@@ -74,6 +87,7 @@ const productosTop = async (req, res) => {
 
     return res.status(200).json(data.map(presentarProductoTop));
   } catch (err) {
+    if (err.status && err.mensaje) return res.status(err.status).json({ mensaje: err.mensaje });
     console.error('Error en productosTop:', err);
     return res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
@@ -83,20 +97,29 @@ const ventasPorDia = async (req, res) => {
   try {
     const whereVenta = { ...armarWhereFecha(req), estado: 'Completada' };
 
+    // "createdAt" es timestamptz — truncar con DATE()/::date a secas trunca
+    // en la zona horaria de la sesión de Postgres (típicamente UTC), no en
+    // Perú. Una venta a las 20:00 hora Perú (01:00 UTC del día siguiente)
+    // caía en el bucket del día siguiente. armarWhereFecha() ya filtra el
+    // rango correctamente en hora Perú (inicioDiaPeru/finDiaPeruExclusivo);
+    // acá se agrupa con el mismo criterio de zona horaria.
+    const FECHA_PERU = sequelize.literal(`("createdAt" AT TIME ZONE 'America/Lima')::date`);
+
     const data = await Venta.findAll({
       where: whereVenta,
       attributes: [
-        [sequelize.fn('DATE', sequelize.col('createdAt')), 'fecha'],
+        [FECHA_PERU, 'fecha'],
         [sequelize.fn('COUNT', sequelize.col('id')), 'total_ventas'],
         [sequelize.fn('SUM', sequelize.col('monto_total')), 'monto_total'],
       ],
-      group: [sequelize.fn('DATE', sequelize.col('createdAt'))],
-      order: [[sequelize.fn('DATE', sequelize.col('createdAt')), 'ASC']],
+      group: [FECHA_PERU],
+      order: [[FECHA_PERU, 'ASC']],
       raw: true,
     });
 
     return res.status(200).json(data.map(presentarVentasPorDia));
   } catch (err) {
+    if (err.status && err.mensaje) return res.status(err.status).json({ mensaje: err.mensaje });
     console.error('Error en ventasPorDia:', err);
     return res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
@@ -119,6 +142,7 @@ const ventasPorMetodoPago = async (req, res) => {
 
     return res.status(200).json(data.map(presentarMetodoPago));
   } catch (err) {
+    if (err.status && err.mensaje) return res.status(err.status).json({ mensaje: err.mensaje });
     console.error('Error en ventasPorMetodoPago:', err);
     return res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
@@ -194,6 +218,8 @@ const resumenInventario = async (req, res) => {
 const margenProductos = async (req, res) => {
   try {
     const { fecha_inicio, fecha_hasta } = req.query;
+    const errorRango = validarRangoFecha(fecha_inicio, fecha_hasta);
+    if (errorRango) return res.status(400).json({ mensaje: errorRango });
 
     let condicionFecha = '';
     const reemplazos = {};
@@ -247,6 +273,8 @@ const margenProductos = async (req, res) => {
 const mermasPorMotivo = async (req, res) => {
   try {
     const { fecha_inicio, fecha_hasta } = req.query;
+    const errorRango = validarRangoFecha(fecha_inicio, fecha_hasta);
+    if (errorRango) return res.status(400).json({ mensaje: errorRango });
 
     let condicionFecha = '';
     const reemplazos = {};

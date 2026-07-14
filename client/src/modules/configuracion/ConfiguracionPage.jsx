@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Settings, Search, Loader2 } from 'lucide-react';
 import api from '../../utils/axios';
+import { notificarConfiguracionActualizada } from '../../hooks/useConfiguracion';
 
 export default function ConfiguracionPage() {
   const [form, setForm] = useState({
@@ -117,6 +118,9 @@ export default function ConfiguracionPage() {
       setExito('Configuración guardada correctamente');
       setRucOriginal(form.ruc);
       setConfirmarCambioRuc(false);
+      // Avisa a cualquier otra pestaña/pantalla con useConfiguracion ya
+      // montada (ej. Ventas) para que refresque IGV/series sin recargar.
+      notificarConfiguracionActualizada();
     } catch (err) {
       setError(err.response?.data?.mensaje || 'Error al guardar configuración');
     } finally {

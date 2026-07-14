@@ -1,8 +1,15 @@
 import { useState, useEffect } from 'react';
 import { Search, Mail, Edit2, X, Check, Users } from 'lucide-react';
 import api from '../../utils/axios';
+import { useAuth } from '../../context/AuthContext';
+import { rolSatisface } from '../../utils/roles';
 
 export default function ClientesPage() {
+  const { usuario } = useAuth();
+  // El backend (PUT /clientes/:id) solo permite editar a Administrador —
+  // antes el botón aparecía para cualquiera que llegara a esta página
+  // (ej. Gerente) y el guardado fallaba con 403 recién al intentar guardar.
+  const puedeEditar = rolSatisface(usuario?.rol, ['Administrador']);
   const [clientes, setClientes] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [busqueda, setBusqueda] = useState('');
@@ -192,7 +199,7 @@ export default function ClientesPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-center">
-                    {editando !== c.id && (
+                    {editando !== c.id && puedeEditar && (
                       <button
                         onClick={() => abrirEdicion(c)}
                         className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-indigo-600"

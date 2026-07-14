@@ -5,6 +5,7 @@ import Breadcrumb from '../../components/Breadcrumb';
 import Toast from '../../components/Toast';
 import useToast from '../../hooks/useToast';
 import { useAuth } from '../../context/AuthContext';
+import { rolSatisface } from '../../utils/roles';
 import { useStockSync } from '../../context/StockSyncContext';
 import { useConfiguracion } from '../../hooks/useConfiguracion';
 import { generarComprobantePDF, construirNumeroComprobante } from '../../utils/comprobante';
@@ -13,7 +14,7 @@ export default function HistorialVentasPage() {
   const { usuario } = useAuth();
   const { notificarCambioStock } = useStockSync();
   const { empresa, igv } = useConfiguracion();
-  const puedeAnular = usuario?.rol === 'Administrador' || usuario?.rol === 'Gerente';
+  const puedeAnular = rolSatisface(usuario?.rol, ['Administrador', 'Gerente']);
   const { toast, mostrarExito, mostrarError, cerrar } = useToast();
 
   const [ventas, setVentas] = useState([]);

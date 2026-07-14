@@ -1,8 +1,9 @@
 const { Op } = require('sequelize');
-const { sequelize, Venta, DetalleVenta, Producto, Usuario, Cliente, Turno, MovimientoCaja } = require('../models');
+const { sequelize, Venta, DetalleVenta, Producto, Usuario, Cliente, Turno, MovimientoCaja, Configuracion } = require('../models');
 const { presentarVenta, presentarLista } = require('../presenters/venta.presenter');
 const { consumirStockFIFO, revertirConsumo, calcularStockVigente } = require('../services/inventario.service');
 const { calcularEsperados } = require('../services/caja.service');
+const { consultarRucSunat } = require('../services/consulta.service');
 const { inicioDiaPeru, finDiaPeruExclusivo } = require('../utils/fechas');
 
 // Efectivo realmente disponible en el turno para dar vuelto: apertura +
@@ -11,11 +12,8 @@ const { inicioDiaPeru, finDiaPeruExclusivo } = require('../utils/fechas');
 // físicamente no tuviera cómo dar el cambio (ej. abren con S/20 y alguien
 // paga con un billete de S/100 la primera venta del día).
 const efectivoDisponibleEnTurno = async (turnoId, transaction) => {
-  const [turno, movimientos] = await Promise.all([
-    Turno.findByPk(turnoId, { attributes: ['monto_apertura'], transaction }),
-    MovimientoCaja.findAll({ where: { turno_id: turnoId }, transaction }),
-  ]);
-  return calcularEsperados(movimientos, turno.monto_apertura).monto_esperado_efectivo;
+  const movimientos = await MovimientoCaja.findAll({ where: { turno_id: turnoId }, transaction });
+  return calcularEsperados(movimientos).monto_esperado_efectivo;
 };
 
 const INCLUDE_VENTA = [
@@ -67,8 +65,26 @@ const registrar = async (req, res) => {
       }
     }
 
-    if (tipo_comprobante === 'Factura' && !/^\d{11}$/.test(cliente_ruc)) {
-      return res.status(400).json({ mensaje: 'Para emitir factura se requiere un RUC válido de 11 dígitos' });
+    if (tipo_comprobante === 'Factura') {
+      if (!/^\d{11}$/.test(cliente_ruc)) {
+        return res.status(400).json({ mensaje: 'Para emitir factura se requiere un RUC válido de 11 dígitos' });
+      }
+      // El frontend ya verifica esto contra SUNAT antes de habilitar la
+      // venta (VentasPage.jsx:buscarRuc), pero eso solo es UI — nada impide
+      // llamar este endpoint directo con cualquier RUC de 11 dígitos y una
+      // razón social inventada. Se revalida acá con el mismo criterio.
+      let datosRuc;
+      try {
+        datosRuc = await consultarRucSunat(cliente_ruc);
+      } catch (err) {
+        return res.status(err.status || 502).json({ mensaje: err.mensaje || 'No se pudo verificar el RUC con SUNAT' });
+      }
+      if (datosRuc.estado && datosRuc.estado.toUpperCase() !== 'ACTIVO') {
+        return res.status(400).json({ mensaje: `RUC dado de baja en SUNAT (estado: ${datosRuc.estado})` });
+      }
+      if (datosRuc.condicion && datosRuc.condicion.toUpperCase() !== 'HABIDO') {
+        return res.status(400).json({ mensaje: `RUC con domicilio no habido en SUNAT (condición: ${datosRuc.condicion})` });
+      }
     }
 
     if (tipo_comprobante === 'BoletaDNI') {
@@ -176,16 +192,33 @@ const registrar = async (req, res) => {
 
       const esYapeVerificado = metodo_pago === 'Yape' && yape_verificado === true;
 
+      // Correlativo real por serie: cada tipo de comprobante lleva su propio
+      // contador atómico en Configuracion, incrementado bajo lock dentro de
+      // esta misma transacción — así dos ventas simultáneas nunca terminan
+      // con el mismo número, y boletas/facturas intercaladas no dejan huecos
+      // en la numeración de la otra serie (antes se usaba el id autoincremental
+      // de Venta, compartido entre ambas).
+      const tipoComprobanteFinal = tipo_comprobante || 'Boleta';
+      let config = await Configuracion.findByPk(1, { transaction: t, lock: t.LOCK.UPDATE });
+      if (!config) {
+        config = await Configuracion.create({ id: 1 }, { transaction: t });
+      }
+      const campoCorrelativo = tipoComprobanteFinal === 'Factura' ? 'correlativo_factura' : 'correlativo_boleta';
+      config[campoCorrelativo] = (config[campoCorrelativo] || 0) + 1;
+      await config.save({ transaction: t });
+
       const nuevaVenta = await Venta.create({
         usuario_id:    req.usuario.id,
         cliente_id:    cliente_id || null,
         turno_id:      turno.id,
         metodo_pago,
         monto_total:   monto_total.toFixed(2),
-        monto_recibido: metodo_pago === 'Efectivo' ? monto_recibido : null,
+        monto_recibido: metodo_pago === 'Efectivo' ? parseFloat(monto_recibido).toFixed(2) : null,
         monto_yape:    metodo_pago === 'Yape' ? monto_total.toFixed(2) : null,
         vuelto:        metodo_pago === 'Efectivo' ? vuelto.toFixed(2) : null,
-        tipo_comprobante: tipo_comprobante || 'Boleta',
+        tipo_comprobante: tipoComprobanteFinal,
+        numero_comprobante: config[campoCorrelativo],
+        serie_comprobante: tipoComprobanteFinal === 'Factura' ? config.serie_factura : config.serie_boleta,
         cliente_dni:   cliente_dni || null,
         cliente_ruc:   cliente_ruc || null,
         cliente_razon_social: cliente_razon_social || null,
@@ -245,7 +278,7 @@ const registrar = async (req, res) => {
 
 const listar = async (req, res) => {
   try {
-    const { fecha_inicio, fecha_hasta, metodo_pago, pagina, limite } = req.query;
+    const { fecha_inicio, fecha_hasta, metodo_pago, estado, pagina, limite } = req.query;
     const where = {};
 
     if (fecha_inicio && fecha_hasta && new Date(fecha_inicio) > new Date(fecha_hasta)) {
@@ -262,6 +295,10 @@ const listar = async (req, res) => {
 
     if (metodo_pago) {
       where.metodo_pago = metodo_pago;
+    }
+
+    if (estado) {
+      where.estado = estado;
     }
 
     // Un Vendedor solo ve sus propias ventas; Administrador/Gerente ven todas.
@@ -378,15 +415,25 @@ const anular = async (req, res) => {
     }
 
     await sequelize.transaction(async (t) => {
+      // Relee y bloquea la venta dentro de la transacción: cubre la ventana
+      // entre el chequeo de arriba y este punto, por si otra anulación de la
+      // misma venta se coló en el medio (evita revertir el stock y crear el
+      // movimiento de caja de "Anulacion" dos veces). Mismo patrón que ya usa
+      // registrar() con el turno.
+      const ventaLock = await Venta.findByPk(venta.id, { transaction: t, lock: t.LOCK.UPDATE });
+      if (ventaLock.estado === 'Anulada') {
+        throw { status: 400, mensaje: 'La venta ya fue anulada' };
+      }
+
       for (const detalle of venta.detalles) {
         await revertirConsumo({ tipo: 'Venta', referencia_id: detalle.id }, t);
       }
 
-      venta.estado = 'Anulada';
-      venta.motivo_anulacion = motivo.trim();
-      venta.anulado_por = req.usuario.id;
-      venta.anulado_en = new Date();
-      await venta.save({ transaction: t });
+      ventaLock.estado = 'Anulada';
+      ventaLock.motivo_anulacion = motivo.trim();
+      ventaLock.anulado_por = req.usuario.id;
+      ventaLock.anulado_en = new Date();
+      await ventaLock.save({ transaction: t });
 
       await MovimientoCaja.create({
         turno_id:    turno.id,
@@ -405,6 +452,9 @@ const anular = async (req, res) => {
 
     return res.status(200).json(presentarVenta(ventaCompleta));
   } catch (err) {
+    if (err.status && err.mensaje) {
+      return res.status(err.status).json({ mensaje: err.mensaje });
+    }
     console.error('Error al anular venta:', err);
     return res.status(500).json({ mensaje: 'Error interno del servidor' });
   }

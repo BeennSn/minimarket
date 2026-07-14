@@ -13,9 +13,14 @@ router.post(
   inventarioController.registrarEntrada
 );
 
+// Gerente no tiene acceso a Inventario (ver CLAUDE.md — su acceso es
+// Dashboard, ventas de solo consulta, historial, solicitudes y reportes), y
+// el frontend nunca expone esta pantalla para ese rol (App.jsx: ruta
+// /inventario solo admite Almacenero/Administrador) — el permiso de acá
+// quedaba muerto, sin nadie que pudiera usarlo.
 router.get(
   '/entradas',
-  verificarRol('Almacenero', 'Administrador', 'Gerente'),
+  verificarRol('Almacenero', 'Administrador'),
   inventarioController.listarEntradas
 );
 
@@ -28,7 +33,7 @@ router.post(
 
 router.get(
   '/bajas',
-  verificarRol('Almacenero', 'Administrador', 'Gerente'),
+  verificarRol('Almacenero', 'Administrador'),
   inventarioController.listarBajas
 );
 
@@ -41,7 +46,7 @@ router.post(
 
 router.get(
   '/ajustes',
-  verificarRol('Almacenero', 'Administrador', 'Gerente'),
+  verificarRol('Almacenero', 'Administrador'),
   inventarioController.listarAjustes
 );
 

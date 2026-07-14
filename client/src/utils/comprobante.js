@@ -46,7 +46,15 @@ export function esFacturaVenta(venta) {
   return venta?.tipo_comprobante === 'Factura';
 }
 
+// Prefiere el correlativo real asignado al crear la venta (serie propia +
+// contador atómico por tipo de comprobante, ver venta.controller.js). Ventas
+// de antes de este cambio no tienen `numero_comprobante` — para esas se cae
+// al id de la venta como antes, solo como respaldo de compatibilidad.
 export function construirNumeroComprobante(venta, empresa) {
+  if (venta?.numero_comprobante != null) {
+    const serie = venta.serie_comprobante || (esFacturaVenta(venta) ? (empresa?.serieFactura || 'F001') : (empresa?.serieBoleta || 'B001'));
+    return `${serie}-${String(venta.numero_comprobante).padStart(8, '0')}`;
+  }
   const serie = esFacturaVenta(venta) ? (empresa?.serieFactura || 'F001') : (empresa?.serieBoleta || 'B001');
   return `${serie}-${String(venta?.id ?? 0).padStart(8, '0')}`;
 }

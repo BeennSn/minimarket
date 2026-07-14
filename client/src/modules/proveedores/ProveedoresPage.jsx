@@ -7,6 +7,7 @@ import Spinner from '../../components/Spinner';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import Toast from '../../components/Toast';
 import { useAuth } from '../../context/AuthContext';
+import { rolSatisface } from '../../utils/roles';
 import useToast from '../../hooks/useToast';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -515,7 +516,7 @@ export default function ProveedoresPage() {
                       >
                         <Pencil className="h-4 w-4" />
                       </button>
-                      {usuario?.rol === 'Administrador' && (
+                      {rolSatisface(usuario?.rol, ['Administrador']) && (
                         <button
                           onClick={() => setConfirmarEstado(p)}
                           className={`rounded-lg p-1.5 transition-colors ${

@@ -131,6 +131,17 @@ Usuario.hasMany(SolicitudReposicion, {
   as: 'solicitudes_aprobadas',
 });
 
+// SolicitudReposicion → SolicitudReposicion (auto-referencia: solicitud de
+// seguimiento generada cuando la original se completó con cantidad parcial)
+SolicitudReposicion.belongsTo(SolicitudReposicion, {
+  foreignKey: 'solicitud_origen_id',
+  as: 'origen',
+});
+SolicitudReposicion.hasMany(SolicitudReposicion, {
+  foreignKey: 'solicitud_origen_id',
+  as: 'seguimientos',
+});
+
 // LogAcceso → Usuario
 LogAcceso.belongsTo(Usuario, { foreignKey: 'usuario_id', as: 'usuario' });
 Usuario.hasMany(LogAcceso,   { foreignKey: 'usuario_id', as: 'logs' });

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Plus, Search, Pencil, Trash2, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { rolSatisface } from '../../utils/roles';
 import api from '../../utils/axios';
 import Breadcrumb from '../../components/Breadcrumb';
 import Spinner from '../../components/Spinner';
@@ -219,7 +220,7 @@ export default function CategoriasPage() {
                       >
                         <Pencil className="h-4 w-4" />
                       </button>
-                      {usuario?.rol === 'Administrador' && (
+                      {rolSatisface(usuario?.rol, ['Administrador']) && (
                         <button
                           onClick={() => setConfirmarEliminar(c)}
                           className="rounded-lg p-1.5 text-red-500 transition-colors hover:bg-red-50"

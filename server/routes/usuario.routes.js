@@ -41,9 +41,14 @@ router.put(
   usuarioController.actualizar
 );
 
-// PATCH /api/usuarios/:id/password  → cualquier rol autenticado (solo la propia contraseña)
+// PATCH /api/usuarios/me/password  → cualquier rol autenticado, siempre sobre
+// la propia cuenta (el controller usa req.usuario.id, nunca un :id de la
+// URL). Antes la ruta era "/:id/password": el :id parecía indicar "de qué
+// usuario" pero se ignoraba por completo — un SuperAdmin no puede resetear
+// la contraseña de otro usuario con este endpoint, así que la URL ya no
+// promete algo que el controller no hace.
 router.patch(
-  '/:id/password',
+  '/me/password',
   usuarioController.cambiarPassword
 );
 

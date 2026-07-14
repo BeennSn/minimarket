@@ -238,6 +238,10 @@ const reactivar = async (req, res) => {
     }
 
     usuario.activo = true;
+    // Si quedó desactivado mientras estaba bloqueado por intentos fallidos,
+    // sin esto seguiría bloqueado hasta que bloqueo_hasta expirara solo.
+    usuario.intentos_fallidos = 0;
+    usuario.bloqueo_hasta = null;
     await usuario.save();
 
     return res.status(200).json({ mensaje: 'Usuario reactivado' });

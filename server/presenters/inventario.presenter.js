@@ -75,6 +75,9 @@ const presentarSolicitud = (solicitud) => ({
   aprobador: solicitud.aprobador
     ? { id: solicitud.aprobador.id, nombre: solicitud.aprobador.nombre }
     : null,
+  // Si esta solicitud nació de otra completada con cantidad parcial (ver
+  // inventario.controller.js:completarSolicitud), queda la referencia acá.
+  solicitud_origen_id: solicitud.solicitud_origen_id || null,
   createdAt: solicitud.createdAt,
 });
 

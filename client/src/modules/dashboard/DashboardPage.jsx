@@ -334,6 +334,7 @@ export default function DashboardPage() {
 
   const fetchData = useCallback(async (esRefresco = false) => {
     if (esRefresco) setRefreshing(true);
+    setError('');
     try {
       const rango = { fecha_inicio: fechaInicio, fecha_hasta: fechaHasta };
       const [resVentas, resInventario, resPorDia, resStock, resTop] = await Promise.all([
@@ -395,8 +396,13 @@ export default function DashboardPage() {
       setDetalleError('');
       try {
         if ((modalActivo === 'ventas' || modalActivo === 'ticket') && !ventasDelMes) {
+          // estado=Completada: el KPI de la tarjeta (kpis.total_ventas) viene
+          // de resumenVentas(), que solo cuenta 'Completada' — sin este
+          // filtro, este detalle traía además las Anuladas y el "mostrando
+          // las primeras X de Y" (comparado contra kpis.total_ventas) quedaba
+          // desalineado.
           const { data } = await api.get('/ventas', {
-            params: { fecha_inicio: fechaInicio, fecha_hasta: fechaHasta, limite: 100 },
+            params: { fecha_inicio: fechaInicio, fecha_hasta: fechaHasta, estado: 'Completada', limite: 100 },
           });
           setVentasDelMes(Array.isArray(data.data) ? data.data : []);
         } else if (modalActivo === 'ingresos' && !ventasPorMetodo) {

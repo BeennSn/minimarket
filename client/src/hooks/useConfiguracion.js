@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import api from '../utils/axios';
 
 const DEFAULT_EMPRESA = {
@@ -10,12 +10,23 @@ const DEFAULT_EMPRESA = {
   serieFactura: 'F001',
 };
 
+// Evento disparado por ConfiguracionPage.jsx al guardar cambios exitosamente,
+// para que cualquier otra pantalla con useConfiguracion ya montada (ej. una
+// pestaña de Ventas abierta desde antes) se actualice sola — mismo patrón
+// liviano (evento del navegador, sin websockets ni servicios externos) que ya
+// usa StockSyncContext para sincronizar el stock entre pantallas.
+const EVENTO_CONFIGURACION_ACTUALIZADA = 'minimarket-configuracion-actualizada';
+
+export function notificarConfiguracionActualizada() {
+  window.dispatchEvent(new Event(EVENTO_CONFIGURACION_ACTUALIZADA));
+}
+
 export function useConfiguracion() {
   const [empresa, setEmpresa] = useState(DEFAULT_EMPRESA);
   const [igv, setIgv] = useState(0.18);
   const [cargando, setCargando] = useState(true);
 
-  useEffect(() => {
+  const cargar = useCallback(() => {
     api.get('/configuracion')
       .then(({ data }) => {
         setEmpresa({
@@ -29,10 +40,16 @@ export function useConfiguracion() {
         setIgv(data.igv / 100);
       })
       .catch(() => {
-        // mantiene valores por defecto si el endpoint falla
+        // mantiene los valores previos si el endpoint falla
       })
       .finally(() => setCargando(false));
   }, []);
+
+  useEffect(() => {
+    cargar();
+    window.addEventListener(EVENTO_CONFIGURACION_ACTUALIZADA, cargar);
+    return () => window.removeEventListener(EVENTO_CONFIGURACION_ACTUALIZADA, cargar);
+  }, [cargar]);
 
   return { empresa, igv, cargando };
 }

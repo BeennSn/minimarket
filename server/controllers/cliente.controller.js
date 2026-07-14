@@ -7,15 +7,25 @@ const buscarOCrear = async (req, res) => {
     const { nombre, dni, email } = req.body;
 
     if (dni) {
-      const [cliente] = await Cliente.findOrCreate({
+      const [cliente, creado] = await Cliente.findOrCreate({
         where: { dni },
         defaults: { nombre, email },
       });
-      return res.status(200).json({ id: cliente.id, nombre: cliente.nombre, dni: cliente.dni, email: cliente.email });
+      // Si el DNI ya estaba registrado con otro nombre, no se sobreescribe
+      // solo (podría ser un DNI mal tecleado que coincide con el de otra
+      // persona) — se avisa para que el cajero lo confirme, sin bloquear.
+      const nombreCoincide = creado || !nombre || cliente.nombre.trim().toLowerCase() === nombre.trim().toLowerCase();
+      return res.status(200).json({
+        id: cliente.id,
+        nombre: cliente.nombre,
+        dni: cliente.dni,
+        email: cliente.email,
+        nombre_coincide: nombreCoincide,
+      });
     }
 
     const nuevo = await Cliente.create({ nombre, email });
-    return res.status(200).json({ id: nuevo.id, nombre: nuevo.nombre, dni: null, email: nuevo.email });
+    return res.status(200).json({ id: nuevo.id, nombre: nuevo.nombre, dni: null, email: nuevo.email, nombre_coincide: true });
   } catch (err) {
     console.error('Error en buscarOCrear cliente:', err);
     return res.status(500).json({ mensaje: 'Error interno del servidor' });

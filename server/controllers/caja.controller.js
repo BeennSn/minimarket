@@ -97,10 +97,7 @@ const cerrar = async (req, res) => {
       return res.status(404).json({ mensaje: 'No tienes un turno abierto' });
     }
 
-    const { monto_esperado_efectivo, monto_esperado_yape } = calcularEsperados(
-      turno.movimientos,
-      turno.monto_apertura
-    );
+    const { monto_esperado_efectivo, monto_esperado_yape } = calcularEsperados(turno.movimientos);
 
     const contadoEfectivo = parseFloat(monto_contado_efectivo);
     const contadoYape     = parseFloat(monto_contado_yape);

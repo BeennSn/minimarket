@@ -4,6 +4,7 @@ import {
 } from 'lucide-react';
 import api from '../../utils/axios';
 import { sanitizarMonto } from '../../utils/format';
+import { calcularMontosCaja } from '../../utils/caja';
 import { useAuth } from '../../context/AuthContext';
 
 // Props comunes para los 4 inputs de dinero del módulo: bloquean "e"/"+"/"-"
@@ -150,22 +151,7 @@ export default function CajaPage() {
   };
 
   // ─── Cálculos en tiempo real (turno abierto) ────────────────────────────────
-  const calcularTotales = () => {
-    if (!turno?.movimientos) return { efectivo: 0, yape: 0 };
-    let efectivo = 0, yape = 0;
-    for (const m of turno.movimientos) {
-      const monto = parseFloat(m.monto);
-      if (ES_NEGATIVO(m.tipo)) {
-        if (m.metodo === 'Efectivo') efectivo -= monto;
-        if (m.metodo === 'Yape')     yape     -= monto;
-      } else if (m.metodo === 'Efectivo') {
-        efectivo += monto;
-      } else if (m.metodo === 'Yape') {
-        yape += monto;
-      }
-    }
-    return { efectivo, yape };
-  };
+  const calcularTotales = () => calcularMontosCaja(turno?.movimientos);
 
   if (cargando) {
     return (

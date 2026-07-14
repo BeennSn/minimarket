@@ -10,6 +10,7 @@ import { useStockSync } from '../../context/StockSyncContext';
 import { useConfiguracion } from '../../hooks/useConfiguracion';
 import api from '../../utils/axios';
 import { generarComprobantePDF, construirNumeroComprobante } from '../../utils/comprobante';
+import { calcularMontosCaja } from '../../utils/caja';
 
 const ITEMS_PER_PAGE = 25;
 const MONTO_RECIBIDO_MAX = 999999.99;
@@ -194,6 +195,10 @@ export default function VentasPage() {
   const [rucValidado, setRucValidado] = useState(false);
   const [rucInfo, setRucInfo] = useState(null);
   const [clienteId, setClienteId] = useState(null);
+  // true cuando el DNI ya estaba registrado con un nombre distinto al que
+  // acaba de devolver RENIEC — no bloquea la venta, solo avisa (podría ser un
+  // DNI mal tecleado que coincide con el de otra persona ya registrada).
+  const [clienteNombreNoCoincide, setClienteNombreNoCoincide] = useState(false);
 
   // undefined = todavía cargando, null = no tiene turno abierto, objeto = turno activo.
   // Esto es solo una guía de UX (deshabilitar el botón, mostrar el aviso antes de
@@ -426,16 +431,7 @@ export default function VentasPage() {
   // vuelve a validarlo con el turno bloqueado antes de aceptar la venta.
   const efectivoDisponibleTurno = () => {
     if (!turnoActivo?.movimientos) return null;
-    let efectivo = parseFloat(turnoActivo.monto_apertura) || 0;
-    for (const m of turnoActivo.movimientos) {
-      const monto = parseFloat(m.monto);
-      if (m.tipo === 'Egreso' || m.tipo === 'Anulacion') {
-        if (m.metodo === 'Efectivo') efectivo -= monto;
-      } else if (m.metodo === 'Efectivo') {
-        efectivo += monto;
-      }
-    }
-    return efectivo;
+    return calcularMontosCaja(turnoActivo.movimientos).efectivo;
   };
 
   const efectivoDisponible = metodoPago === 'Efectivo' ? efectivoDisponibleTurno() : null;
@@ -482,6 +478,7 @@ export default function VentasPage() {
     setRucValidado(false);
     setRucInfo(null);
     setClienteId(null);
+    setClienteNombreNoCoincide(false);
     setError('');
     setPdfError('');
     setPasoYape('inicio');
@@ -493,6 +490,7 @@ export default function VentasPage() {
     if (clienteDni.length !== 8) return;
     setBuscandoDni(true);
     setDniValidado(false);
+    setClienteNombreNoCoincide(false);
     setError('');
     try {
       const { data } = await api.get(`/consulta/dni/${clienteDni}`);
@@ -504,6 +502,7 @@ export default function VentasPage() {
           dni: clienteDni,
         });
         setClienteId(cliente.id);
+        setClienteNombreNoCoincide(cliente.nombre_coincide === false);
       } catch {
         // no bloquea la venta si falla el registro del cliente
       }
@@ -988,6 +987,11 @@ export default function VentasPage() {
                   )}
                   {nombreDni && (
                     <p className="mt-1 text-xs font-medium text-emerald-600">{nombreDni}</p>
+                  )}
+                  {clienteNombreNoCoincide && (
+                    <p className="mt-1 text-xs text-amber-600">
+                      ⚠ Este DNI ya estaba registrado con otro nombre. Verifica que sea la persona correcta.
+                    </p>
                   )}
                 </div>
               )}

@@ -141,7 +141,11 @@ const revertirConsumo = async ({ tipo, referencia_id }, t) => {
     ? { tipo: 'Venta', detalle_venta_id: referencia_id }
     : { tipo: 'Baja', baja_id: referencia_id };
 
-  const consumos = await ConsumoLote.findAll({ where, transaction: t });
+  // Lock de fila: si dos reversiones concurrentes apuntaran a los mismos
+  // ConsumoLote, la segunda espera a que la primera termine (commit) y los
+  // haya destruido — al reconsultar ya no los encuentra, en vez de revertir
+  // el mismo consumo dos veces.
+  const consumos = await ConsumoLote.findAll({ where, transaction: t, lock: t.LOCK.UPDATE });
   if (!consumos.length) return;
 
   let totalDevuelto = 0;

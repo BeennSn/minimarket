@@ -9,7 +9,7 @@ import Toast from '../../components/Toast';
 import useToast from '../../hooks/useToast';
 
 const DIAS_ALERTA_VENCIMIENTO_CERCANO = 7;
-const MOTIVOS_BAJA = ['Vencido', 'Dañado', 'Robo o faltante', 'Consumo interno', 'Otro'];
+const MOTIVOS_BAJA = ['Vencido', 'Dañado', 'Robo o faltante', 'Consumo interno', 'Error de registro', 'Otro'];
 
 // Código de lote legible generado con fecha y hora locales del navegador —
 // siempre hay un código listo, pero el usuario puede sobrescribirlo con el
@@ -31,6 +31,7 @@ export default function InventarioPage() {
   const [proveedores, setProveedores] = useState([]);
   const [entradas, setEntradas] = useState([]);
   const [bajas, setBajas] = useState([]);
+  const [ajustes, setAjustes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -38,12 +39,16 @@ export default function InventarioPage() {
   const [productoId, setProductoId] = useState('');
   const [proveedorId, setProveedorId] = useState('');
   const [cantidad, setCantidad] = useState('');
+  const [costoUnitario, setCostoUnitario] = useState('');
   const [motivo, setMotivo] = useState('Vencido');
   const [motivoDetalle, setMotivoDetalle] = useState('');
   const [fechaVencimiento, setFechaVencimiento] = useState('');
   const [codigoLote, setCodigoLote] = useState(() => generarCodigoLote());
   const [loteId, setLoteId] = useState('');
   const [lotesProductoSeleccionado, setLotesProductoSeleccionado] = useState([]);
+  const [cantidadContada, setCantidadContada] = useState('');
+  const [fechaVencimientoAjuste, setFechaVencimientoAjuste] = useState('');
+  const [observaciones, setObservaciones] = useState('');
   const [enviando, setEnviando] = useState(false);
 
   const fechaHoy = useMemo(() => fechaLocalISO(new Date()), []);
@@ -60,22 +65,30 @@ export default function InventarioPage() {
   const [filtroBajaProducto, setFiltroBajaProducto] = useState('');
   const [cargandoBajas, setCargandoBajas] = useState(false);
 
+  // Filtros — Ajustes
+  const [filtroAjusteDesde, setFiltroAjusteDesde] = useState('');
+  const [filtroAjusteHasta, setFiltroAjusteHasta] = useState('');
+  const [filtroAjusteProducto, setFiltroAjusteProducto] = useState('');
+  const [cargandoAjustes, setCargandoAjustes] = useState(false);
+
   // ─── Carga inicial ────────────────────────────────────────────────────────
 
   const cargarDatos = async (silencioso = false) => {
     if (!silencioso) setLoading(true);
     setError('');
     try {
-      const [rP, rProv, rE, rB] = await Promise.all([
+      const [rP, rProv, rE, rB, rA] = await Promise.all([
         api.get('/productos/activos'),
         api.get('/proveedores?soloActivos=true'),
         api.get('/inventario/entradas'),
         api.get('/inventario/bajas'),
+        api.get('/inventario/ajustes'),
       ]);
       setProductos(Array.isArray(rP.data) ? rP.data : []);
       setProveedores(Array.isArray(rProv.data) ? rProv.data : []);
       setEntradas(Array.isArray(rE.data) ? rE.data : []);
       setBajas(Array.isArray(rB.data) ? rB.data : []);
+      setAjustes(Array.isArray(rA.data) ? rA.data : []);
     } catch (err) {
       if (!silencioso) setError(err.response?.data?.mensaje || 'Error al cargar datos');
     } finally {
@@ -168,6 +181,33 @@ export default function InventarioPage() {
     );
   };
 
+  // ─── Filtrar ajustes ──────────────────────────────────────────────────────
+
+  const filtrarAjustes = useCallback(async () => {
+    setCargandoAjustes(true);
+    try {
+      const params = {};
+      if (filtroAjusteDesde) params.fecha_inicio = filtroAjusteDesde;
+      if (filtroAjusteHasta) params.fecha_hasta = filtroAjusteHasta;
+      if (filtroAjusteProducto) params.producto_id = filtroAjusteProducto;
+      const { data } = await api.get('/inventario/ajustes', { params });
+      setAjustes(Array.isArray(data) ? data : []);
+    } catch (err) {
+      mostrarError(err.response?.data?.mensaje || 'Error al filtrar ajustes');
+    } finally {
+      setCargandoAjustes(false);
+    }
+  }, [filtroAjusteDesde, filtroAjusteHasta, filtroAjusteProducto]);
+
+  const limpiarFiltrosAjustes = () => {
+    setFiltroAjusteDesde('');
+    setFiltroAjusteHasta('');
+    setFiltroAjusteProducto('');
+    api.get('/inventario/ajustes').then(({ data }) =>
+      setAjustes(Array.isArray(data) ? data : [])
+    );
+  };
+
   // ─── Registro de entrada ──────────────────────────────────────────────────
 
   const registrarEntrada = async (e) => {
@@ -184,6 +224,10 @@ export default function InventarioPage() {
         return;
       }
     }
+    if (costoUnitario !== '' && Number(costoUnitario) <= 0) {
+      setError('El costo unitario debe ser mayor a 0');
+      return;
+    }
     setEnviando(true);
     try {
       await api.post('/inventario/entradas', {
@@ -191,6 +235,7 @@ export default function InventarioPage() {
         proveedor_id: proveedorId || null,
         cantidad: parseInt(cantidad, 10),
         fecha_vencimiento: manejaVencimientoEntrada ? (fechaVencimiento || null) : null,
+        costo_unitario: costoUnitario !== '' ? Number(costoUnitario) : null,
         // Si el usuario borró el campo, se genera uno al vuelo: siempre debe
         // quedar un código, generado o propio.
         codigo_lote: codigoLote.trim() || generarCodigoLote(),
@@ -199,6 +244,7 @@ export default function InventarioPage() {
       setProductoId('');
       setProveedorId('');
       setCantidad('');
+      setCostoUnitario('');
       setFechaVencimiento('');
       setCodigoLote(generarCodigoLote());
       const [rP, rE] = await Promise.all([
@@ -315,6 +361,57 @@ export default function InventarioPage() {
     ? Math.round((new Date(fechaVencimiento + 'T00:00:00') - new Date(fechaHoy + 'T00:00:00')) / 86400000)
     : null;
 
+  // ─── Registro de ajuste (conteo físico) ───────────────────────────────────
+
+  const diferenciaAjuste = productoSeleccionado && cantidadContada !== ''
+    ? parseInt(cantidadContada, 10) - productoSeleccionado.stock
+    : null;
+
+  const manejaVencimientoAjuste = productoSeleccionado?.maneja_vencimiento !== false;
+
+  const registrarAjuste = async (e) => {
+    e.preventDefault();
+    setError('');
+    // Un sobrante genera un lote nuevo (ver inventario.controller.js), así que
+    // si el producto maneja vencimiento necesita fecha, igual que en Entradas
+    // — de lo contrario queda un lote "fantasma" que el sistema FEFO nunca
+    // trata como vencido.
+    if (diferenciaAjuste > 0 && manejaVencimientoAjuste) {
+      if (!fechaVencimientoAjuste) {
+        setError('La fecha de vencimiento es obligatoria para este producto');
+        return;
+      }
+      if (fechaVencimientoAjuste < fechaHoy) {
+        setError('La fecha de vencimiento no puede ser anterior a hoy');
+        return;
+      }
+    }
+    setEnviando(true);
+    try {
+      await api.post('/inventario/ajustes', {
+        producto_id: productoId,
+        cantidad_contada: parseInt(cantidadContada, 10),
+        fecha_vencimiento: diferenciaAjuste > 0 && manejaVencimientoAjuste ? fechaVencimientoAjuste : null,
+        observaciones: observaciones || null,
+      });
+      mostrarExito('Ajuste registrado correctamente');
+      setProductoId('');
+      setCantidadContada('');
+      setFechaVencimientoAjuste('');
+      setObservaciones('');
+      const [rP, rA] = await Promise.all([
+        api.get('/productos/activos'),
+        api.get('/inventario/ajustes'),
+      ]);
+      setProductos(Array.isArray(rP.data) ? rP.data : []);
+      setAjustes(Array.isArray(rA.data) ? rA.data : []);
+      notificarCambioStock();
+    } catch (err) {
+      mostrarError(err.response?.data?.mensaje || err.response?.data?.message || 'Error al registrar ajuste');
+    } finally {
+      setEnviando(false);
+    }
+  };
 
   if (loading) {
     return <Spinner texto="Cargando inventario..." />;
@@ -347,6 +444,16 @@ export default function InventarioPage() {
             }`}
           >
             Bajas
+          </button>
+          <button
+            onClick={() => { setTabActiva('ajustes'); setProductoId(''); setCantidadContada(''); setFechaVencimientoAjuste(''); setObservaciones(''); }}
+            className={`rounded-lg px-4 py-2 text-sm transition-colors ${
+              tabActiva === 'ajustes'
+                ? 'bg-[#6366f1] text-white'
+                : 'border border-gray-200 text-gray-500 bg-transparent'
+            }`}
+          >
+            Ajustes
           </button>
         </div>
       </div>
@@ -408,6 +515,21 @@ export default function InventarioPage() {
                       = {parseInt(cantidad, 10) * productoSeleccionado.factor_conversion} unidades de venta
                     </p>
                   )}
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                    Costo unitario (S/) <span className="text-xs font-normal text-gray-400">(opcional)</span>
+                  </label>
+                  <input
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={costoUnitario}
+                    onChange={(e) => setCostoUnitario(e.target.value)}
+                    placeholder="Ej: 2.50"
+                    className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  />
+                  <p className="mt-1 text-xs text-gray-400">Si lo indicas, se recalcula el costo promedio del producto.</p>
                 </div>
                 <div>
                   <label className="mb-1 block text-sm font-medium text-gray-700">
@@ -887,6 +1009,224 @@ export default function InventarioPage() {
                         </td>
                         <td className="px-4 py-3 text-gray-400">
                           {formatFechaHora(b.createdAt)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </>
+      ) : tabActiva === 'ajustes' ? (
+        <>
+          {/* ─── Formulario Ajuste (Conteo Físico) ─────────────────────────────── */}
+          <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+            <h2 className="mb-4 font-semibold text-gray-700">Registrar Ajuste (Conteo Físico)</h2>
+            <form onSubmit={registrarAjuste} className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Producto</label>
+                  <select
+                    value={productoId}
+                    onChange={(e) => setProductoId(e.target.value)}
+                    required
+                    className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  >
+                    <option value="">Seleccionar...</option>
+                    {productos.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.nombre} - {p.marca} (stock: {p.stock})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Stock actual del sistema</label>
+                  <input
+                    type="text"
+                    disabled
+                    value={productoSeleccionado ? `${productoSeleccionado.stock} und(s)` : '—'}
+                    className="w-full rounded-lg border border-gray-200 bg-gray-50 px-4 py-2 text-sm text-gray-500"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Cantidad Contada</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={cantidadContada}
+                    onChange={(e) => setCantidadContada(e.target.value)}
+                    required
+                    className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  />
+                </div>
+                {diferenciaAjuste > 0 && (
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">
+                      Vencimiento del sobrante {manejaVencimientoAjuste && <span className="text-red-500">*</span>}
+                    </label>
+                    <input
+                      type="date"
+                      value={fechaVencimientoAjuste}
+                      onChange={(e) => setFechaVencimientoAjuste(e.target.value)}
+                      min={fechaHoy}
+                      required={manejaVencimientoAjuste}
+                      disabled={!manejaVencimientoAjuste}
+                      className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:bg-gray-50 disabled:text-gray-400"
+                    />
+                    {!manejaVencimientoAjuste && (
+                      <p className="mt-1 text-xs text-gray-400">Este producto no maneja fecha de vencimiento.</p>
+                    )}
+                  </div>
+                )}
+                <div className="md:col-span-2">
+                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                    Observaciones <span className="text-xs font-normal text-gray-400">(opcional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={observaciones}
+                    onChange={(e) => setObservaciones(e.target.value)}
+                    placeholder="Ej: Conteo mensual de anaquel"
+                    className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  />
+                </div>
+                <div className="flex items-end">
+                  {diferenciaAjuste != null && (
+                    diferenciaAjuste === 0 ? (
+                      <span className="text-sm text-gray-400">Sin diferencia — no se requiere ajuste</span>
+                    ) : diferenciaAjuste > 0 ? (
+                      <span className="inline-block rounded-full bg-green-100 px-3 py-1.5 text-sm font-medium text-green-700">
+                        Sobrante: +{diferenciaAjuste} und(s)
+                      </span>
+                    ) : (
+                      <span className="inline-block rounded-full bg-red-100 px-3 py-1.5 text-sm font-medium text-red-700">
+                        Faltante: {diferenciaAjuste} und(s)
+                      </span>
+                    )
+                  )}
+                </div>
+              </div>
+              {error && (
+                <div className="rounded-lg bg-red-50 px-4 py-2 text-sm text-red-600">{error}</div>
+              )}
+              <div className="flex justify-end">
+                <button
+                  type="submit"
+                  disabled={enviando || diferenciaAjuste === 0}
+                  className="flex items-center gap-2 rounded-lg bg-amber-500 px-4 py-2 text-sm text-white transition-colors hover:bg-amber-600 disabled:opacity-70"
+                >
+                  {enviando && <Loader2 className="h-4 w-4 animate-spin" />}
+                  Registrar Ajuste
+                </button>
+              </div>
+            </form>
+          </div>
+
+          {/* ─── Historial Ajustes ──────────────────────────────────────────────── */}
+          <div className="rounded-2xl border border-gray-100 bg-white shadow-sm">
+            <div className="p-5 pb-0">
+              <h2 className="mb-3 font-semibold text-gray-700">Historial de Ajustes</h2>
+
+              {/* Filtros de historial */}
+              <div className="mb-4 flex flex-wrap items-end gap-3 rounded-xl bg-gray-50 p-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-gray-500">
+                  <Filter className="h-4 w-4" />
+                  Filtrar:
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-500">Desde</label>
+                  <input
+                    type="date"
+                    value={filtroAjusteDesde}
+                    onChange={(e) => setFiltroAjusteDesde(e.target.value)}
+                    className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-500">Hasta</label>
+                  <input
+                    type="date"
+                    value={filtroAjusteHasta}
+                    onChange={(e) => setFiltroAjusteHasta(e.target.value)}
+                    className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-500">Producto</label>
+                  <select
+                    value={filtroAjusteProducto}
+                    onChange={(e) => setFiltroAjusteProducto(e.target.value)}
+                    className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  >
+                    <option value="">Todos</option>
+                    {productos.map((p) => (
+                      <option key={p.id} value={p.id}>{p.nombre} - {p.marca}</option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  onClick={filtrarAjustes}
+                  disabled={cargandoAjustes}
+                  className="flex items-center gap-1.5 rounded-lg bg-[#6366f1] px-3 py-1.5 text-sm text-white transition-colors hover:bg-indigo-600 disabled:opacity-70"
+                >
+                  {cargandoAjustes ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Filter className="h-3.5 w-3.5" />}
+                  Aplicar
+                </button>
+                {(filtroAjusteDesde || filtroAjusteHasta || filtroAjusteProducto) && (
+                  <button
+                    onClick={limpiarFiltrosAjustes}
+                    className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-500 transition-colors hover:bg-gray-100"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                    Limpiar
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {ajustes.length === 0 ? (
+              <div className="flex h-32 items-center justify-center text-sm text-gray-400">
+                No hay ajustes registrados
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="bg-[#6366f1] text-white">
+                      <th className="px-4 py-3 font-medium">Producto</th>
+                      <th className="px-4 py-3 font-medium">Stock Sistema</th>
+                      <th className="px-4 py-3 font-medium">Contado</th>
+                      <th className="px-4 py-3 font-medium">Diferencia</th>
+                      <th className="px-4 py-3 font-medium">Observaciones</th>
+                      <th className="px-4 py-3 font-medium">Registrado por</th>
+                      <th className="px-4 py-3 font-medium">Fecha</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ajustes.map((a, i) => (
+                      <tr key={a.id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                        <td className="px-4 py-3 text-gray-800">
+                          {a.producto?.nombre || a.producto_nombre}
+                        </td>
+                        <td className="px-4 py-3 text-gray-500">{a.cantidad_sistema}</td>
+                        <td className="px-4 py-3 text-gray-500">{a.cantidad_contada}</td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                            a.diferencia > 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                          }`}>
+                            {a.diferencia > 0 ? `+${a.diferencia}` : a.diferencia} und(s)
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-gray-500">
+                          {a.observaciones || <span className="text-gray-300">—</span>}
+                        </td>
+                        <td className="px-4 py-3 text-gray-500">
+                          {a.usuario?.nombre || a.registrado_por}
+                        </td>
+                        <td className="px-4 py-3 text-gray-400">
+                          {formatFechaHora(a.createdAt)}
                         </td>
                       </tr>
                     ))}

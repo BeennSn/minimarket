@@ -211,7 +211,12 @@ const crear = async (req, res) => {
       return res.status(400).json({ mensaje: 'El factor de conversión debe ser al menos 1' });
     }
 
-    const duplicado = await Producto.findOne({ where: { nombre: nombre.trim(), marca: marca.trim() } });
+    // iLike + trim: mismo criterio ya aplicado en Categoria/Proveedor — antes
+    // "Coca Cola" y "COCA COLA" (o con espacios de más) quedaban como
+    // productos distintos, cada uno con su propio stock y lotes.
+    const duplicado = await Producto.findOne({
+      where: { nombre: { [Op.iLike]: nombre.trim() }, marca: { [Op.iLike]: marca.trim() } },
+    });
     if (duplicado) {
       return res.status(400).json({ mensaje: 'Ya existe un producto con ese nombre y marca' });
     }
@@ -238,8 +243,8 @@ const crear = async (req, res) => {
     // EntradaMercaderia desde el día uno, sin excepciones "mágicas" en la
     // creación del producto.
     const productoCreado = await Producto.create({
-      nombre,
-      marca,
+      nombre: nombre.trim(),
+      marca: marca.trim(),
       categoria_id,
       precio,
       stock: 0,
@@ -277,7 +282,11 @@ const actualizar = async (req, res) => {
     const marcaFinal  = marca  !== undefined ? marca.trim()  : producto.marca;
     if (nombre !== undefined || marca !== undefined) {
       const duplicado = await Producto.findOne({
-        where: { nombre: nombreFinal, marca: marcaFinal, id: { [Op.ne]: producto.id } },
+        where: {
+          nombre: { [Op.iLike]: nombreFinal },
+          marca: { [Op.iLike]: marcaFinal },
+          id: { [Op.ne]: producto.id },
+        },
       });
       if (duplicado) {
         return res.status(400).json({ mensaje: 'Ya existe un producto con ese nombre y marca' });
@@ -323,8 +332,8 @@ const actualizar = async (req, res) => {
     }
 
     // Actualizar solo los campos recibidos
-    if (nombre !== undefined) producto.nombre = nombre;
-    if (marca !== undefined) producto.marca = marca;
+    if (nombre !== undefined) producto.nombre = nombreFinal;
+    if (marca !== undefined) producto.marca = marcaFinal;
     if (categoria_id !== undefined) producto.categoria_id = categoria_id;
     if (precio !== undefined) producto.precio = precio;
     if (codigo_barras !== undefined) producto.codigo_barras = codigo_barras || null;

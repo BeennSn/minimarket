@@ -28,6 +28,8 @@ const presentarVenta = (venta) => ({
   monto_efectivo:    venta.monto_efectivo || null,
   vuelto:            venta.vuelto,
   tipo_comprobante:  venta.tipo_comprobante,
+  numero_comprobante: venta.numero_comprobante || null,
+  serie_comprobante:  venta.serie_comprobante || null,
   cliente_dni:       venta.cliente_dni || null,
   cliente_ruc:       venta.cliente_ruc || null,
   cliente_razon_social: venta.cliente_razon_social || null,

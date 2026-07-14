@@ -63,6 +63,20 @@ const Venta = sequelize.define('Venta', {
     type: DataTypes.ENUM('Boleta', 'Factura'),
     defaultValue: 'Boleta',
   },
+  // Correlativo real asignado al crear la venta (ver venta.controller.js),
+  // junto con la serie vigente en ese momento — se guarda la serie usada
+  // (no se recalcula desde Configuracion al mostrarlo) para que un cambio
+  // posterior de serie no altere el número ya emitido de una venta pasada.
+  // Nulo en ventas anteriores a este cambio (no tienen numeración real);
+  // client/src/utils/comprobante.js usa un fallback en ese caso.
+  numero_comprobante: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
+  serie_comprobante: {
+    type: DataTypes.STRING(4),
+    allowNull: true,
+  },
   cliente_dni: {
     type: DataTypes.STRING(8),
     allowNull: true,

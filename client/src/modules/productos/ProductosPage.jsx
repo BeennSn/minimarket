@@ -4,6 +4,7 @@ import { Plus, Search, Pencil, EyeOff, Eye, X, Trash2, AlertTriangle, Loader2, P
 import api from '../../utils/axios';
 import { formatMoneda, formatStock, formatFecha, fechaLocalISO } from '../../utils/format';
 import { useAuth } from '../../context/AuthContext';
+import { rolSatisface } from '../../utils/roles';
 import { useStockSync } from '../../context/StockSyncContext';
 import Breadcrumb from '../../components/Breadcrumb';
 import Spinner from '../../components/Spinner';
@@ -47,7 +48,7 @@ function sanitizarPrecio(valor) {
   return limpio;
 }
 
-function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categorias, onProductoExistente }) {
+function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categorias, productos, onProductoExistente }) {
   const [nombre, setNombre] = useState('');
   const [marca, setMarca] = useState('');
   const [categoriaId, setCategoriaId] = useState('');
@@ -136,11 +137,28 @@ function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categor
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+
+    const nombreLimpio = nombre.trim();
+    const marcaLimpia = marca.trim();
+    // Chequeo local antes de golpear al backend (mismo criterio: sin
+    // mayúsculas/espacios) para feedback instantáneo, igual que ya hacen
+    // Categorías y Proveedores.
+    const duplicado = productos?.some(
+      (p) =>
+        p.id !== productoEditando?.id &&
+        p.nombre.trim().toLowerCase() === nombreLimpio.toLowerCase() &&
+        p.marca.trim().toLowerCase() === marcaLimpia.toLowerCase()
+    );
+    if (duplicado) {
+      setError('Ya existe un producto con ese nombre y marca');
+      return;
+    }
+
     setLoading(true);
 
     try {
       const payload = {
-        nombre, marca, categoria_id: categoriaId, precio: parseFloat(precio), codigo_barras: codigoBarras || null,
+        nombre: nombreLimpio, marca: marcaLimpia, categoria_id: categoriaId, precio: parseFloat(precio), codigo_barras: codigoBarras || null,
         stock_minimo: stockMinimo !== '' ? parseInt(stockMinimo, 10) : null,
         unidad_compra: unidadCompra,
         factor_conversion: factorConversion !== '' ? parseInt(factorConversion, 10) : 1,
@@ -800,7 +818,7 @@ export default function ProductosPage() {
   }, []);
   const ITEMS_POR_PAGINA = 12;
   const rol = usuario?.rol;
-  const puedeDarBaja = rol === 'Almacenero' || rol === 'Administrador';
+  const puedeDarBaja = rolSatisface(rol, ['Almacenero', 'Administrador']);
 
   const cargarDatos = async (silencioso = false) => {
     if (!silencioso) setLoading(true);
@@ -1207,6 +1225,7 @@ export default function ProductosPage() {
         onGuardar={handleGuardar}
         productoEditando={productoEditando}
         categorias={categorias}
+        productos={productos}
         onProductoExistente={abrirEditar}
       />
 

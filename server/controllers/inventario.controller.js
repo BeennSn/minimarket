@@ -154,7 +154,7 @@ const listarEntradas = async (req, res) => {
 
 // ─── Bajas ────────────────────────────────────────────────────────────────────
 
-const MOTIVOS_BAJA = ['Vencido', 'Dañado', 'Robo o faltante', 'Consumo interno', 'Otro'];
+const MOTIVOS_BAJA = ['Vencido', 'Dañado', 'Robo o faltante', 'Consumo interno', 'Error de registro', 'Otro'];
 
 // Incluye los ConsumoLote de cada baja (con su lote de origen) para poder
 // mostrar de qué lote(s) exacto salió cada baja — así queda vinculado con lo
@@ -316,6 +316,17 @@ const registrarAjuste = async (req, res) => {
         throw { status: 400, mensaje: 'El conteo coincide con el stock del sistema; no se requiere ajuste' };
       }
 
+      // Un ajuste positivo crea un lote nuevo (ver crearLote más abajo), así
+      // que si el producto maneja vencimiento necesita la misma fecha que
+      // cualquier otro lote — de lo contrario quedaba un lote "fantasma" que
+      // el sistema FEFO nunca trata como vencido.
+      let fechaVencimientoAjuste = null;
+      if (diferencia > 0) {
+        const errorFecha = validarFechaVencimiento(req.body.fecha_vencimiento, producto.maneja_vencimiento);
+        if (errorFecha) throw { status: 400, mensaje: errorFecha };
+        fechaVencimientoAjuste = producto.maneja_vencimiento ? req.body.fecha_vencimiento : null;
+      }
+
       const ajusteCreado = await AjusteInventario.create({
         producto_id,
         cantidad_sistema: cantidadSistema,
@@ -330,7 +341,7 @@ const registrarAjuste = async (req, res) => {
           producto_id,
           proveedor_id: null,
           cantidad: diferencia,
-          fecha_vencimiento: null,
+          fecha_vencimiento: fechaVencimientoAjuste,
           usuario_id: req.usuario.id,
           ajuste_id: ajusteCreado.id,
         }, t);
@@ -413,24 +424,32 @@ const crearSolicitud = async (req, res) => {
       return res.status(400).json({ mensaje: 'La cantidad debe ser un número entero mayor a 0' });
     }
 
-    const producto = await Producto.findByPk(producto_id);
-    if (!producto) {
-      return res.status(404).json({ mensaje: 'Producto no encontrado' });
-    }
+    const solicitud = await sequelize.transaction(async (t) => {
+      // Se bloquea la fila del producto como mutex: sin esto, dos solicitudes
+      // para el mismo producto enviadas casi al mismo tiempo (doble clic, dos
+      // Almaceneros) podían pasar ambas el chequeo de "no hay solicitud
+      // activa" antes de que la primera terminara de insertarse, quedando
+      // dos solicitudes activas duplicadas para el mismo producto.
+      const producto = await Producto.findByPk(producto_id, { transaction: t, lock: t.LOCK.UPDATE });
+      if (!producto) {
+        throw { status: 404, mensaje: 'Producto no encontrado' };
+      }
 
-    const solicitudActiva = await SolicitudReposicion.findOne({
-      where: { producto_id, estado: { [Op.in]: ['Pendiente', 'Aprobada'] } },
-    });
-    if (solicitudActiva) {
-      return res.status(400).json({ mensaje: 'Ya existe una solicitud pendiente o aprobada para este producto' });
-    }
+      const solicitudActiva = await SolicitudReposicion.findOne({
+        where: { producto_id, estado: { [Op.in]: ['Pendiente', 'Aprobada'] } },
+        transaction: t,
+      });
+      if (solicitudActiva) {
+        throw { status: 400, mensaje: 'Ya existe una solicitud pendiente o aprobada para este producto' };
+      }
 
-    const solicitud = await SolicitudReposicion.create({
-      producto_id,
-      cantidad,
-      proveedor_id: proveedor_id || null,
-      estado: 'Pendiente',
-      usuario_solicitante_id: req.usuario.id,
+      return SolicitudReposicion.create({
+        producto_id,
+        cantidad,
+        proveedor_id: proveedor_id || null,
+        estado: 'Pendiente',
+        usuario_solicitante_id: req.usuario.id,
+      }, { transaction: t });
     });
 
     const solicitudCompleta = await SolicitudReposicion.findByPk(solicitud.id, {
@@ -439,6 +458,9 @@ const crearSolicitud = async (req, res) => {
 
     return res.status(201).json(presentarSolicitud(solicitudCompleta));
   } catch (err) {
+    if (err.status && err.mensaje) {
+      return res.status(err.status).json({ mensaje: err.mensaje });
+    }
     console.error('Error en crearSolicitud:', err);
     return res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
@@ -561,7 +583,18 @@ const completarSolicitud = async (req, res) => {
     const errorFecha = validarFechaVencimiento(fechaVencimiento, solicitud.producto.maneja_vencimiento);
     if (errorFecha) return res.status(400).json({ mensaje: errorFecha });
 
-    await sequelize.transaction(async (t) => {
+    const costoUnitario = req.body.costo_unitario;
+    if (costoUnitario != null && (isNaN(Number(costoUnitario)) || Number(costoUnitario) <= 0)) {
+      return res.status(400).json({ mensaje: 'El costo unitario debe ser mayor a 0' });
+    }
+
+    // Si llega menos de lo pedido, el restante no debe perderse silenciosamente:
+    // se genera una nueva solicitud "Pendiente" por la diferencia, vinculada a
+    // esta como origen — la original queda como registro fiel de lo que
+    // realmente llegó, y el faltante sigue visible para gestionarlo aparte.
+    const cantidadRestante = solicitud.cantidad - cantidadRecibida;
+
+    const seguimientoId = await sequelize.transaction(async (t) => {
       solicitud.estado = 'Completada';
       await solicitud.save({ transaction: t });
 
@@ -573,14 +606,36 @@ const completarSolicitud = async (req, res) => {
         usuario_id: req.usuario.id,
         solicitud_id: solicitud.id,
         codigo_lote: req.body.codigo_lote,
+        costo_unitario: costoUnitario != null ? Number(costoUnitario) : null,
       }, t);
+
+      if (cantidadRestante > 0) {
+        const seguimiento = await SolicitudReposicion.create({
+          producto_id: solicitud.producto_id,
+          cantidad: cantidadRestante,
+          proveedor_id: solicitud.proveedor_id,
+          estado: 'Pendiente',
+          usuario_solicitante_id: req.usuario.id,
+          solicitud_origen_id: solicitud.id,
+        }, { transaction: t });
+        return seguimiento.id;
+      }
+      return null;
     });
 
     const solicitudCompleta = await SolicitudReposicion.findByPk(solicitud.id, {
       include: INCLUDE_SOLICITUD,
     });
 
-    return res.status(200).json(presentarSolicitud(solicitudCompleta));
+    const respuesta = presentarSolicitud(solicitudCompleta);
+    if (seguimientoId) {
+      const seguimientoCompleto = await SolicitudReposicion.findByPk(seguimientoId, {
+        include: INCLUDE_SOLICITUD,
+      });
+      respuesta.solicitud_seguimiento = presentarSolicitud(seguimientoCompleto);
+    }
+
+    return res.status(200).json(respuesta);
   } catch (err) {
     if (err.status && err.mensaje) {
       return res.status(err.status).json({ mensaje: err.mensaje });
