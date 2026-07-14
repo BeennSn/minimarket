@@ -314,7 +314,6 @@ const DIAS_ALERTA_VENCIMIENTO_CERCANO = 7;
 function ModalCompletar({ abierto, onCerrar, solicitud, onCompletada }) {
   const [cantidadRecibida, setCantidadRecibida] = useState('');
   const [fechaVencimiento, setFechaVencimiento] = useState('');
-  const [costoUnitario, setCostoUnitario] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState('');
 
@@ -330,7 +329,6 @@ function ModalCompletar({ abierto, onCerrar, solicitud, onCompletada }) {
     if (abierto && solicitud) {
       setCantidadRecibida(String(solicitud.cantidad));
       setFechaVencimiento('');
-      setCostoUnitario('');
       setError('');
     }
   }, [abierto, solicitud]);
@@ -351,17 +349,12 @@ function ModalCompletar({ abierto, onCerrar, solicitud, onCompletada }) {
         return;
       }
     }
-    if (costoUnitario !== '' && Number(costoUnitario) <= 0) {
-      setError('El costo unitario debe ser mayor a 0');
-      return;
-    }
     setEnviando(true);
     setError('');
     try {
       const { data } = await api.patch(`/inventario/solicitudes/${solicitud.id}/completar`, {
         cantidad_recibida: cr,
         fecha_vencimiento: manejaVencimiento ? (fechaVencimiento || null) : null,
-        costo_unitario: costoUnitario !== '' ? Number(costoUnitario) : null,
       });
       onCompletada(data);
     } catch (err) {
@@ -428,22 +421,6 @@ function ModalCompletar({ abierto, onCerrar, solicitud, onCompletada }) {
                 ⚠ Este producto vence muy pronto (en {diasParaVencer} día{diasParaVencer !== 1 ? 's' : ''}). Verifica la fecha.
               </p>
             )}
-          </div>
-
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
-              Costo unitario (S/) <span className="text-xs font-normal text-gray-400">(opcional)</span>
-            </label>
-            <input
-              type="number"
-              min="0.01"
-              step="0.01"
-              value={costoUnitario}
-              onChange={(e) => setCostoUnitario(e.target.value)}
-              placeholder="Ej: 2.50"
-              className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-            />
-            <p className="mt-1 text-xs text-gray-400">Si lo indicas, se recalcula el costo promedio del producto.</p>
           </div>
 
           {error && <div className="rounded-lg bg-red-50 px-4 py-2 text-sm text-red-600">{error}</div>}
