@@ -3,7 +3,7 @@ const { EntradaMercaderia, ConsumoLote, Producto } = require('../models');
 const { hoyPeru } = require('../utils/fechas');
 
 // ─── Crear lote (entrada de mercadería) ───────────────────────────────────────
-const crearLote = async ({ producto_id, proveedor_id, cantidad, fecha_vencimiento, usuario_id, solicitud_id, costo_unitario, ajuste_id, cantidad_unidad_compra, unidad_compra_snapshot }, t) => {
+const crearLote = async ({ producto_id, proveedor_id, cantidad, fecha_vencimiento, usuario_id, solicitud_id, costo_unitario, ajuste_id, cantidad_unidad_compra, unidad_compra_snapshot, codigo_lote }, t) => {
   const lote = await EntradaMercaderia.create({
     producto_id,
     proveedor_id: proveedor_id || null,
@@ -16,6 +16,7 @@ const crearLote = async ({ producto_id, proveedor_id, cantidad, fecha_vencimient
     costo_unitario: costo_unitario ?? null,
     cantidad_unidad_compra: cantidad_unidad_compra ?? null,
     unidad_compra_snapshot: unidad_compra_snapshot ?? null,
+    codigo_lote: codigo_lote?.trim() || null,
   }, { transaction: t });
 
   const producto = await Producto.findByPk(producto_id, { transaction: t, lock: t.LOCK.UPDATE });
@@ -42,8 +43,15 @@ const crearLote = async ({ producto_id, proveedor_id, cantidad, fecha_vencimient
 // ventas: es ilegal vender producto vencido). Se deja en false por defecto
 // porque Bajas y Ajustes sí necesitan poder consumir lotes vencidos —de
 // hecho, dar de baja stock vencido es precisamente para eso.
-const consumirStockFIFO = async ({ producto_id, cantidad, tipo, referencia = {}, soloVigente = false }, t) => {
+// entrada_id: si se especifica, restringe el consumo a ESE lote puntual en
+// vez de dejar que el sistema elija automáticamente por FEFO (usado por
+// Bajas cuando el usuario quiere dar de baja un lote específico, ej. uno
+// dañado que no es necesariamente el que vence primero).
+const consumirStockFIFO = async ({ producto_id, cantidad, tipo, referencia = {}, soloVigente = false, entrada_id = null }, t) => {
   const where = { producto_id, cantidad_restante: { [Op.gt]: 0 } };
+  if (entrada_id) {
+    where.id = entrada_id;
+  }
   if (soloVigente) {
     // Estrictamente después de hoy (en hora de Perú): un lote que vence hoy
     // mismo ya NO se considera vigente (decisión de negocio: no se vende lo
@@ -86,7 +94,9 @@ const consumirStockFIFO = async ({ producto_id, cantidad, tipo, referencia = {},
   }
 
   if (restante > 0) {
-    const mensaje = soloVigente
+    const mensaje = entrada_id
+      ? 'El lote seleccionado no tiene suficiente stock restante para esta cantidad'
+      : soloVigente
       ? 'Stock insuficiente: parte o todo el stock de este producto está vencido. Da de baja el lote vencido antes de venderlo.'
       : 'Stock insuficiente en los lotes registrados (descuadre de inventario, contactar al administrador)';
     throw { status: 400, mensaje };

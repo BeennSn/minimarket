@@ -19,6 +19,7 @@ const presentarEntrada = (entrada) => ({
     ? { id: entrada.solicitud.id }
     : null,
   ajuste_id: entrada.ajuste_id || null,
+  codigo_lote: entrada.codigo_lote || null,
   fecha_vencimiento: entrada.fecha_vencimiento || null,
   costo_unitario: entrada.costo_unitario ?? null,
   cantidad_unidad_compra: entrada.cantidad_unidad_compra ?? null,
@@ -40,6 +41,15 @@ const presentarBaja = (baja) => ({
     id:     baja.usuario.id,
     nombre: baja.usuario.nombre,
   },
+  // Lote(s) exactos de los que salió esta baja (vía ConsumoLote). Con baja
+  // por lote específico será uno solo; con la automática (FEFO) puede haber
+  // más de uno si la cantidad cruzó de un lote a otro.
+  lotes: (baja.consumos || []).map((c) => ({
+    id: c.lote?.id ?? null,
+    codigo_lote: c.lote?.codigo_lote || null,
+    fecha_vencimiento: c.lote?.fecha_vencimiento || null,
+    cantidad: c.cantidad,
+  })),
   createdAt: baja.createdAt,
 });
 

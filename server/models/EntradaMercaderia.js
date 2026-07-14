@@ -59,6 +59,13 @@ const EntradaMercaderia = sequelize.define('EntradaMercaderia', {
     type: DataTypes.DATEONLY,
     allowNull: true,
   },
+  // Identificador libre que pone quien registra la entrada (ej. el código de
+  // lote del proveedor, o uno interno tipo "L-2026-07-A") para distinguir
+  // lotes a simple vista además de por fecha de vencimiento. Opcional.
+  codigo_lote: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
   costo_unitario: {
     type: DataTypes.DECIMAL(10, 2),
     allowNull: true,

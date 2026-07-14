@@ -58,7 +58,7 @@ const INCLUDES_ENTRADA = [
 
 const registrarEntrada = async (req, res) => {
   try {
-    const { producto_id, proveedor_id, cantidad, fecha_vencimiento, costo_unitario } = req.body;
+    const { producto_id, proveedor_id, cantidad, fecha_vencimiento, costo_unitario, codigo_lote } = req.body;
 
     if (!Number.isInteger(Number(cantidad)) || Number(cantidad) < 1) {
       return res.status(400).json({ mensaje: 'La cantidad debe ser un número entero mayor a 0' });
@@ -66,6 +66,10 @@ const registrarEntrada = async (req, res) => {
 
     if (costo_unitario != null && (isNaN(Number(costo_unitario)) || Number(costo_unitario) <= 0)) {
       return res.status(400).json({ mensaje: 'El costo unitario debe ser mayor a 0' });
+    }
+
+    if (codigo_lote != null && String(codigo_lote).length > 100) {
+      return res.status(400).json({ mensaje: 'El código de lote no puede superar los 100 caracteres' });
     }
 
     const entrada = await sequelize.transaction(async (t) => {
@@ -93,6 +97,7 @@ const registrarEntrada = async (req, res) => {
         costo_unitario: costo_unitario != null ? Number(costo_unitario) : null,
         cantidad_unidad_compra: Number(cantidad),
         unidad_compra_snapshot: producto.unidad_compra,
+        codigo_lote,
       }, t);
     });
 
@@ -144,9 +149,21 @@ const listarEntradas = async (req, res) => {
 
 const MOTIVOS_BAJA = ['Vencido', 'Dañado', 'Robo o faltante', 'Consumo interno', 'Error de registro', 'Otro'];
 
+// Incluye los ConsumoLote de cada baja (con su lote de origen) para poder
+// mostrar de qué lote(s) exacto salió cada baja — así queda vinculado con lo
+// que se ve en Productos → Ver lotes.
+const INCLUDE_BAJA = [
+  { association: 'producto', attributes: ['id', 'nombre', 'marca'] },
+  { association: 'usuario', attributes: ['id', 'nombre'] },
+  {
+    association: 'consumos',
+    include: [{ association: 'lote', attributes: ['id', 'codigo_lote', 'fecha_vencimiento'] }],
+  },
+];
+
 const registrarBaja = async (req, res) => {
   try {
-    const { producto_id, cantidad, motivo, motivo_detalle } = req.body;
+    const { producto_id, cantidad, motivo, motivo_detalle, entrada_id } = req.body;
 
     if (!Number.isInteger(Number(cantidad)) || Number(cantidad) < 1) {
       return res.status(400).json({ mensaje: 'La cantidad debe ser un número entero mayor a 0' });
@@ -166,6 +183,18 @@ const registrarBaja = async (req, res) => {
         throw { status: 400, mensaje: 'Stock insuficiente para realizar la baja' };
       }
 
+      // Lote específico opcional: si se indica, la baja se descuenta SOLO de
+      // ese lote (ej. un lote puntual dañado), en vez de dejar que el
+      // sistema elija automáticamente por FEFO.
+      let entradaIdValidado = null;
+      if (entrada_id) {
+        const lote = await EntradaMercaderia.findByPk(entrada_id, { transaction: t });
+        if (!lote || lote.producto_id !== Number(producto_id)) {
+          throw { status: 404, mensaje: 'El lote seleccionado no existe o no pertenece a este producto' };
+        }
+        entradaIdValidado = lote.id;
+      }
+
       const bajaCreada = await BajaInventario.create({
         producto_id,
         cantidad,
@@ -179,16 +208,14 @@ const registrarBaja = async (req, res) => {
         cantidad,
         tipo: 'Baja',
         referencia: { baja_id: bajaCreada.id },
+        entrada_id: entradaIdValidado,
       }, t);
 
       return bajaCreada;
     });
 
     const bajaCompleta = await BajaInventario.findByPk(baja.id, {
-      include: [
-        { association: 'producto', attributes: ['id', 'nombre', 'marca'] },
-        { association: 'usuario', attributes: ['id', 'nombre'] },
-      ],
+      include: INCLUDE_BAJA,
     });
 
     return res.status(201).json(presentarBaja(bajaCompleta));
@@ -220,10 +247,7 @@ const listarBajas = async (req, res) => {
 
     const bajas = await BajaInventario.findAll({
       where,
-      include: [
-        { association: 'producto', attributes: ['id', 'nombre', 'marca'] },
-        { association: 'usuario', attributes: ['id', 'nombre'] },
-      ],
+      include: INCLUDE_BAJA,
       order: [['createdAt', 'DESC']],
     });
 
@@ -518,6 +542,7 @@ const completarSolicitud = async (req, res) => {
         fecha_vencimiento: solicitud.producto.maneja_vencimiento ? fechaVencimiento : null,
         usuario_id: req.usuario.id,
         solicitud_id: solicitud.id,
+        codigo_lote: req.body.codigo_lote,
       }, t);
     });
 

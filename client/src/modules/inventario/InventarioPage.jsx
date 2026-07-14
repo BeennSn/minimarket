@@ -32,6 +32,9 @@ export default function InventarioPage() {
   const [motivoDetalle, setMotivoDetalle] = useState('');
   const [fechaVencimiento, setFechaVencimiento] = useState('');
   const [costoUnitario, setCostoUnitario] = useState('');
+  const [codigoLote, setCodigoLote] = useState('');
+  const [loteId, setLoteId] = useState('');
+  const [lotesProductoSeleccionado, setLotesProductoSeleccionado] = useState([]);
   const [cantidadContada, setCantidadContada] = useState('');
   const [observaciones, setObservaciones] = useState('');
   const [enviando, setEnviando] = useState(false);
@@ -86,6 +89,24 @@ export default function InventarioPage() {
     cargarDatos(!primeraCargaRef.current);
     primeraCargaRef.current = false;
   }, [stockVersion]);
+
+  // Lotes con stock restante del producto elegido en el formulario — se usan
+  // para poder dar de baja un lote específico (en vez de dejar que el
+  // sistema elija automático por FEFO). Se reconsulta cada vez que cambia el
+  // producto seleccionado, y se resetea la selección de lote al cambiar.
+  useEffect(() => {
+    setLoteId('');
+    if (!productoId) {
+      setLotesProductoSeleccionado([]);
+      return;
+    }
+    api.get('/inventario/entradas', { params: { producto_id: productoId } })
+      .then(({ data }) => {
+        const conStock = (Array.isArray(data) ? data : []).filter((l) => l.cantidad_restante > 0);
+        setLotesProductoSeleccionado(conStock);
+      })
+      .catch(() => setLotesProductoSeleccionado([]));
+  }, [productoId]);
 
   // ─── Filtrar entradas ─────────────────────────────────────────────────────
 
@@ -192,6 +213,7 @@ export default function InventarioPage() {
         cantidad: parseInt(cantidad, 10),
         fecha_vencimiento: manejaVencimientoEntrada ? (fechaVencimiento || null) : null,
         costo_unitario: costoUnitario ? parseFloat(costoUnitario) : null,
+        codigo_lote: codigoLote.trim() || null,
       });
       mostrarExito('Entrada registrada correctamente');
       setProductoId('');
@@ -199,6 +221,7 @@ export default function InventarioPage() {
       setCantidad('');
       setFechaVencimiento('');
       setCostoUnitario('');
+      setCodigoLote('');
       const [rP, rE] = await Promise.all([
         api.get('/productos/activos'),
         api.get('/inventario/entradas'),
@@ -225,12 +248,14 @@ export default function InventarioPage() {
         cantidad: parseInt(cantidad, 10),
         motivo,
         motivo_detalle: motivoDetalle || null,
+        entrada_id: loteId || null,
       });
       mostrarExito('Baja registrada correctamente');
       setProductoId('');
       setCantidad('');
       setMotivo('Vencido');
       setMotivoDetalle('');
+      setLoteId('');
       const [rP, rB] = await Promise.all([
         api.get('/productos/activos'),
         api.get('/inventario/bajas'),
@@ -251,6 +276,10 @@ export default function InventarioPage() {
   const diferenciaAjuste = productoSeleccionado && cantidadContada !== ''
     ? parseInt(cantidadContada, 10) - productoSeleccionado.stock
     : null;
+
+  // Lote elegido en el formulario de Bajas (si no se elige ninguno, la baja
+  // se descuenta automático por FEFO, como antes).
+  const loteSeleccionado = lotesProductoSeleccionado.find((l) => String(l.id) === String(loteId));
 
   // Advertencia no bloqueante (no error) cuando la fecha ingresada cae muy
   // cerca de hoy — para atrapar errores de digitación sin impedir el registro
@@ -436,6 +465,21 @@ export default function InventarioPage() {
                     <p className="mt-1 text-xs text-gray-400">Costo por unidad de venta, no por {productoSeleccionado.unidad_compra.toLowerCase()}.</p>
                   )}
                 </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                    Código de lote
+                    <span className="ml-1 text-xs font-normal text-gray-400">(opcional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={codigoLote}
+                    onChange={(e) => setCodigoLote(e.target.value)}
+                    maxLength={100}
+                    placeholder="Ej: L-2026-07-A o el del proveedor"
+                    className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  />
+                  <p className="mt-1 text-xs text-gray-400">Ayuda a distinguir este lote de otros del mismo producto.</p>
+                </div>
               </div>
               {error && (
                 <div className="rounded-lg bg-red-50 px-4 py-2 text-sm text-red-600">{error}</div>
@@ -525,6 +569,7 @@ export default function InventarioPage() {
                   <thead>
                     <tr className="bg-[#6366f1] text-white">
                       <th className="px-4 py-3 font-medium">Producto</th>
+                      <th className="px-4 py-3 font-medium">Lote</th>
                       <th className="px-4 py-3 font-medium">Proveedor</th>
                       <th className="px-4 py-3 font-medium">Cantidad</th>
                       <th className="px-4 py-3 font-medium">Costo Unit.</th>
@@ -548,6 +593,9 @@ export default function InventarioPage() {
                               Ajuste #{e.ajuste_id}
                             </span>
                           )}
+                        </td>
+                        <td className="px-4 py-3 text-gray-500">
+                          {e.codigo_lote || <span className="text-gray-300">—</span>}
                         </td>
                         <td className="px-4 py-3 text-gray-500">
                           {e.proveedor?.nombre || e.proveedor_nombre || <span className="text-gray-300">—</span>}
@@ -608,15 +656,44 @@ export default function InventarioPage() {
                   </select>
                 </div>
                 <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                    Lote <span className="text-xs font-normal text-gray-400">(opcional)</span>
+                  </label>
+                  <select
+                    value={loteId}
+                    onChange={(e) => setLoteId(e.target.value)}
+                    disabled={!productoId}
+                    className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:bg-gray-50 disabled:text-gray-400"
+                  >
+                    <option value="">Automático (el sistema elige el que vence antes)</option>
+                    {lotesProductoSeleccionado.map((l) => (
+                      <option key={l.id} value={l.id}>
+                        {l.codigo_lote ? `${l.codigo_lote} — ` : ''}
+                        {l.fecha_vencimiento ? `Vence ${l.fecha_vencimiento}` : 'Sin vencimiento'}
+                        {' '}(restante: {l.cantidad_restante})
+                      </option>
+                    ))}
+                  </select>
+                  {loteId && (
+                    <p className="mt-1 text-xs text-gray-400">
+                      La baja se descontará únicamente de este lote.
+                    </p>
+                  )}
+                </div>
+                <div>
                   <label className="mb-1 block text-sm font-medium text-gray-700">Cantidad</label>
                   <input
                     type="number"
                     min="1"
+                    max={loteSeleccionado ? loteSeleccionado.cantidad_restante : undefined}
                     value={cantidad}
                     onChange={(e) => setCantidad(e.target.value)}
                     required
                     className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                   />
+                  {loteSeleccionado && (
+                    <p className="mt-1 text-xs text-gray-400">Máximo en este lote: {loteSeleccionado.cantidad_restante}</p>
+                  )}
                 </div>
                 <div>
                   <label className="mb-1 block text-sm font-medium text-gray-700">Motivo</label>
@@ -732,6 +809,7 @@ export default function InventarioPage() {
                   <thead>
                     <tr className="bg-[#6366f1] text-white">
                       <th className="px-4 py-3 font-medium">Producto</th>
+                      <th className="px-4 py-3 font-medium">Lote(s)</th>
                       <th className="px-4 py-3 font-medium">Cantidad</th>
                       <th className="px-4 py-3 font-medium">Motivo</th>
                       <th className="px-4 py-3 font-medium">Registrado por</th>
@@ -743,6 +821,20 @@ export default function InventarioPage() {
                       <tr key={b.id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                         <td className="px-4 py-3 text-gray-800">
                           {b.producto?.nombre || b.producto_nombre}
+                        </td>
+                        <td className="px-4 py-3 text-gray-500">
+                          {b.lotes && b.lotes.length > 0 ? (
+                            <div className="flex flex-col gap-0.5">
+                              {b.lotes.map((l, idx) => (
+                                <span key={l.id ?? idx} className="text-xs">
+                                  {l.codigo_lote || (l.fecha_vencimiento ? `Vence ${l.fecha_vencimiento}` : 'Sin código')}
+                                  <span className="text-gray-400"> ({l.cantidad})</span>
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-gray-300">—</span>
+                          )}
                         </td>
                         <td className="px-4 py-3">
                           <span className="inline-block rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-700">

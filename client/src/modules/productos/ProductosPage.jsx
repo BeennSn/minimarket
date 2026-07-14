@@ -478,6 +478,7 @@ function ModalLotes({ abierto, onCerrar, producto }) {
               <table className="w-full text-left text-sm">
                 <thead>
                   <tr className="text-xs uppercase text-gray-400">
+                    <th className="px-3 py-2 font-medium">Lote</th>
                     <th className="px-3 py-2 font-medium">Vencimiento</th>
                     <th className="px-3 py-2 font-medium">Restante</th>
                     <th className="px-3 py-2 font-medium">Original</th>
@@ -494,6 +495,7 @@ function ModalLotes({ abierto, onCerrar, producto }) {
                         key={l.id}
                         className={`border-t border-gray-50 ${l.cantidad_restante === 0 ? 'text-gray-300' : 'text-gray-700'}`}
                       >
+                        <td className="px-3 py-2">{l.codigo_lote || '—'}</td>
                         <td className="px-3 py-2">{l.fecha_vencimiento ? formatFecha(l.fecha_vencimiento) : '—'}</td>
                         <td className="px-3 py-2 font-medium">{l.cantidad_restante}</td>
                         <td className="px-3 py-2 text-gray-400">{l.cantidad}</td>
