@@ -150,6 +150,10 @@ export default function HistorialCajaPage() {
   const puedeAprobar = rolSatisface(usuario?.rol, ['Administrador', 'Gerente']);
 
   const cargar = async () => {
+    if (filtroFechaInicio && filtroFechaFin && filtroFechaInicio > filtroFechaFin) {
+      setError('La fecha "Desde" no puede ser posterior a la fecha "Hasta".');
+      return;
+    }
     setCargando(true);
     try {
       const params = {};
@@ -158,6 +162,7 @@ export default function HistorialCajaPage() {
       if (filtroEstado)      params.estado       = filtroEstado;
       const { data } = await api.get('/caja/historial', { params });
       setTurnos(data);
+      setError('');
     } catch {
       setError('No se pudo cargar el historial.');
     } finally {
@@ -192,11 +197,13 @@ export default function HistorialCajaPage() {
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1">Desde</label>
           <input type="date" value={filtroFechaInicio} onChange={(e) => setFiltroFechaInicio(e.target.value)}
+            max={filtroFechaFin || undefined}
             className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:border-indigo-500 focus:outline-none" />
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1">Hasta</label>
           <input type="date" value={filtroFechaFin} onChange={(e) => setFiltroFechaFin(e.target.value)}
+            min={filtroFechaInicio || undefined}
             className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:border-indigo-500 focus:outline-none" />
         </div>
         <div>
