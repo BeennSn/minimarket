@@ -312,7 +312,6 @@ function ModalRechazar({ abierto, onCerrar, solicitud, onRechazada }) {
 const DIAS_ALERTA_VENCIMIENTO_CERCANO = 7;
 
 function ModalCompletar({ abierto, onCerrar, solicitud, onCompletada }) {
-  const [cantidadRecibida, setCantidadRecibida] = useState('');
   const [fechaVencimiento, setFechaVencimiento] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState('');
@@ -327,7 +326,6 @@ function ModalCompletar({ abierto, onCerrar, solicitud, onCompletada }) {
 
   useEffect(() => {
     if (abierto && solicitud) {
-      setCantidadRecibida(String(solicitud.cantidad));
       setFechaVencimiento('');
       setError('');
     }
@@ -337,8 +335,7 @@ function ModalCompletar({ abierto, onCerrar, solicitud, onCompletada }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const cr = parseInt(cantidadRecibida, 10);
-    if (!cr || cr <= 0) { setError('La cantidad debe ser mayor a 0'); return; }
+    const cr = solicitud.cantidad;
     if (manejaVencimiento) {
       if (!fechaVencimiento) {
         setError('La fecha de vencimiento es obligatoria para este producto');
@@ -389,14 +386,12 @@ function ModalCompletar({ abierto, onCerrar, solicitud, onCompletada }) {
             </label>
             <input
               type="number"
-              min={1}
-              value={cantidadRecibida}
-              onChange={(e) => setCantidadRecibida(e.target.value)}
-              required
-              className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              value={solicitud.cantidad}
+              disabled
+              className="w-full rounded-lg border border-gray-200 bg-gray-50 px-4 py-2 text-sm text-gray-500"
             />
             <p className="mt-1 text-xs text-gray-400">
-              Si llegó parcial, ingresa la cantidad real recibida
+              Siempre igual a la cantidad solicitada
             </p>
           </div>
 
