@@ -160,14 +160,15 @@ function ModalAprobar({ abierto, onCerrar, solicitud, proveedores, onAprobada })
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">Proveedor</label>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Proveedor <span className="text-xs font-normal text-gray-400">(opcional)</span>
+            </label>
             <select
               value={proveedorId}
               onChange={(e) => setProveedorId(e.target.value)}
-              required
               className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
             >
-              <option value="">Seleccionar...</option>
+              <option value="">Sin proveedor registrado</option>
               {proveedores.map((p) => (
                 <option key={p.id} value={p.id}>{p.nombre}</option>
               ))}

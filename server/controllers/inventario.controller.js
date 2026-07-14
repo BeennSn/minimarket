@@ -81,16 +81,23 @@ const registrarEntrada = async (req, res) => {
       const errorFecha = validarFechaVencimiento(fecha_vencimiento, producto.maneja_vencimiento);
       if (errorFecha) throw { status: 400, mensaje: errorFecha };
 
-      const proveedor = await Proveedor.findByPk(proveedor_id, { transaction: t });
-      if (!proveedor || !proveedor.activo) {
-        throw { status: 404, mensaje: 'Proveedor no encontrado o inactivo' };
+      // Proveedor opcional: hay compras informales (mercado mayorista, sin
+      // proveedor formal) que no deberían bloquear registrar la entrada. Si
+      // se manda uno, sí se valida que exista y esté activo.
+      let proveedorIdValidado = null;
+      if (proveedor_id) {
+        const proveedor = await Proveedor.findByPk(proveedor_id, { transaction: t });
+        if (!proveedor || !proveedor.activo) {
+          throw { status: 404, mensaje: 'Proveedor no encontrado o inactivo' };
+        }
+        proveedorIdValidado = proveedor.id;
       }
 
       const cantidadUnidadesVenta = Number(cantidad) * producto.factor_conversion;
 
       return crearLote({
         producto_id,
-        proveedor_id,
+        proveedor_id: proveedorIdValidado,
         cantidad: cantidadUnidadesVenta,
         fecha_vencimiento: producto.maneja_vencimiento ? (fecha_vencimiento || null) : null,
         usuario_id: req.usuario.id,
@@ -531,10 +538,6 @@ const completarSolicitud = async (req, res) => {
 
     if (solicitud.estado !== 'Aprobada') {
       return res.status(400).json({ mensaje: 'Solo se pueden completar solicitudes aprobadas' });
-    }
-
-    if (!solicitud.proveedor_id) {
-      return res.status(400).json({ mensaje: 'La solicitud no tiene un proveedor asignado' });
     }
 
     const cantidadRecibida = req.body.cantidad_recibida

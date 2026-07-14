@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Loader2, Filter, X, AlertTriangle } from 'lucide-react';
 import api from '../../utils/axios';
-import { formatFechaHora, fechaLocalISO, sanitizarMonto } from '../../utils/format';
+import { formatFechaHora, fechaLocalISO } from '../../utils/format';
 import { useStockSync } from '../../context/StockSyncContext';
 import Breadcrumb from '../../components/Breadcrumb';
 import Spinner from '../../components/Spinner';
@@ -31,7 +31,6 @@ export default function InventarioPage() {
   const [motivo, setMotivo] = useState('Vencido');
   const [motivoDetalle, setMotivoDetalle] = useState('');
   const [fechaVencimiento, setFechaVencimiento] = useState('');
-  const [costoUnitario, setCostoUnitario] = useState('');
   const [codigoLote, setCodigoLote] = useState('');
   const [loteId, setLoteId] = useState('');
   const [lotesProductoSeleccionado, setLotesProductoSeleccionado] = useState([]);
@@ -216,10 +215,9 @@ export default function InventarioPage() {
     try {
       await api.post('/inventario/entradas', {
         producto_id: productoId,
-        proveedor_id: proveedorId,
+        proveedor_id: proveedorId || null,
         cantidad: parseInt(cantidad, 10),
         fecha_vencimiento: manejaVencimientoEntrada ? (fechaVencimiento || null) : null,
-        costo_unitario: costoUnitario ? parseFloat(costoUnitario) : null,
         codigo_lote: codigoLote.trim() || null,
       });
       mostrarExito('Entrada registrada correctamente');
@@ -227,7 +225,6 @@ export default function InventarioPage() {
       setProveedorId('');
       setCantidad('');
       setFechaVencimiento('');
-      setCostoUnitario('');
       setCodigoLote('');
       const [rP, rE] = await Promise.all([
         api.get('/productos/activos'),
@@ -438,14 +435,15 @@ export default function InventarioPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Proveedor</label>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                    Proveedor <span className="text-xs font-normal text-gray-400">(opcional)</span>
+                  </label>
                   <select
                     value={proveedorId}
                     onChange={(e) => setProveedorId(e.target.value)}
-                    required
                     className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                   >
-                    <option value="">Seleccionar...</option>
+                    <option value="">Sin proveedor registrado</option>
                     {proveedores.map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.nombre} ({p.ruc})
@@ -491,31 +489,6 @@ export default function InventarioPage() {
                     <p className="mt-1 text-xs text-amber-600">
                       ⚠ Este producto vence muy pronto (en {diasParaVencerEntrada} día{diasParaVencerEntrada !== 1 ? 's' : ''}). Verifica la fecha.
                     </p>
-                  )}
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">
-                    Costo Unitario (S/.)
-                    <span className="ml-1 text-xs font-normal text-gray-400">(opcional)</span>
-                  </label>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={costoUnitario}
-                    onChange={(e) => setCostoUnitario(sanitizarMonto(e.target.value))}
-                    onKeyDown={(e) => {
-                      if (['e', 'E', '+', '-'].includes(e.key)) e.preventDefault();
-                    }}
-                    onPaste={(e) => {
-                      e.preventDefault();
-                      const texto = e.clipboardData.getData('text');
-                      setCostoUnitario((prev) => sanitizarMonto(prev + texto));
-                    }}
-                    placeholder="0.00"
-                    className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                  />
-                  {productoSeleccionado && productoSeleccionado.factor_conversion > 1 && (
-                    <p className="mt-1 text-xs text-gray-400">Costo por unidad de venta, no por {productoSeleccionado.unidad_compra.toLowerCase()}.</p>
                   )}
                 </div>
                 <div>
