@@ -347,7 +347,7 @@ function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categor
               </label>
             </div>
             <p className="mt-1 text-xs text-gray-400">
-              Desmárcalo para productos que no caducan (ferretería, ropa, etc.): sus entradas de inventario no pedirán fecha de vencimiento.
+              Desmárcalo para productos que no caducan (Encendedor, cepillos, productos no perecederos, etc.): sus entradas de inventario no pedirán fecha de vencimiento.
             </p>
           </div>
 

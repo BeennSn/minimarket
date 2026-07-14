@@ -19,7 +19,7 @@ const AÑOS_MAXIMOS_VENCIMIENTO = 15;
 // fecha de vencimiento se trata como vigente para siempre (nunca se bloquea
 // su venta aunque pase el tiempo), así que dejarla vacía anularía en la
 // práctica el control de "no vender vencido". Si el producto NO maneja
-// vencimiento (ferretería, ropa, etc.) el campo no aplica y no se valida.
+// vencimiento (Encendedor, cepillos, productos no perecederos, etc.) el campo no aplica y no se valida.
 // No se exige un mínimo de días desde hoy: hay productos de vida corta
 // legítimos (pan del día, lácteos) que vencen mañana mismo — ese caso se
 // advierte en el frontend, no se bloquea aquí. Sí se pone un tope superior
