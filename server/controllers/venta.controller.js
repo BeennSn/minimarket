@@ -87,7 +87,7 @@ const registrar = async (req, res) => {
       }
     }
 
-    if (tipo_comprobante === 'BoletaDNI') {
+    if (cliente_dni) {
       if (!/^\d{8}$/.test(cliente_dni)) {
         return res.status(400).json({ mensaje: 'Para boleta con DNI se requiere un DNI válido de 8 dígitos' });
       }

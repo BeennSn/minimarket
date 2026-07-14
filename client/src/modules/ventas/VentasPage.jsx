@@ -440,7 +440,7 @@ export default function VentasPage() {
 
   const datosClienteValidos = () => {
     if (tipoComprobante === 'BoletaSimple') return true;
-    if (tipoComprobante === 'BoletaDNI') return /^\d{8}$/.test(clienteDni) && dniValidado;
+    if (tipoComprobante === 'BoletaDNI') return /^\d{8}$/.test(clienteDni) && dniValidado && clienteId != null;
     if (tipoComprobante === 'Factura') {
       return /^\d{11}$/.test(clienteRuc) && rucValidado;
     }
@@ -504,7 +504,8 @@ export default function VentasPage() {
         setClienteId(cliente.id);
         setClienteNombreNoCoincide(cliente.nombre_coincide === false);
       } catch {
-        // no bloquea la venta si falla el registro del cliente
+        // clienteId se queda en null; datosClienteValidos() bloqueará la venta
+        // hasta que se reintente la consulta de DNI con éxito.
       }
     } catch (err) {
       setNombreDni('');
@@ -561,9 +562,13 @@ export default function VentasPage() {
 
     if (!datosClienteValidos()) {
       if (tipoComprobante === 'BoletaDNI') {
-        setError(/^\d{8}$/.test(clienteDni)
-          ? 'Debes verificar el DNI con RENIEC antes de continuar'
-          : 'El DNI debe tener exactamente 8 dígitos');
+        if (!/^\d{8}$/.test(clienteDni)) {
+          setError('El DNI debe tener exactamente 8 dígitos');
+        } else if (!dniValidado) {
+          setError('Debes verificar el DNI con RENIEC antes de continuar');
+        } else {
+          setError('No se pudo registrar el cliente con ese DNI. Vuelve a consultar el DNI antes de continuar.');
+        }
       } else if (tipoComprobante === 'Factura') {
         setError('El RUC debe tener 11 dígitos');
       }
