@@ -161,6 +161,10 @@ function ModalAprobar({ abierto, onCerrar, solicitud, productos, proveedores, on
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (fechaEstimada < fechaLocalISO(new Date())) {
+      setError('La fecha estimada no puede ser anterior a hoy');
+      return;
+    }
     setEnviando(true);
     setError('');
     try {
@@ -215,6 +219,7 @@ function ModalAprobar({ abierto, onCerrar, solicitud, productos, proveedores, on
             <input
               type="date" value={fechaEstimada}
               onChange={(e) => setFechaEstimada(e.target.value)}
+              min={fechaLocalISO(new Date())}
               required
               className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
             />

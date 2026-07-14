@@ -486,6 +486,10 @@ const aprobarSolicitud = async (req, res) => {
       return res.status(400).json({ mensaje: 'Solo se pueden aprobar solicitudes pendientes' });
     }
 
+    if (fecha_estimada && fecha_estimada < hoyPeru()) {
+      return res.status(400).json({ mensaje: 'La fecha estimada no puede ser anterior a hoy' });
+    }
+
     solicitud.estado = 'Aprobada';
     solicitud.usuario_aprobador_id = req.usuario.id;
     if (fecha_estimada) solicitud.fecha_estimada = fecha_estimada;
