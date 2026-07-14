@@ -424,32 +424,17 @@ const crearSolicitud = async (req, res) => {
       return res.status(400).json({ mensaje: 'La cantidad debe ser un número entero mayor a 0' });
     }
 
-    const solicitud = await sequelize.transaction(async (t) => {
-      // Se bloquea la fila del producto como mutex: sin esto, dos solicitudes
-      // para el mismo producto enviadas casi al mismo tiempo (doble clic, dos
-      // Almaceneros) podían pasar ambas el chequeo de "no hay solicitud
-      // activa" antes de que la primera terminara de insertarse, quedando
-      // dos solicitudes activas duplicadas para el mismo producto.
-      const producto = await Producto.findByPk(producto_id, { transaction: t, lock: t.LOCK.UPDATE });
-      if (!producto) {
-        throw { status: 404, mensaje: 'Producto no encontrado' };
-      }
+    const producto = await Producto.findByPk(producto_id);
+    if (!producto) {
+      return res.status(404).json({ mensaje: 'Producto no encontrado' });
+    }
 
-      const solicitudActiva = await SolicitudReposicion.findOne({
-        where: { producto_id, estado: { [Op.in]: ['Pendiente', 'Aprobada'] } },
-        transaction: t,
-      });
-      if (solicitudActiva) {
-        throw { status: 400, mensaje: 'Ya existe una solicitud pendiente o aprobada para este producto' };
-      }
-
-      return SolicitudReposicion.create({
-        producto_id,
-        cantidad,
-        proveedor_id: proveedor_id || null,
-        estado: 'Pendiente',
-        usuario_solicitante_id: req.usuario.id,
-      }, { transaction: t });
+    const solicitud = await SolicitudReposicion.create({
+      producto_id,
+      cantidad,
+      proveedor_id: proveedor_id || null,
+      estado: 'Pendiente',
+      usuario_solicitante_id: req.usuario.id,
     });
 
     const solicitudCompleta = await SolicitudReposicion.findByPk(solicitud.id, {
