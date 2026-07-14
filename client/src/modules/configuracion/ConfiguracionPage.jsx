@@ -42,7 +42,7 @@ export default function ConfiguracionPage() {
   };
 
   const buscarRuc = async () => {
-    if (!/^\d{11}$/.test(form.ruc)) return;
+    if (!/^20\d{9}$/.test(form.ruc)) return;
     setBuscandoRuc(true);
     setError('');
     setExito('');
@@ -65,8 +65,8 @@ export default function ConfiguracionPage() {
     setError('');
     setExito('');
 
-    if (!/^\d{11}$/.test(form.ruc)) {
-      return setError('El RUC debe tener exactamente 11 dígitos');
+    if (!/^20\d{9}$/.test(form.ruc)) {
+      return setError('El RUC debe tener 11 dígitos y empezar con 20 (persona jurídica)');
     }
 
     const igvNum = Number(form.igv);
@@ -150,7 +150,7 @@ export default function ConfiguracionPage() {
               <button
                 type="button"
                 onClick={buscarRuc}
-                disabled={form.ruc.length !== 11 || buscandoRuc}
+                disabled={!/^20\d{9}$/.test(form.ruc) || buscandoRuc}
                 title="Consultar SUNAT"
                 className="rounded-lg bg-indigo-500 px-3 py-2 text-white transition-colors hover:bg-indigo-600 disabled:opacity-50"
               >
@@ -159,6 +159,9 @@ export default function ConfiguracionPage() {
             </div>
             {form.ruc.length > 0 && form.ruc.length < 11 && (
               <p className="mt-1 text-xs text-red-500">El RUC debe tener 11 dígitos</p>
+            )}
+            {form.ruc.length === 11 && !form.ruc.startsWith('20') && (
+              <p className="mt-1 text-xs text-red-500">El RUC debe empezar con 20 (persona jurídica): estos son datos de una empresa, no de una persona natural</p>
             )}
           </div>
 

@@ -190,7 +190,7 @@ const obtener = async (req, res) => {
 // ─── Crear un nuevo producto ──────────────────────────────────────────────────
 const crear = async (req, res) => {
   try {
-    const { nombre, marca, categoria_id, precio, codigo_barras, stock_minimo, unidad_compra, factor_conversion } = req.body;
+    const { nombre, marca, categoria_id, precio, codigo_barras, stock_minimo, unidad_compra, factor_conversion, maneja_vencimiento } = req.body;
 
     if (!nombre || !nombre.trim()) {
       return res.status(400).json({ mensaje: 'El nombre del producto es requerido' });
@@ -248,6 +248,7 @@ const crear = async (req, res) => {
       stock_minimo: stock_minimo !== undefined && stock_minimo !== null && stock_minimo !== '' ? parseInt(stock_minimo, 10) : null,
       unidad_compra: unidad_compra || 'Unidad',
       factor_conversion: factor_conversion !== undefined && factor_conversion !== null && factor_conversion !== '' ? parseInt(factor_conversion, 10) : 1,
+      maneja_vencimiento: maneja_vencimiento === undefined || maneja_vencimiento === null ? true : !!maneja_vencimiento,
     });
 
     const productoCompleto = await Producto.findByPk(productoCreado.id, { include: INCLUDE });
@@ -270,7 +271,7 @@ const actualizar = async (req, res) => {
       return res.status(404).json({ mensaje: 'Producto no encontrado' });
     }
 
-    const { nombre, marca, categoria_id, proveedor_id, precio, codigo_barras, stock_minimo, unidad_compra, factor_conversion } = req.body;
+    const { nombre, marca, categoria_id, proveedor_id, precio, codigo_barras, stock_minimo, unidad_compra, factor_conversion, maneja_vencimiento } = req.body;
 
     const nombreFinal = nombre !== undefined ? nombre.trim() : producto.nombre;
     const marcaFinal  = marca  !== undefined ? marca.trim()  : producto.marca;
@@ -334,6 +335,7 @@ const actualizar = async (req, res) => {
     if (factor_conversion !== undefined) {
       producto.factor_conversion = factor_conversion === null || factor_conversion === '' ? 1 : parseInt(factor_conversion, 10);
     }
+    if (maneja_vencimiento !== undefined) producto.maneja_vencimiento = !!maneja_vencimiento;
 
     await producto.save();
 

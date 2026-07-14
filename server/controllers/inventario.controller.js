@@ -13,21 +13,28 @@ const { presentarEntrada, presentarBaja, presentarSolicitud, presentarAjuste } =
 const { crearLote, consumirStockFIFO } = require('../services/inventario.service');
 const { inicioDiaPeru, finDiaPeruExclusivo } = require('../utils/fechas');
 
-const DIAS_MINIMOS_VENCIMIENTO = 30;
+const AÑOS_MAXIMOS_VENCIMIENTO = 15;
 
-// Obligatoria: un lote sin fecha de vencimiento se trata como vigente para
-// siempre (nunca se bloquea su venta aunque pase el tiempo), así que dejarla
-// vacía anularía en la práctica el control de "no vender vencido".
-const validarFechaVencimiento = (fechaStr) => {
-  if (!fechaStr) return 'La fecha de vencimiento es obligatoria';
+// Si el producto maneja vencimiento, la fecha es obligatoria: un lote sin
+// fecha de vencimiento se trata como vigente para siempre (nunca se bloquea
+// su venta aunque pase el tiempo), así que dejarla vacía anularía en la
+// práctica el control de "no vender vencido". Si el producto NO maneja
+// vencimiento (ferretería, ropa, etc.) el campo no aplica y no se valida.
+// No se exige un mínimo de días desde hoy: hay productos de vida corta
+// legítimos (pan del día, lácteos) que vencen mañana mismo — ese caso se
+// advierte en el frontend, no se bloquea aquí. Sí se pone un tope superior
+// para atrapar errores de tipeo obvios (ej. poner "2099" sin querer).
+const validarFechaVencimiento = (fechaStr, manejaVencimiento = true) => {
+  if (!manejaVencimiento) return null;
+  if (!fechaStr) return 'La fecha de vencimiento es obligatoria para este producto';
   const fecha = new Date(fechaStr + 'T00:00:00');
+  if (isNaN(fecha.getTime())) return 'Fecha de vencimiento inválida';
   const hoy = new Date();
   hoy.setHours(0, 0, 0, 0);
-  const fechaMinima = new Date(hoy);
-  fechaMinima.setDate(fechaMinima.getDate() + DIAS_MINIMOS_VENCIMIENTO);
-  if (isNaN(fecha.getTime())) return 'Fecha de vencimiento inválida';
   if (fecha < hoy) return 'La fecha de vencimiento no puede ser anterior a hoy';
-  if (fecha < fechaMinima) return `La fecha de vencimiento debe ser al menos ${DIAS_MINIMOS_VENCIMIENTO} días a partir de hoy`;
+  const fechaMaxima = new Date(hoy);
+  fechaMaxima.setFullYear(fechaMaxima.getFullYear() + AÑOS_MAXIMOS_VENCIMIENTO);
+  if (fecha > fechaMaxima) return `La fecha de vencimiento no puede ser mayor a ${AÑOS_MAXIMOS_VENCIMIENTO} años a partir de hoy`;
   return null;
 };
 
@@ -49,9 +56,6 @@ const registrarEntrada = async (req, res) => {
       return res.status(400).json({ mensaje: 'La cantidad debe ser un número entero mayor a 0' });
     }
 
-    const errorFecha = validarFechaVencimiento(fecha_vencimiento);
-    if (errorFecha) return res.status(400).json({ mensaje: errorFecha });
-
     if (costo_unitario != null && (isNaN(Number(costo_unitario)) || Number(costo_unitario) <= 0)) {
       return res.status(400).json({ mensaje: 'El costo unitario debe ser mayor a 0' });
     }
@@ -61,6 +65,9 @@ const registrarEntrada = async (req, res) => {
       if (!producto || !producto.activo) {
         throw { status: 404, mensaje: 'Producto no encontrado o inactivo' };
       }
+
+      const errorFecha = validarFechaVencimiento(fecha_vencimiento, producto.maneja_vencimiento);
+      if (errorFecha) throw { status: 400, mensaje: errorFecha };
 
       const proveedor = await Proveedor.findByPk(proveedor_id, { transaction: t });
       if (!proveedor || !proveedor.activo) {
@@ -73,7 +80,7 @@ const registrarEntrada = async (req, res) => {
         producto_id,
         proveedor_id,
         cantidad: cantidadUnidadesVenta,
-        fecha_vencimiento: fecha_vencimiento || null,
+        fecha_vencimiento: producto.maneja_vencimiento ? (fecha_vencimiento || null) : null,
         usuario_id: req.usuario.id,
         costo_unitario: costo_unitario != null ? Number(costo_unitario) : null,
         cantidad_unidad_compra: Number(cantidad),
@@ -326,7 +333,7 @@ const listarAjustes = async (req, res) => {
 // ─── Solicitudes ──────────────────────────────────────────────────────────────
 
 const INCLUDE_SOLICITUD = [
-  { association: 'producto', attributes: ['id', 'nombre', 'marca'] },
+  { association: 'producto', attributes: ['id', 'nombre', 'marca', 'maneja_vencimiento'] },
   { association: 'proveedor', attributes: ['id', 'nombre'] },
   { association: 'solicitante', attributes: ['id', 'nombre'] },
   { association: 'aprobador', attributes: ['id', 'nombre'] },
@@ -465,7 +472,7 @@ const rechazarSolicitud = async (req, res) => {
 const completarSolicitud = async (req, res) => {
   try {
     const solicitud = await SolicitudReposicion.findByPk(req.params.id, {
-      include: [{ association: 'producto', attributes: ['id', 'nombre', 'marca', 'stock'] }],
+      include: [{ association: 'producto', attributes: ['id', 'nombre', 'marca', 'stock', 'maneja_vencimiento'] }],
     });
     if (!solicitud) {
       return res.status(404).json({ mensaje: 'Solicitud no encontrada' });
@@ -489,7 +496,7 @@ const completarSolicitud = async (req, res) => {
 
     const fechaVencimiento = req.body.fecha_vencimiento || null;
 
-    const errorFecha = validarFechaVencimiento(fechaVencimiento);
+    const errorFecha = validarFechaVencimiento(fechaVencimiento, solicitud.producto.maneja_vencimiento);
     if (errorFecha) return res.status(400).json({ mensaje: errorFecha });
 
     await sequelize.transaction(async (t) => {
@@ -500,7 +507,7 @@ const completarSolicitud = async (req, res) => {
         producto_id: solicitud.producto_id,
         proveedor_id: solicitud.proveedor_id,
         cantidad: cantidadRecibida,
-        fecha_vencimiento: fechaVencimiento,
+        fecha_vencimiento: solicitud.producto.maneja_vencimiento ? fechaVencimiento : null,
         usuario_id: req.usuario.id,
         solicitud_id: solicitud.id,
       }, t);

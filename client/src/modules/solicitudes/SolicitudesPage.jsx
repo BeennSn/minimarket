@@ -267,7 +267,7 @@ function ModalRechazar({ abierto, onCerrar, solicitud, onRechazada }) {
   );
 }
 
-const DIAS_MINIMOS_VENCIMIENTO = 30;
+const DIAS_ALERTA_VENCIMIENTO_CERCANO = 7;
 
 function ModalCompletar({ abierto, onCerrar, solicitud, onCompletada }) {
   const [cantidadRecibida, setCantidadRecibida] = useState('');
@@ -275,11 +275,13 @@ function ModalCompletar({ abierto, onCerrar, solicitud, onCompletada }) {
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState('');
 
-  const fechaMinima = useMemo(() => {
-    const f = new Date();
-    f.setDate(f.getDate() + DIAS_MINIMOS_VENCIMIENTO);
-    return fechaLocalISO(f);
-  }, []);
+  const fechaHoy = useMemo(() => fechaLocalISO(new Date()), []);
+  const manejaVencimiento = solicitud?.producto?.maneja_vencimiento !== false;
+  // Advertencia no bloqueante para fechas muy próximas (posible error de
+  // digitación), sin impedir registrar productos de vida corta legítimos.
+  const diasParaVencer = fechaVencimiento
+    ? Math.round((new Date(fechaVencimiento + 'T00:00:00') - new Date(fechaHoy + 'T00:00:00')) / 86400000)
+    : null;
 
   useEffect(() => {
     if (abierto && solicitud) {
@@ -295,20 +297,22 @@ function ModalCompletar({ abierto, onCerrar, solicitud, onCompletada }) {
     e.preventDefault();
     const cr = parseInt(cantidadRecibida, 10);
     if (!cr || cr <= 0) { setError('La cantidad debe ser mayor a 0'); return; }
-    if (!fechaVencimiento) {
-      setError('La fecha de vencimiento es obligatoria');
-      return;
-    }
-    if (fechaVencimiento < fechaMinima) {
-      setError(`La fecha de vencimiento debe ser al menos ${DIAS_MINIMOS_VENCIMIENTO} días a partir de hoy`);
-      return;
+    if (manejaVencimiento) {
+      if (!fechaVencimiento) {
+        setError('La fecha de vencimiento es obligatoria para este producto');
+        return;
+      }
+      if (fechaVencimiento < fechaHoy) {
+        setError('La fecha de vencimiento no puede ser anterior a hoy');
+        return;
+      }
     }
     setEnviando(true);
     setError('');
     try {
       await api.patch(`/inventario/solicitudes/${solicitud.id}/completar`, {
         cantidad_recibida: cr,
-        fecha_vencimiento: fechaVencimiento || null,
+        fecha_vencimiento: manejaVencimiento ? (fechaVencimiento || null) : null,
       });
       onCompletada();
     } catch (err) {
@@ -356,16 +360,25 @@ function ModalCompletar({ abierto, onCerrar, solicitud, onCompletada }) {
 
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">
-              Fecha de vencimiento <span className="text-red-500">*</span>
+              Fecha de vencimiento {manejaVencimiento && <span className="text-red-500">*</span>}
             </label>
             <input
               type="date"
               value={fechaVencimiento}
               onChange={(e) => setFechaVencimiento(e.target.value)}
-              min={fechaMinima}
-              required
-              className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              min={fechaHoy}
+              required={manejaVencimiento}
+              disabled={!manejaVencimiento}
+              className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:bg-gray-50 disabled:text-gray-400"
             />
+            {!manejaVencimiento && (
+              <p className="mt-1 text-xs text-gray-400">Este producto no maneja fecha de vencimiento.</p>
+            )}
+            {diasParaVencer !== null && diasParaVencer >= 0 && diasParaVencer < DIAS_ALERTA_VENCIMIENTO_CERCANO && (
+              <p className="mt-1 text-xs text-amber-600">
+                ⚠ Este producto vence muy pronto (en {diasParaVencer} día{diasParaVencer !== 1 ? 's' : ''}). Verifica la fecha.
+              </p>
+            )}
           </div>
 
           {error && <div className="rounded-lg bg-red-50 px-4 py-2 text-sm text-red-600">{error}</div>}

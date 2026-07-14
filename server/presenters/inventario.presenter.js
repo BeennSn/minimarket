@@ -49,6 +49,7 @@ const presentarSolicitud = (solicitud) => ({
     id:     solicitud.producto.id,
     nombre: solicitud.producto.nombre,
     marca:  solicitud.producto.marca,
+    maneja_vencimiento: solicitud.producto.maneja_vencimiento !== false,
   },
   cantidad:   solicitud.cantidad,
   estado:     solicitud.estado,

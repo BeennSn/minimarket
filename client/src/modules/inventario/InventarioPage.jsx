@@ -8,7 +8,7 @@ import Spinner from '../../components/Spinner';
 import Toast from '../../components/Toast';
 import useToast from '../../hooks/useToast';
 
-const DIAS_MINIMOS_VENCIMIENTO = 30;
+const DIAS_ALERTA_VENCIMIENTO_CERCANO = 7;
 const MOTIVOS_BAJA = ['Vencido', 'Dañado', 'Robo o faltante', 'Consumo interno', 'Error de registro', 'Otro'];
 
 export default function InventarioPage() {
@@ -36,11 +36,7 @@ export default function InventarioPage() {
   const [observaciones, setObservaciones] = useState('');
   const [enviando, setEnviando] = useState(false);
 
-  const fechaMinima = useMemo(() => {
-    const f = new Date();
-    f.setDate(f.getDate() + DIAS_MINIMOS_VENCIMIENTO);
-    return fechaLocalISO(f);
-  }, []);
+  const fechaHoy = useMemo(() => fechaLocalISO(new Date()), []);
 
   // Filtros — Entradas
   const [filtroEntradaDesde, setFiltroEntradaDesde] = useState('');
@@ -177,13 +173,16 @@ export default function InventarioPage() {
   const registrarEntrada = async (e) => {
     e.preventDefault();
     setError('');
-    if (!fechaVencimiento) {
-      setError('La fecha de vencimiento es obligatoria');
-      return;
-    }
-    if (fechaVencimiento < fechaMinima) {
-      setError(`La fecha de vencimiento debe ser al menos ${DIAS_MINIMOS_VENCIMIENTO} días a partir de hoy`);
-      return;
+    const manejaVencimientoEntrada = productoSeleccionado?.maneja_vencimiento !== false;
+    if (manejaVencimientoEntrada) {
+      if (!fechaVencimiento) {
+        setError('La fecha de vencimiento es obligatoria para este producto');
+        return;
+      }
+      if (fechaVencimiento < fechaHoy) {
+        setError('La fecha de vencimiento no puede ser anterior a hoy');
+        return;
+      }
     }
     setEnviando(true);
     try {
@@ -191,7 +190,7 @@ export default function InventarioPage() {
         producto_id: productoId,
         proveedor_id: proveedorId,
         cantidad: parseInt(cantidad, 10),
-        fecha_vencimiento: fechaVencimiento || null,
+        fecha_vencimiento: manejaVencimientoEntrada ? (fechaVencimiento || null) : null,
         costo_unitario: costoUnitario ? parseFloat(costoUnitario) : null,
       });
       mostrarExito('Entrada registrada correctamente');
@@ -251,6 +250,13 @@ export default function InventarioPage() {
   const productoSeleccionado = productos.find((p) => String(p.id) === String(productoId));
   const diferenciaAjuste = productoSeleccionado && cantidadContada !== ''
     ? parseInt(cantidadContada, 10) - productoSeleccionado.stock
+    : null;
+
+  // Advertencia no bloqueante (no error) cuando la fecha ingresada cae muy
+  // cerca de hoy — para atrapar errores de digitación sin impedir el registro
+  // de productos de vida corta legítimos (pan del día, lácteos, etc.).
+  const diasParaVencerEntrada = fechaVencimiento
+    ? Math.round((new Date(fechaVencimiento + 'T00:00:00') - new Date(fechaHoy + 'T00:00:00')) / 86400000)
     : null;
 
   const registrarAjuste = async (e) => {
@@ -385,16 +391,25 @@ export default function InventarioPage() {
                 </div>
                 <div>
                   <label className="mb-1 block text-sm font-medium text-gray-700">
-                    Vencimiento <span className="text-red-500">*</span>
+                    Vencimiento {productoSeleccionado?.maneja_vencimiento !== false && <span className="text-red-500">*</span>}
                   </label>
                   <input
                     type="date"
                     value={fechaVencimiento}
                     onChange={(e) => setFechaVencimiento(e.target.value)}
-                    min={fechaMinima}
-                    required
-                    className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    min={fechaHoy}
+                    required={productoSeleccionado?.maneja_vencimiento !== false}
+                    disabled={productoSeleccionado?.maneja_vencimiento === false}
+                    className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:bg-gray-50 disabled:text-gray-400"
                   />
+                  {productoSeleccionado?.maneja_vencimiento === false && (
+                    <p className="mt-1 text-xs text-gray-400">Este producto no maneja fecha de vencimiento.</p>
+                  )}
+                  {diasParaVencerEntrada !== null && diasParaVencerEntrada >= 0 && diasParaVencerEntrada < DIAS_ALERTA_VENCIMIENTO_CERCANO && (
+                    <p className="mt-1 text-xs text-amber-600">
+                      ⚠ Este producto vence muy pronto (en {diasParaVencerEntrada} día{diasParaVencerEntrada !== 1 ? 's' : ''}). Verifica la fecha.
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="mb-1 block text-sm font-medium text-gray-700">

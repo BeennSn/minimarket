@@ -18,6 +18,7 @@ const presentarProducto = (producto) => ({
   unidad_compra: producto.unidad_compra || 'Unidad',
   factor_conversion: producto.factor_conversion ?? 1,
   activo: producto.activo,
+  maneja_vencimiento: producto.maneja_vencimiento !== false,
   codigo_barras: producto.codigo_barras || null,
   proxima_fecha_vencimiento: producto.proxima_fecha_vencimiento || null,
   stock_vigente: producto.stock_vigente ?? null,

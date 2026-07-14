@@ -27,7 +27,9 @@ const actualizar = async (req, res) => {
     const { nombre_empresa, ruc, direccion, telefono, igv, serie_boleta, serie_factura } = req.body;
 
     if (!nombre_empresa?.trim()) return res.status(400).json({ mensaje: 'El nombre de empresa es requerido' });
-    if (!/^\d{11}$/.test(ruc)) return res.status(400).json({ mensaje: 'El RUC debe tener exactamente 11 dígitos' });
+    // Solo RUC de persona jurídica (empieza en "20"): estos son los datos del
+    // negocio, no de una persona natural (RUC "10"), así que "10..." se rechaza.
+    if (!/^20\d{9}$/.test(ruc)) return res.status(400).json({ mensaje: 'El RUC debe tener 11 dígitos y empezar con 20 (persona jurídica)' });
     if (!direccion?.trim()) return res.status(400).json({ mensaje: 'La dirección es requerida' });
     if (!telefono?.trim()) return res.status(400).json({ mensaje: 'El teléfono es requerido' });
     const igvNum = Number(igv);

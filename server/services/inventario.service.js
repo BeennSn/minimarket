@@ -57,7 +57,11 @@ const consumirStockFIFO = async ({ producto_id, cantidad, tipo, referencia = {},
 
   const lotes = await EntradaMercaderia.findAll({
     where,
-    order: [['fecha_vencimiento', 'ASC NULLS LAST'], ['createdAt', 'ASC']],
+    // 'id' ASC como desempate final: sin esto, dos lotes con igual
+    // fecha_vencimiento (o ambos null) Y el mismo createdAt (colisión de
+    // milisegundo, posible en importaciones masivas) no tendrían un orden
+    // garantizado por SQL.
+    order: [['fecha_vencimiento', 'ASC NULLS LAST'], ['createdAt', 'ASC'], ['id', 'ASC']],
     lock: t.LOCK.UPDATE,
     transaction: t,
   });

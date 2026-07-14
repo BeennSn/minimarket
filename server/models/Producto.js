@@ -60,6 +60,14 @@ const Producto = sequelize.define('Producto', {
     type: DataTypes.BOOLEAN,
     defaultValue: true,
   },
+  // false para productos que no caducan (ferretería, ropa, etc.): sus entradas
+  // de inventario no piden fecha de vencimiento. true por defecto para no
+  // cambiar el comportamiento de los productos ya existentes.
+  maneja_vencimiento: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: true,
+  },
   costo_promedio: {
     type: DataTypes.DECIMAL(10, 2),
     allowNull: true,

@@ -43,6 +43,7 @@ function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categor
   const [stockMinimo, setStockMinimo] = useState('');
   const [unidadCompra, setUnidadCompra] = useState('Unidad');
   const [factorConversion, setFactorConversion] = useState('1');
+  const [manejaVencimiento, setManejaVencimiento] = useState(true);
   const [codigoBarras, setCodigoBarras] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -65,6 +66,7 @@ function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categor
         setStockMinimo(productoEditando.stock_minimo ?? '');
         setUnidadCompra(productoEditando.unidad_compra || 'Unidad');
         setFactorConversion(String(productoEditando.factor_conversion ?? 1));
+        setManejaVencimiento(productoEditando.maneja_vencimiento !== false);
         setCodigoBarras(productoEditando.codigo_barras ?? '');
       } else {
         setNombre('');
@@ -74,6 +76,7 @@ function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categor
         setStockMinimo('10');
         setUnidadCompra('Unidad');
         setFactorConversion('1');
+        setManejaVencimiento(true);
         setCodigoBarras('');
       }
       setError('');
@@ -129,6 +132,7 @@ function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categor
         stock_minimo: stockMinimo !== '' ? parseInt(stockMinimo, 10) : null,
         unidad_compra: unidadCompra,
         factor_conversion: factorConversion !== '' ? parseInt(factorConversion, 10) : 1,
+        maneja_vencimiento: manejaVencimiento,
       };
 
       if (esCreacion) {
@@ -328,6 +332,24 @@ function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categor
               <p className="mt-1 text-xs text-gray-400">¿Cuántas unidades de venta trae 1 {unidadCompra.toLowerCase()}?</p>
             </div>
           )}
+
+          <div>
+            <div className="flex items-center gap-2">
+              <input
+                id="maneja_vencimiento"
+                type="checkbox"
+                checked={manejaVencimiento}
+                onChange={(e) => setManejaVencimiento(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 text-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              />
+              <label htmlFor="maneja_vencimiento" className="text-sm font-medium text-gray-700">
+                Este producto maneja fecha de vencimiento
+              </label>
+            </div>
+            <p className="mt-1 text-xs text-gray-400">
+              Desmárcalo para productos que no caducan (ferretería, ropa, etc.): sus entradas de inventario no pedirán fecha de vencimiento.
+            </p>
+          </div>
 
         {esCreacion && (
           <div className="rounded-lg border border-indigo-100 bg-indigo-50 px-4 py-3 text-xs text-indigo-700">
