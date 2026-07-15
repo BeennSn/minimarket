@@ -22,8 +22,6 @@ const presentarEntrada = (entrada) => ({
   codigo_lote: entrada.codigo_lote || null,
   fecha_vencimiento: entrada.fecha_vencimiento || null,
   costo_unitario: entrada.costo_unitario ?? null,
-  cantidad_unidad_compra: entrada.cantidad_unidad_compra ?? null,
-  unidad_compra_snapshot: entrada.unidad_compra_snapshot ?? null,
   createdAt: entrada.createdAt,
 });
 

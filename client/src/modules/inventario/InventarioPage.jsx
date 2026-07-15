@@ -491,7 +491,7 @@ export default function InventarioPage() {
                 </div>
                 <div>
                   <label className="mb-1 block text-sm font-medium text-gray-700">
-                    Cantidad{productoSeleccionado ? ` (${productoSeleccionado.unidad_compra})` : ''}
+                    Cantidad
                   </label>
                   <input
                     type="number"
@@ -501,11 +501,6 @@ export default function InventarioPage() {
                     required
                     className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                   />
-                  {productoSeleccionado && productoSeleccionado.factor_conversion > 1 && cantidad !== '' && (
-                    <p className="mt-1 text-xs text-emerald-600">
-                      = {parseInt(cantidad, 10) * productoSeleccionado.factor_conversion} unidades de venta
-                    </p>
-                  )}
                 </div>
                 <div>
                   <label className="mb-1 block text-sm font-medium text-gray-700">
@@ -666,11 +661,6 @@ export default function InventarioPage() {
                           <span className="inline-block rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-700">
                             +{e.cantidad} und(s)
                           </span>
-                          {e.unidad_compra_snapshot && e.unidad_compra_snapshot !== 'Unidad' && (
-                            <div className="mt-1 text-xs text-gray-400">
-                              {e.cantidad_unidad_compra} {e.unidad_compra_snapshot}(s)
-                            </div>
-                          )}
                         </td>
                         <td className="px-4 py-3 text-gray-500">
                           {e.costo_unitario != null

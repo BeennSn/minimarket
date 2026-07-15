@@ -70,14 +70,6 @@ const EntradaMercaderia = sequelize.define('EntradaMercaderia', {
     type: DataTypes.DECIMAL(10, 2),
     allowNull: true,
   },
-  cantidad_unidad_compra: {
-    type: DataTypes.INTEGER,
-    allowNull: true,
-  },
-  unidad_compra_snapshot: {
-    type: DataTypes.ENUM('Unidad', 'Caja', 'Paquete', 'Docena', 'Otro'),
-    allowNull: true,
-  },
 }, {
   tableName: 'entradas_mercaderia',
   timestamps: true,

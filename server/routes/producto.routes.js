@@ -6,16 +6,12 @@
 
 const { Router } = require('express');
 const productoController = require('../controllers/producto.controller');
-const presentacionVentaRoutes = require('./presentacionVenta.routes');
 const { verificarToken, verificarRol } = require('../middlewares/auth.middleware');
 
 const router = Router();
 
 // Todas las rutas de este módulo requieren autenticación
 router.use(verificarToken);
-
-// /api/productos/:id/presentaciones → CRUD de presentaciones de venta del producto
-router.use('/:id/presentaciones', presentacionVentaRoutes);
 
 // GET  /api/productos         → Administrador, Almacenero, Gerente
 router.get(

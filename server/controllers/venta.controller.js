@@ -2,27 +2,9 @@ const { Op } = require('sequelize');
 const { sequelize, Venta, DetalleVenta, Producto, Usuario, Cliente, Turno, MovimientoCaja, Configuracion } = require('../models');
 const { presentarVenta, presentarLista } = require('../presenters/venta.presenter');
 const { consumirStockFIFO, revertirConsumo, calcularStockVigente } = require('../services/inventario.service');
-const { obtenerPresentacionValida, obtenerPresentacionDefault } = require('../services/presentacionVenta.service');
 const { calcularEsperados } = require('../services/caja.service');
 const { consultarRucSunat } = require('../services/consulta.service');
 const { inicioDiaPeru, finDiaPeruExclusivo } = require('../utils/fechas');
-
-// Resuelve la presentación de venta de un item de carrito: si trae
-// presentacion_venta_id explícito, se valida que exista, esté activa y
-// pertenezca al producto; si no lo trae (frontend viejo en caché u otro
-// consumidor de la API), se cae a la presentación default del producto y la
-// cantidad se trata como ya viniendo en unidades base — comportamiento
-// previo a las presentaciones de venta, para no romper integraciones.
-const resolverPresentacion = async (item, transaction) => {
-  if (item.presentacion_venta_id) {
-    return obtenerPresentacionValida({
-      producto_id: item.producto_id,
-      presentacion_venta_id: item.presentacion_venta_id,
-      transaction,
-    });
-  }
-  return obtenerPresentacionDefault(item.producto_id, transaction);
-};
 
 // Efectivo realmente disponible en el turno para dar vuelto: apertura +
 // movimientos en efectivo (ventas, ingresos manuales) - egresos/anulaciones.
@@ -81,9 +63,6 @@ const registrar = async (req, res) => {
       if (!Number.isInteger(Number(item.cantidad)) || Number(item.cantidad) < 1) {
         return res.status(400).json({ mensaje: 'La cantidad de cada item debe ser un número entero mayor a 0' });
       }
-      if (item.presentacion_venta_id != null && (!Number.isInteger(Number(item.presentacion_venta_id)) || Number(item.presentacion_venta_id) <= 0)) {
-        return res.status(400).json({ mensaje: 'Presentación de venta inválida' });
-      }
     }
 
     if (tipo_comprobante === 'Factura') {
@@ -126,16 +105,7 @@ const registrar = async (req, res) => {
         return res.status(400).json({ mensaje: 'Producto no encontrado o inactivo' });
       }
 
-      let presentacion;
-      try {
-        presentacion = await resolverPresentacion(item);
-      } catch (err) {
-        return res.status(err.status || 400).json({ mensaje: err.mensaje || 'Presentación de venta inválida' });
-      }
-      // Toda cantidad/precio/stock a partir de acá se maneja en unidades
-      // base — la cantidad que mandó el cajero es "cantidad de la
-      // presentación" (ej. 2 docenas), nunca unidades base directamente.
-      const cantidadBase = Number(item.cantidad) * presentacion.factor_conversion;
+      const cantidadBase = Number(item.cantidad);
 
       if (producto.stock < cantidadBase) {
         return res.status(400).json({ mensaje: `Stock insuficiente para: ${producto.nombre}` });
@@ -146,7 +116,7 @@ const registrar = async (req, res) => {
       if (stockVigente < cantidadBase) {
         return res.status(400).json({ mensaje: `"${producto.nombre}" tiene stock vencido: solo hay ${stockVigente} unidad(es) vigente(s) disponible(s). Da de baja el lote vencido para continuar.` });
       }
-      monto_total_prev += parseFloat(item.cantidad * presentacion.precio);
+      monto_total_prev += parseFloat(item.cantidad * producto.precio);
     }
 
     if (metodo_pago === 'Efectivo') {
@@ -191,22 +161,17 @@ const registrar = async (req, res) => {
         const producto = await Producto.findByPk(item.producto_id, { transaction: t, lock: t.LOCK.UPDATE });
         if (!producto || !producto.activo) throw { status: 400, mensaje: 'Producto no encontrado o inactivo' };
 
-        const presentacion = await resolverPresentacion(item, t);
-        const cantidadBase = Number(item.cantidad) * presentacion.factor_conversion;
+        const cantidadBase = Number(item.cantidad);
 
         if (producto.stock < cantidadBase) throw { status: 400, mensaje: `Stock insuficiente para: ${producto.nombre}` };
-        const subtotal = parseFloat(item.cantidad * presentacion.precio);
+        const subtotal = parseFloat(item.cantidad * producto.precio);
         monto_total += subtotal;
 
         detallesData.push({
-          producto_id:                   item.producto_id,
-          cantidad:                      cantidadBase,
-          precio_unitario:               presentacion.precio,
+          producto_id:      item.producto_id,
+          cantidad:         cantidadBase,
+          precio_unitario:  producto.precio,
           subtotal,
-          presentacion_venta_id:         presentacion.id,
-          cantidad_presentacion:         item.cantidad,
-          presentacion_nombre_snapshot:  presentacion.nombre,
-          presentacion_factor_snapshot:  presentacion.factor_conversion,
         });
       }
 

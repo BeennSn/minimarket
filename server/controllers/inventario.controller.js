@@ -93,17 +93,13 @@ const registrarEntrada = async (req, res) => {
         proveedorIdValidado = proveedor.id;
       }
 
-      const cantidadUnidadesVenta = Number(cantidad) * producto.factor_conversion;
-
       return crearLote({
         producto_id,
         proveedor_id: proveedorIdValidado,
-        cantidad: cantidadUnidadesVenta,
+        cantidad: Number(cantidad),
         fecha_vencimiento: producto.maneja_vencimiento ? (fecha_vencimiento || null) : null,
         usuario_id: req.usuario.id,
         costo_unitario: costo_unitario != null ? Number(costo_unitario) : null,
-        cantidad_unidad_compra: Number(cantidad),
-        unidad_compra_snapshot: producto.unidad_compra,
         codigo_lote,
       }, t);
     });

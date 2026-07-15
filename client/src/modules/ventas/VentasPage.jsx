@@ -62,7 +62,7 @@ function ModalComprobante({ venta, empresa, pdfError, onCerrar, onDescargarPDF }
           {(venta?.detalles || venta?.items || []).map((item, i) => (
             <div key={item.id ?? i} className="flex items-center justify-between text-sm">
               <span className="text-gray-600">
-                {item.producto?.nombre || item.nombre} x{item.cantidad_presentacion ?? item.cantidad} {item.presentacion_nombre_snapshot || ''}
+                {item.producto?.nombre || item.nombre} x{item.cantidad}
               </span>
               <span className="text-gray-800 font-medium">
                 S/. {Number(item.subtotal || 0).toFixed(2)}
@@ -310,18 +310,6 @@ export default function VentasPage() {
   // como respaldo en vez de bloquear todo).
   const stockVendible = (p) => p?.stock_vigente ?? p?.stock ?? 0;
 
-  // Presentaciones de venta activas de un producto (Unidad, Docena, etc.),
-  // y cuál de ellas es la default — la que se agrega con un solo clic.
-  const presentacionesActivas = (p) => (p?.presentaciones || []).filter((pr) => pr.activo);
-  const presentacionDefaultDe = (p) => {
-    const activas = presentacionesActivas(p);
-    return activas.find((pr) => pr.es_default) || activas[0] || null;
-  };
-  // Nunca se puede ofrecer vender una presentación si el stock vigente no
-  // alcanza para completar ni una sola unidad de ella (ej. quedan 8 huevos
-  // sueltos: no se puede vender "1 docena", solo presentaciones de factor <= 8).
-  const maxCantidadPresentacion = (producto, factor) => Math.floor(stockVendible(producto) / (factor || 1));
-
   // ─── Caché del carrito en localStorage ─────────────────────────────────────
   // Si se recarga la página a medio armar una venta (F5, cierre accidental de
   // pestaña, caída de red), el carrito no debería perderse. Se guarda por
@@ -351,23 +339,10 @@ export default function VentasPage() {
         .map((item) => {
           const actual = productos.find((p) => p.id === item.id);
           if (!actual || actual.activo === false) return null;
-          // Si la presentación guardada ya no existe o fue desactivada, cae
-          // a la default del producto (carritos antiguos en caché, sin
-          // presentación siquiera, también entran por acá).
-          const activas = presentacionesActivas(actual);
-          const presentacion = activas.find((pr) => pr.id === item.presentacionId) || presentacionDefaultDe(actual);
-          if (!presentacion) return null;
-          const max = maxCantidadPresentacion(actual, presentacion.factor_conversion);
+          const max = stockVendible(actual);
           if (max <= 0) return null;
-          const cantidadPrevia = item.cantidadPresentacion ?? item.cantidad ?? 1;
-          return {
-            ...actual,
-            presentacionId: presentacion.id,
-            presentacionNombre: presentacion.nombre,
-            factor: presentacion.factor_conversion,
-            precioPresentacion: Number(presentacion.precio),
-            cantidadPresentacion: Math.min(cantidadPrevia, max),
-          };
+          const cantidadPrevia = item.cantidad ?? 1;
+          return { ...actual, cantidad: Math.min(cantidadPrevia, max) };
         })
         .filter(Boolean)
     );
@@ -378,64 +353,31 @@ export default function VentasPage() {
     localStorage.setItem(carritoStorageKey, JSON.stringify(carrito));
   }, [carrito, carritoStorageKey, esSoloLectura]);
 
-  // Agrega 1 unidad de la presentación default del producto (click rápido
-  // en la tarjeta o escaneo de código de barras). Si el producto ya está en
-  // el carrito, solo incrementa la cantidad de la presentación ya elegida
-  // en esa fila — cambiar de presentación se hace desde el selector de la
-  // tabla del carrito, no reagregando.
+  // Agrega 1 unidad del producto (click rápido en la tarjeta o escaneo de
+  // código de barras). Si el producto ya está en el carrito, solo incrementa
+  // la cantidad de esa fila.
   const agregarAlCarrito = (producto) => {
     setCarrito((prev) => {
       const existente = prev.find((item) => item.id === producto.id);
       if (existente) {
-        const max = maxCantidadPresentacion(producto, existente.factor);
+        const max = stockVendible(producto);
         return prev.map((item) =>
           item.id === producto.id
-            ? { ...item, cantidadPresentacion: Math.min(item.cantidadPresentacion + 1, max || item.cantidadPresentacion) }
+            ? { ...item, cantidad: Math.min(item.cantidad + 1, max || item.cantidad) }
             : item
         );
       }
-      const presentacion = presentacionDefaultDe(producto);
-      if (!presentacion) return prev; // producto sin presentación de venta configurada: no se puede agregar
-      return [...prev, {
-        ...producto,
-        presentacionId: presentacion.id,
-        presentacionNombre: presentacion.nombre,
-        factor: presentacion.factor_conversion,
-        precioPresentacion: Number(presentacion.precio),
-        cantidadPresentacion: 1,
-      }];
+      return [...prev, { ...producto, cantidad: 1 }];
     });
   };
 
-  const cambiarCantidad = (id, nuevaCantidadPresentacion) => {
+  const cambiarCantidad = (id, nuevaCantidad) => {
     const prod = productos.find((p) => p.id === id);
     setCarrito((prev) =>
       prev.map((item) => {
         if (item.id !== id) return item;
-        const max = (prod ? maxCantidadPresentacion(prod, item.factor) : null) || 99;
-        return { ...item, cantidadPresentacion: Math.max(1, Math.min(nuevaCantidadPresentacion, max)) };
-      })
-    );
-  };
-
-  // Cambia la presentación elegida para una fila del carrito ya existente
-  // (ej. de "Unidad" a "Docena"); re-clampa la cantidad al nuevo factor.
-  const cambiarPresentacion = (id, presentacionId) => {
-    const prod = productos.find((p) => p.id === id);
-    const presentacion = presentacionesActivas(prod).find((pr) => pr.id === presentacionId);
-    if (!presentacion) return;
-    setCarrito((prev) =>
-      prev.map((item) => {
-        if (item.id !== id) return item;
-        const max = maxCantidadPresentacion(prod, presentacion.factor_conversion) || 1;
-        return {
-          ...item,
-          presentacionId: presentacion.id,
-          presentacionNombre: presentacion.nombre,
-          factor: presentacion.factor_conversion,
-          precioPresentacion: Number(presentacion.precio),
-          cantidadPresentacion: Math.min(item.cantidadPresentacion, max),
-        };
+        const max = (prod ? stockVendible(prod) : null) || 99;
+        return { ...item, cantidad: Math.max(1, Math.min(nuevaCantidad, max)) };
       })
     );
   };
@@ -444,7 +386,7 @@ export default function VentasPage() {
     setCarrito((prev) => prev.filter((item) => item.id !== id));
   };
 
-  const total = carrito.reduce((sum, item) => sum + item.precioPresentacion * item.cantidadPresentacion, 0);
+  const total = carrito.reduce((sum, item) => sum + item.precio * item.cantidad, 0);
   const vuelto = montoRecibido ? parsearMontoRecibido(montoRecibido) - total : 0;
 
   // Efectivo disponible ahora mismo en el turno (apertura + movimientos en
@@ -596,7 +538,7 @@ export default function VentasPage() {
       return;
     }
 
-    const itemSinStock = carrito.find((i) => i.cantidadPresentacion * i.factor > stockVendible(i));
+    const itemSinStock = carrito.find((i) => i.cantidad > stockVendible(i));
     if (itemSinStock) {
       const disponible = stockVendible(itemSinStock);
       setError(
@@ -618,8 +560,7 @@ export default function VentasPage() {
         referencia_pago: metodoPago === 'Yape' ? (referenciaPago.trim() || null) : null,
         items: carrito.map((item) => ({
           producto_id: item.id,
-          presentacion_venta_id: item.presentacionId,
-          cantidad: item.cantidadPresentacion,
+          cantidad: item.cantidad,
         })),
         tipo_comprobante: tipoComprobante === 'Factura' ? 'Factura' : 'Boleta',
         cliente_dni: tipoComprobante === 'BoletaDNI' ? clienteDni : null,
@@ -728,7 +669,6 @@ export default function VentasPage() {
             <thead>
               <tr className="bg-[#6366f1] text-white">
                 <th className="px-4 py-3 font-medium">Producto</th>
-                <th className="px-4 py-3 font-medium">Presentación</th>
                 <th className="px-4 py-3 font-medium">Precio Unit.</th>
                 <th className="px-4 py-3 font-medium">Cantidad</th>
                 <th className="px-4 py-3 font-medium">Subtotal</th>
@@ -738,60 +678,41 @@ export default function VentasPage() {
             <tbody>
               {carrito.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center text-sm text-gray-400">
+                  <td colSpan={5} className="px-4 py-12 text-center text-sm text-gray-400">
                     <ShoppingCart className="mx-auto mb-2 h-8 w-8 text-gray-300" />
                     Escanea un producto para agregarlo al carrito
                   </td>
                 </tr>
               ) : (
-                carrito.map((item, i) => {
-                  const opcionesPresentacion = presentacionesActivas(item);
-                  return (
+                carrito.map((item, i) => (
                   <tr key={item.id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                     <td className="px-4 py-3">
                       <span className="font-medium text-gray-800">{item.nombre}</span>
                       <span className="ml-1 text-gray-400">{item.marca}</span>
                     </td>
-                    <td className="px-4 py-3">
-                      {opcionesPresentacion.length > 1 ? (
-                        <select
-                          value={item.presentacionId}
-                          onChange={(e) => cambiarPresentacion(item.id, Number(e.target.value))}
-                          className="rounded-lg border border-gray-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                        >
-                          {opcionesPresentacion.map((pr) => (
-                            <option key={pr.id} value={pr.id}>
-                              {pr.nombre} — S/. {Number(pr.precio).toFixed(2)}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <span className="text-gray-600">{item.presentacionNombre}</span>
-                      )}
-                    </td>
                     <td className="px-4 py-3 text-gray-600">
-                      S/. {Number(item.precioPresentacion).toFixed(2)}
+                      S/. {Number(item.precio).toFixed(2)}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1">
                         <button
-                          onClick={() => cambiarCantidad(item.id, item.cantidadPresentacion - 1)}
+                          onClick={() => cambiarCantidad(item.id, item.cantidad - 1)}
                           className="rounded-lg p-1 text-gray-500 hover:bg-gray-100"
                         >
                           <Minus className="h-4 w-4" />
                         </button>
                         <input
                           type="number"
-                          value={item.cantidadPresentacion}
+                          value={item.cantidad}
                           min={1}
-                          max={maxCantidadPresentacion(item, item.factor)}
+                          max={stockVendible(item)}
                           onChange={(e) =>
                             cambiarCantidad(item.id, parseInt(e.target.value, 10) || 1)
                           }
                           className="w-12 rounded border border-gray-200 py-1 text-center text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                         />
                         <button
-                          onClick={() => cambiarCantidad(item.id, item.cantidadPresentacion + 1)}
+                          onClick={() => cambiarCantidad(item.id, item.cantidad + 1)}
                           className="rounded-lg p-1 text-gray-500 hover:bg-gray-100"
                         >
                           <Plus className="h-4 w-4" />
@@ -799,7 +720,7 @@ export default function VentasPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3 font-medium text-gray-800">
-                      S/. {(item.precioPresentacion * item.cantidadPresentacion).toFixed(2)}
+                      S/. {(item.precio * item.cantidad).toFixed(2)}
                     </td>
                     <td className="px-4 py-3">
                       <button
@@ -810,8 +731,7 @@ export default function VentasPage() {
                       </button>
                     </td>
                   </tr>
-                  );
-                })
+                ))
               )}
             </tbody>
           </table>
@@ -871,7 +791,6 @@ export default function VentasPage() {
                   const vencidoParcial = disponible > 0 && disponible < p.stock;
                   const sinStock = disponible === 0;
                   const enCarrito = carrito.some((item) => item.id === p.id);
-                  const otrasPresentaciones = presentacionesActivas(p).length - 1;
                   return (
                     <div
                       key={p.id}
@@ -905,14 +824,9 @@ export default function VentasPage() {
                           <span className="text-xs text-gray-400">{p.stock} ud.</span>
                         )}
                       </div>
-                      {otrasPresentaciones > 0 && (
-                        <span className="mt-1 text-xs text-indigo-500">
-                          +{otrasPresentaciones} presentación{otrasPresentaciones !== 1 ? 'es' : ''}
-                        </span>
-                      )}
                       {enCarrito && (
                         <span className="absolute right-2 top-2 rounded-full bg-indigo-500 px-1.5 py-0.5 text-xs text-white">
-                          {carrito.find((item) => item.id === p.id)?.cantidadPresentacion}
+                          {carrito.find((item) => item.id === p.id)?.cantidad}
                         </span>
                       )}
                     </div>

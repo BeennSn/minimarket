@@ -4,17 +4,14 @@
  */
 
 const { Op } = require('sequelize');
-const { sequelize, Producto, Categoria, Proveedor, EntradaMercaderia, PresentacionVenta } = require('../models');
+const { sequelize, Producto, Categoria, Proveedor, EntradaMercaderia } = require('../models');
 const { presentarProducto, presentarLista } = require('../presenters/producto.presenter');
 const { buscarEnApisExternas } = require('../services/barcodeService');
 const { hoyPeru } = require('../utils/fechas');
 
-const UNIDADES_COMPRA = ['Unidad', 'Caja', 'Paquete', 'Docena', 'Otro'];
-
 const INCLUDE = [
   { model: Categoria, as: 'categoria', attributes: ['id', 'nombre'] },
   { model: Proveedor, as: 'proveedor', attributes: ['id', 'nombre', 'ruc'] },
-  { model: PresentacionVenta, as: 'presentaciones' },
 ];
 
 // Calcula, para cada producto, la fecha de vencimiento más próxima entre sus
@@ -191,7 +188,7 @@ const obtener = async (req, res) => {
 // ─── Crear un nuevo producto ──────────────────────────────────────────────────
 const crear = async (req, res) => {
   try {
-    const { nombre, marca, categoria_id, precio, codigo_barras, stock_minimo, unidad_compra, factor_conversion, maneja_vencimiento } = req.body;
+    const { nombre, marca, categoria_id, precio, codigo_barras, stock_minimo, maneja_vencimiento } = req.body;
 
     if (!nombre || !nombre.trim()) {
       return res.status(400).json({ mensaje: 'El nombre del producto es requerido' });
@@ -205,13 +202,6 @@ const crear = async (req, res) => {
     if (stock_minimo !== undefined && stock_minimo !== null && stock_minimo !== '' && (isNaN(parseInt(stock_minimo, 10)) || parseInt(stock_minimo, 10) < 0)) {
       return res.status(400).json({ mensaje: 'El stock mínimo no puede ser negativo' });
     }
-    if (unidad_compra !== undefined && unidad_compra !== null && !UNIDADES_COMPRA.includes(unidad_compra)) {
-      return res.status(400).json({ mensaje: 'La unidad de compra no es válida' });
-    }
-    if (factor_conversion !== undefined && factor_conversion !== null && factor_conversion !== '' && (isNaN(parseInt(factor_conversion, 10)) || parseInt(factor_conversion, 10) < 1)) {
-      return res.status(400).json({ mensaje: 'El factor de conversión debe ser al menos 1' });
-    }
-
     // iLike + trim: mismo criterio ya aplicado en Categoria/Proveedor — antes
     // "Coca Cola" y "COCA COLA" (o con espacios de más) quedaban como
     // productos distintos, cada uno con su propio stock y lotes.
@@ -243,37 +233,16 @@ const crear = async (req, res) => {
     // posterior — así todo movimiento de stock queda en el historial de
     // EntradaMercaderia desde el día uno, sin excepciones "mágicas" en la
     // creación del producto.
-    //
-    // Junto con el producto se crea su presentación de venta "Unidad"
-    // (factor 1, precio = el precio recién cargado), marcada como default:
-    // así todo producto nace con al menos una presentación de venta lista
-    // para usar en el POS, sin que el usuario tenga que configurar nada
-    // extra para el caso común (vender por unidad).
-    const productoCreado = await sequelize.transaction(async (t) => {
-      const nuevo = await Producto.create({
-        nombre: nombre.trim(),
-        marca: marca.trim(),
-        categoria_id,
-        precio,
-        stock: 0,
-        codigo_barras: codigo_barras || null,
-        activo: true,
-        stock_minimo: stock_minimo !== undefined && stock_minimo !== null && stock_minimo !== '' ? parseInt(stock_minimo, 10) : null,
-        unidad_compra: unidad_compra || 'Unidad',
-        factor_conversion: factor_conversion !== undefined && factor_conversion !== null && factor_conversion !== '' ? parseInt(factor_conversion, 10) : 1,
-        maneja_vencimiento: maneja_vencimiento === undefined || maneja_vencimiento === null ? true : !!maneja_vencimiento,
-      }, { transaction: t });
-
-      await PresentacionVenta.create({
-        producto_id: nuevo.id,
-        nombre: 'Unidad',
-        factor_conversion: 1,
-        precio,
-        es_default: true,
-        activo: true,
-      }, { transaction: t });
-
-      return nuevo;
+    const productoCreado = await Producto.create({
+      nombre: nombre.trim(),
+      marca: marca.trim(),
+      categoria_id,
+      precio,
+      stock: 0,
+      codigo_barras: codigo_barras || null,
+      activo: true,
+      stock_minimo: stock_minimo !== undefined && stock_minimo !== null && stock_minimo !== '' ? parseInt(stock_minimo, 10) : null,
+      maneja_vencimiento: maneja_vencimiento === undefined || maneja_vencimiento === null ? true : !!maneja_vencimiento,
     });
 
     const productoCompleto = await Producto.findByPk(productoCreado.id, { include: INCLUDE });
@@ -296,7 +265,7 @@ const actualizar = async (req, res) => {
       return res.status(404).json({ mensaje: 'Producto no encontrado' });
     }
 
-    const { nombre, marca, categoria_id, proveedor_id, precio, codigo_barras, stock_minimo, unidad_compra, factor_conversion, maneja_vencimiento } = req.body;
+    const { nombre, marca, categoria_id, proveedor_id, precio, codigo_barras, stock_minimo, maneja_vencimiento } = req.body;
 
     const nombreFinal = nombre !== undefined ? nombre.trim() : producto.nombre;
     const marcaFinal  = marca  !== undefined ? marca.trim()  : producto.marca;
@@ -322,14 +291,6 @@ const actualizar = async (req, res) => {
 
     if (stock_minimo !== undefined && stock_minimo !== null && stock_minimo !== '' && (isNaN(parseInt(stock_minimo, 10)) || parseInt(stock_minimo, 10) < 0)) {
       return res.status(400).json({ mensaje: 'El stock mínimo no puede ser negativo' });
-    }
-
-    if (unidad_compra !== undefined && unidad_compra !== null && !UNIDADES_COMPRA.includes(unidad_compra)) {
-      return res.status(400).json({ mensaje: 'La unidad de compra no es válida' });
-    }
-
-    if (factor_conversion !== undefined && factor_conversion !== null && factor_conversion !== '' && (isNaN(parseInt(factor_conversion, 10)) || parseInt(factor_conversion, 10) < 1)) {
-      return res.status(400).json({ mensaje: 'El factor de conversión debe ser al menos 1' });
     }
 
     // Verificar que la categoría exista (si se proporciona)
@@ -360,29 +321,9 @@ const actualizar = async (req, res) => {
     if (stock_minimo !== undefined) {
       producto.stock_minimo = stock_minimo === null || stock_minimo === '' ? null : parseInt(stock_minimo, 10);
     }
-    if (unidad_compra !== undefined) producto.unidad_compra = unidad_compra || 'Unidad';
-    if (factor_conversion !== undefined) {
-      producto.factor_conversion = factor_conversion === null || factor_conversion === '' ? 1 : parseInt(factor_conversion, 10);
-    }
     if (maneja_vencimiento !== undefined) producto.maneja_vencimiento = !!maneja_vencimiento;
 
-    await sequelize.transaction(async (t) => {
-      await producto.save({ transaction: t });
-
-      // El campo "Precio" del formulario sigue siendo, para el caso común,
-      // el precio de la presentación default — así que si cambió acá
-      // también se refleja en esa presentación (y no solo en Producto.precio).
-      if (precio !== undefined) {
-        const presentacionDefault = await PresentacionVenta.findOne({
-          where: { producto_id: producto.id, es_default: true },
-          transaction: t,
-        });
-        if (presentacionDefault && Number(presentacionDefault.precio) !== Number(precio)) {
-          presentacionDefault.precio = precio;
-          await presentacionDefault.save({ transaction: t });
-        }
-      }
-    });
+    await producto.save();
 
     const productoActualizado = await Producto.findByPk(producto.id, { include: INCLUDE });
     await adjuntarProximasFechas([productoActualizado]);

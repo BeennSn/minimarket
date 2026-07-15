@@ -3,8 +3,6 @@
  * Formatea las respuestas del módulo de productos.
  */
 
-const { presentarPresentacion } = require('./presentacionVenta.presenter');
-
 /**
  * Devuelve los campos públicos de un producto con su categoría.
  * @param {object} producto - Instancia Sequelize de Producto
@@ -17,9 +15,6 @@ const presentarProducto = (producto) => ({
   precio: producto.precio,
   stock:  producto.stock,
   stock_minimo: producto.stock_minimo ?? null,
-  unidad_compra: producto.unidad_compra || 'Unidad',
-  factor_conversion: producto.factor_conversion ?? 1,
-  presentaciones: Array.isArray(producto.presentaciones) ? producto.presentaciones.map(presentarPresentacion) : [],
   activo: producto.activo,
   maneja_vencimiento: producto.maneja_vencimiento !== false,
   codigo_barras: producto.codigo_barras || null,

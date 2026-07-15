@@ -12,8 +12,6 @@ import ConfirmDialog from '../../components/ConfirmDialog';
 import Toast from '../../components/Toast';
 import useToast from '../../hooks/useToast';
 
-const UNIDADES_COMPRA = ['Unidad', 'Caja', 'Paquete', 'Docena', 'Otro'];
-
 // Valores que puede traer la URL en ?alerta=... (ej. al llegar desde el
 // Dashboard) mapeados al valor interno de filtroAlerta. Cualquier otro valor
 // (o ausencia del parámetro) deja el filtro en su default ("Todos").
@@ -54,14 +52,6 @@ function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categor
   const [categoriaId, setCategoriaId] = useState('');
   const [precio, setPrecio] = useState('');
   const [stockMinimo, setStockMinimo] = useState('');
-  const [unidadCompra, setUnidadCompra] = useState('Unidad');
-  const [factorConversion, setFactorConversion] = useState('1');
-  // Presentaciones de venta adicionales a la default "Unidad" (esa la rige
-  // el campo "Precio" de arriba). Cada fila: { key, id (null si es nueva),
-  // nombre, factorConversion, precio, eliminar }.
-  const [presentacionesFilas, setPresentacionesFilas] = useState([]);
-  const presentacionesOriginalesRef = useRef([]);
-  const siguienteKeyPresentacionRef = useRef(0);
   const [manejaVencimiento, setManejaVencimiento] = useState(true);
   const [codigoBarras, setCodigoBarras] = useState('');
   const [loading, setLoading] = useState(false);
@@ -83,36 +73,16 @@ function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categor
         setCategoriaId(productoEditando.categoria?.id ?? productoEditando.categoria_id ?? productoEditando.categoriaId ?? '');
         setPrecio(productoEditando.precio ?? '');
         setStockMinimo(productoEditando.stock_minimo ?? '');
-        setUnidadCompra(productoEditando.unidad_compra || 'Unidad');
-        setFactorConversion(String(productoEditando.factor_conversion ?? 1));
         setManejaVencimiento(productoEditando.maneja_vencimiento !== false);
         setCodigoBarras(productoEditando.codigo_barras ?? '');
-        // La presentación default ("Unidad") la gobierna el campo Precio de
-        // arriba — acá solo se editan las presentaciones adicionales activas.
-        const extras = (productoEditando.presentaciones || [])
-          .filter((p) => !p.es_default && p.activo)
-          .map((p) => ({
-            key: p.id,
-            id: p.id,
-            nombre: p.nombre,
-            factorConversion: String(p.factor_conversion),
-            precio: String(p.precio),
-            eliminar: false,
-          }));
-        presentacionesOriginalesRef.current = extras;
-        setPresentacionesFilas(extras);
       } else {
         setNombre('');
         setMarca('');
         setCategoriaId(categorias.length > 0 ? categorias[0].id : '');
         setPrecio('');
         setStockMinimo('10');
-        setUnidadCompra('Unidad');
-        setFactorConversion('1');
         setManejaVencimiento(true);
         setCodigoBarras('');
-        presentacionesOriginalesRef.current = [];
-        setPresentacionesFilas([]);
       }
       setError('');
       setBuscandoCodigo(false);
@@ -156,60 +126,6 @@ function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categor
     }
   };
 
-  const agregarFilaPresentacion = () => {
-    siguienteKeyPresentacionRef.current -= 1;
-    setPresentacionesFilas((prev) => [
-      ...prev,
-      { key: siguienteKeyPresentacionRef.current, id: null, nombre: '', factorConversion: '', precio: '', eliminar: false },
-    ]);
-  };
-
-  const actualizarFilaPresentacion = (key, cambios) => {
-    setPresentacionesFilas((prev) => prev.map((f) => (f.key === key ? { ...f, ...cambios } : f)));
-  };
-
-  const quitarFilaPresentacion = (key) => {
-    setPresentacionesFilas((prev) =>
-      prev
-        .map((f) => (f.key === key ? { ...f, eliminar: !f.eliminar } : f))
-        .filter((f) => !(f.key === key && f.id === null && f.eliminar))
-    );
-  };
-
-  // Crea/actualiza/desactiva las presentaciones adicionales contra el
-  // backend, diffeando cada fila contra el snapshot cargado al abrir el
-  // modal (presentacionesOriginalesRef). La presentación default "Unidad"
-  // no se toca acá: la maneja el campo Precio vía el payload del producto.
-  const guardarPresentaciones = async (productoId) => {
-    const originales = presentacionesOriginalesRef.current;
-    for (const fila of presentacionesFilas) {
-      if (fila.id) {
-        if (fila.eliminar) {
-          await api.patch(`/productos/${productoId}/presentaciones/${fila.id}/desactivar`);
-          continue;
-        }
-        const original = originales.find((o) => o.id === fila.id);
-        const cambio = !original ||
-          original.nombre !== fila.nombre.trim() ||
-          original.factorConversion !== fila.factorConversion ||
-          original.precio !== fila.precio;
-        if (cambio) {
-          await api.put(`/productos/${productoId}/presentaciones/${fila.id}`, {
-            nombre: fila.nombre.trim(),
-            factor_conversion: parseInt(fila.factorConversion, 10) || 1,
-            precio: parseFloat(fila.precio),
-          });
-        }
-      } else if (!fila.eliminar) {
-        await api.post(`/productos/${productoId}/presentaciones`, {
-          nombre: fila.nombre.trim(),
-          factor_conversion: parseInt(fila.factorConversion, 10) || 1,
-          precio: parseFloat(fila.precio),
-        });
-      }
-    }
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -230,51 +146,19 @@ function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categor
       return;
     }
 
-    const filasPresentacionesActivas = presentacionesFilas.filter((f) => !f.eliminar);
-    for (const fila of filasPresentacionesActivas) {
-      const nombreFila = fila.nombre.trim();
-      if (!nombreFila) {
-        setError('Cada presentación adicional necesita un nombre');
-        return;
-      }
-      if (nombreFila.toLowerCase() === 'unidad') {
-        setError('"Unidad" ya es la presentación default (el campo Precio de arriba); usa otro nombre para las adicionales');
-        return;
-      }
-      if (!fila.factorConversion || parseInt(fila.factorConversion, 10) < 1) {
-        setError(`El factor de conversión de "${nombreFila}" debe ser al menos 1`);
-        return;
-      }
-      if (!fila.precio || parseFloat(fila.precio) <= 0) {
-        setError(`El precio de "${nombreFila}" debe ser mayor a 0`);
-        return;
-      }
-    }
-    const nombresRepetidos = filasPresentacionesActivas.some((fila, idx) =>
-      filasPresentacionesActivas.some((otra, otroIdx) => otroIdx !== idx && otra.nombre.trim().toLowerCase() === fila.nombre.trim().toLowerCase())
-    );
-    if (nombresRepetidos) {
-      setError('Hay presentaciones adicionales con el mismo nombre');
-      return;
-    }
-
     setLoading(true);
 
     try {
       const payload = {
         nombre: nombreLimpio, marca: marcaLimpia, categoria_id: categoriaId, precio: parseFloat(precio), codigo_barras: codigoBarras || null,
         stock_minimo: stockMinimo !== '' ? parseInt(stockMinimo, 10) : null,
-        unidad_compra: unidadCompra,
-        factor_conversion: factorConversion !== '' ? parseInt(factorConversion, 10) : 1,
         maneja_vencimiento: manejaVencimiento,
       };
 
       if (esCreacion) {
-        const { data } = await api.post('/productos', payload);
-        await guardarPresentaciones(data.id);
+        await api.post('/productos', payload);
       } else {
         await api.put(`/productos/${productoEditando.id}`, payload);
-        await guardarPresentaciones(productoEditando.id);
       }
       onGuardar();
     } catch (err) {
@@ -439,105 +323,6 @@ function ModalProducto({ abierto, onCerrar, onGuardar, productoEditando, categor
                 className="w-full rounded-lg border border-gray-200 px-4 py-2 pl-10 focus:outline-none focus:ring-2 focus:ring-indigo-400"
               />
             </div>
-          </div>
-
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">Unidad de Compra</label>
-            <select
-              value={unidadCompra}
-              onChange={(e) => setUnidadCompra(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-            >
-              {UNIDADES_COMPRA.map((u) => (
-                <option key={u} value={u}>{u}</option>
-              ))}
-            </select>
-          </div>
-
-          {unidadCompra !== 'Unidad' && (
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">Factor de Conversión</label>
-              <input
-                type="number"
-                min="1"
-                value={factorConversion}
-                onChange={(e) => setFactorConversion(e.target.value)}
-                required
-                className="w-full rounded-lg border border-gray-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-              />
-              <p className="mt-1 text-xs text-gray-400">¿Cuántas unidades de venta trae 1 {unidadCompra.toLowerCase()}?</p>
-            </div>
-          )}
-
-          <div>
-            <div className="flex items-center justify-between">
-              <label className="block text-sm font-medium text-gray-700">
-                Presentaciones de venta adicionales
-                <span className="ml-1 text-xs font-normal text-gray-400">(opcional)</span>
-              </label>
-              <button
-                type="button"
-                onClick={agregarFilaPresentacion}
-                className="flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-700"
-              >
-                <Plus className="h-3.5 w-3.5" /> Agregar
-              </button>
-            </div>
-            <p className="mt-1 mb-2 text-xs text-gray-400">
-              Además de "Unidad" (el precio de arriba), define otras formas de vender este producto —
-              ej. "Media docena", "Docena", "Paquete" — cada una con su propio precio.
-            </p>
-            {presentacionesFilas.length === 0 ? (
-              <p className="text-xs italic text-gray-400">Sin presentaciones adicionales: este producto solo se vende por Unidad.</p>
-            ) : (
-              <div className="space-y-2">
-                {presentacionesFilas.map((fila) => (
-                  <div
-                    key={fila.key}
-                    className={`grid grid-cols-[1fr_4.5rem_6rem_auto] items-center gap-2 rounded-lg border p-2 ${
-                      fila.eliminar ? 'border-red-100 bg-red-50 opacity-60' : 'border-gray-200'
-                    }`}
-                  >
-                    <input
-                      type="text"
-                      placeholder="Nombre (ej. Docena)"
-                      value={fila.nombre}
-                      disabled={fila.eliminar}
-                      onChange={(e) => actualizarFilaPresentacion(fila.key, { nombre: e.target.value })}
-                      className="w-full rounded-md border border-gray-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:bg-gray-50"
-                    />
-                    <input
-                      type="number"
-                      min="1"
-                      placeholder="Factor"
-                      value={fila.factorConversion}
-                      disabled={fila.eliminar}
-                      onChange={(e) => actualizarFilaPresentacion(fila.key, { factorConversion: e.target.value })}
-                      className="w-full rounded-md border border-gray-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:bg-gray-50"
-                    />
-                    <div className="relative">
-                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-gray-400">S./</span>
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        placeholder="Precio"
-                        value={fila.precio}
-                        disabled={fila.eliminar}
-                        onChange={(e) => actualizarFilaPresentacion(fila.key, { precio: sanitizarPrecio(e.target.value) })}
-                        className="w-full rounded-md border border-gray-200 py-1.5 pl-7 pr-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:bg-gray-50"
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => quitarFilaPresentacion(fila.key)}
-                      className="text-xs font-medium text-red-500 hover:text-red-600"
-                    >
-                      {fila.eliminar ? 'Deshacer' : 'Quitar'}
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
 
           <div>
@@ -1264,7 +1049,6 @@ export default function ProductosPage() {
                   <th className="px-4 py-3 font-medium">Precio</th>
                   <th className="px-4 py-3 font-medium">Stock</th>
                   <th className="px-4 py-3 font-medium">Stock Mín.</th>
-                  <th className="px-4 py-3 font-medium">Unidad Compra</th>
                   <th className="px-4 py-3 font-medium">Vencimiento</th>
                   <th className="px-4 py-3 font-medium">Estado</th>
                   <th className="px-4 py-3 font-medium">Acciones</th>
@@ -1281,11 +1065,6 @@ export default function ProductosPage() {
                     <td className="px-4 py-3 text-gray-800">{formatMoneda(p.precio)}</td>
                     <td className="px-4 py-3 text-gray-600">{formatStock(p.stock)}</td>
                     <td className="px-4 py-3 text-gray-600">{p.stock_minimo != null ? p.stock_minimo : '—'}</td>
-                    <td className="px-4 py-3 text-gray-600">
-                      {p.unidad_compra && p.unidad_compra !== 'Unidad'
-                        ? `${p.unidad_compra} (x${p.factor_conversion})`
-                        : '—'}
-                    </td>
                     <td className="px-4 py-3 text-gray-600">{p.proxima_fecha_vencimiento ? formatFecha(p.proxima_fecha_vencimiento) : '-'}</td>
                     <td className="px-4 py-3">
                       <span
