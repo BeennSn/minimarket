@@ -120,7 +120,7 @@ function ModalComprobante({ venta, empresa, pdfError, onCerrar, onDescargarPDF }
           <p className="text-center text-xs text-emerald-600">
             <CheckCircle className="mr-1 inline h-3 w-3" />
             Yape verificado — S/. {Number(venta?.monto_total || 0).toFixed(2)}
-            {venta?.referencia_pago && ` — N° operación: ${venta.referencia_pago}`}
+            {venta?.referencia_pago && ` — N° de autorización: ${venta.referencia_pago}`}
           </p>
         )}
 
@@ -165,7 +165,7 @@ export default function VentasPage() {
 
   // Cobro Yape/Plin vía IziPay (POS físico, manual)
   const [pasoYape, setPasoYape] = useState('inicio'); // inicio|mostrando
-  const [referenciaPago, setReferenciaPago] = useState('');
+  const [nroAutorizacion, setNroAutorizacion] = useState('');
 
   // Tipo de comprobante
   const [tipoComprobante, setTipoComprobante] = useState('BoletaSimple');
@@ -445,7 +445,7 @@ export default function VentasPage() {
     setError('');
     setPdfError('');
     setPasoYape('inicio');
-    setReferenciaPago('');
+    setNroAutorizacion('');
     inputCodigoRef.current?.focus();
   };
 
@@ -557,7 +557,7 @@ export default function VentasPage() {
         metodo_pago: metodoPago,
         monto_recibido: metodoPago === 'Efectivo' ? parsearMontoRecibido(montoRecibido) : null,
         yape_verificado: metodoPago === 'Yape' ? yapeVerificado : false,
-        referencia_pago: metodoPago === 'Yape' ? (referenciaPago.trim() || null) : null,
+        referencia_pago: metodoPago === 'Yape' ? (nroAutorizacion || null) : null,
         items: carrito.map((item) => ({
           producto_id: item.id,
           cantidad: item.cantidad,
@@ -1018,7 +1018,7 @@ export default function VentasPage() {
 
               <select
                 value={metodoPago}
-                onChange={(e) => { setMetodoPago(e.target.value); setYapeVerificado(false); setPasoYape('inicio'); setReferenciaPago(''); }}
+                onChange={(e) => { setMetodoPago(e.target.value); setYapeVerificado(false); setPasoYape('inicio'); setNroAutorizacion(''); }}
                 className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
               >
                 <option value="Efectivo">Efectivo</option>
@@ -1032,8 +1032,8 @@ export default function VentasPage() {
                       <CheckCircle className="h-5 w-5 shrink-0 text-emerald-500" />
                       <div>
                         <p className="font-medium">Pago Yape/Plin confirmado — S/. {total.toFixed(2)}</p>
-                        {referenciaPago.trim() && (
-                          <p className="text-xs text-emerald-600">N° operación: {referenciaPago.trim()}</p>
+                        {nroAutorizacion && (
+                          <p className="text-xs text-emerald-600">N° de autorización: {nroAutorizacion}</p>
                         )}
                       </div>
                     </div>
@@ -1068,18 +1068,29 @@ export default function VentasPage() {
                         Muestra la pantalla de IziPay al cliente para que escanee con Yape o Plin y pague <strong>S/. {total.toFixed(2)}</strong>. Verifica en la app que el pago se haya completado antes de confirmar.
                       </p>
                       <div>
-                        <label className="mb-1 block text-xs text-gray-500">N° de operación (opcional)</label>
+                        <label className="mb-1 block text-xs text-gray-500">
+                          N° de autorización <span className="text-red-500">*</span>
+                        </label>
                         <input
                           type="text"
-                          value={referenciaPago}
-                          onChange={(e) => setReferenciaPago(e.target.value)}
-                          placeholder="Ej. 00123456"
+                          inputMode="numeric"
+                          value={nroAutorizacion}
+                          onChange={(e) => setNroAutorizacion(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                          placeholder="Ej. 123456"
+                          maxLength={6}
                           className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400"
                         />
+                        {nroAutorizacion.length > 0 && nroAutorizacion.length < 6 && (
+                          <p className="mt-1 text-xs text-red-500">El N° de autorización debe tener 6 dígitos</p>
+                        )}
+                        <p className="mt-1 text-xs text-gray-400">
+                          Cópialo de la pantalla de confirmación de IziPay: es lo único que permite ubicar este pago si hay que reclamarlo o conciliarlo después.
+                        </p>
                       </div>
                       <button
                         onClick={() => setYapeVerificado(true)}
-                        className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-700"
+                        disabled={!/^\d{6}$/.test(nroAutorizacion)}
+                        className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <CheckCircle className="h-4 w-4" />
                         Pago confirmado en IziPay

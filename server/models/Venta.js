@@ -105,8 +105,10 @@ const Venta = sequelize.define('Venta', {
     type: DataTypes.DATE,
     allowNull: true,
   },
+  // N° de autorización del pago Yape/Plin en IziPay: siempre 6 dígitos
+  // numéricos (validado en el controller), null para ventas en Efectivo.
   referencia_pago: {
-    type: DataTypes.STRING(50),
+    type: DataTypes.STRING(6),
     allowNull: true,
   },
   estado: {

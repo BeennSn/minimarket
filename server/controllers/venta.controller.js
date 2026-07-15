@@ -46,6 +46,13 @@ const registrar = async (req, res) => {
       return res.status(400).json({ mensaje: 'El método de pago debe ser Efectivo o Yape' });
     }
 
+    // El frontend ya bloquea el botón "Pago confirmado" sin este dato, pero
+    // eso es solo UI — se revalida acá porque es el único campo que permite
+    // ubicar el pago en IziPay/Yape si hay que conciliarlo o reclamarlo.
+    if (metodo_pago === 'Yape' && !/^\d{6}$/.test(referencia_pago || '')) {
+      return res.status(400).json({ mensaje: 'El N° de autorización es obligatorio y debe tener 6 dígitos numéricos' });
+    }
+
     // ─── Turno de caja obligatorio ─────────────────────────────────────────
     // Validación de negocio (no solo de UI): sin un turno abierto del propio
     // vendedor autenticado, la venta ni siquiera llega a tocar stock/BD.

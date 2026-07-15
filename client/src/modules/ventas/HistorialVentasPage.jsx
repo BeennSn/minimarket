@@ -368,7 +368,7 @@ export default function HistorialVentasPage() {
                     )}
                     {detalleVenta.referencia_pago && (
                       <div className="col-span-2">
-                        <span className="text-xs text-gray-500">N° de operación IziPay</span>
+                        <span className="text-xs text-gray-500">N° de autorización IziPay</span>
                         <p className="font-medium">{detalleVenta.referencia_pago}</p>
                       </div>
                     )}
