@@ -12,8 +12,7 @@ const DIAS_ALERTA_VENCIMIENTO_CERCANO = 7;
 const MOTIVOS_BAJA = ['Vencido', 'Dañado', 'Robo o faltante', 'Consumo interno', 'Error de registro', 'Otro'];
 
 // Código de lote legible generado con fecha y hora locales del navegador —
-// siempre hay un código listo, pero el usuario puede sobrescribirlo con el
-// suyo (ej. el código del proveedor) antes de registrar la entrada.
+// obligatorio y no editable por el usuario.
 const generarCodigoLote = () => {
   const ahora = new Date();
   const pad = (n) => String(n).padStart(2, '0');
@@ -231,9 +230,7 @@ export default function InventarioPage() {
         cantidad: parseInt(cantidad, 10),
         fecha_vencimiento: manejaVencimientoEntrada ? (fechaVencimiento || null) : null,
         costo_unitario: null,
-        // Si el usuario borró el campo, se genera uno al vuelo: siempre debe
-        // quedar un código, generado o propio.
-        codigo_lote: codigoLote.trim() || generarCodigoLote(),
+        codigo_lote: codigoLote,
       });
       mostrarExito('Entrada registrada correctamente');
       setProductoId('');
@@ -535,17 +532,15 @@ export default function InventarioPage() {
                 <div>
                   <label className="mb-1 block text-sm font-medium text-gray-700">
                     Código de lote
-                    <span className="ml-1 text-xs font-normal text-gray-400">(generado, puedes cambiarlo)</span>
                   </label>
                   <input
                     type="text"
                     value={codigoLote}
-                    onChange={(e) => setCodigoLote(e.target.value)}
+                    readOnly
+                    required
                     maxLength={100}
-                    placeholder="Ej: el código del proveedor"
-                    className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    className="w-full cursor-not-allowed rounded-lg border border-gray-200 bg-gray-50 px-4 py-2 text-sm font-mono text-gray-600 focus:outline-none"
                   />
-                  <p className="mt-1 text-xs text-gray-400">Ya viene con uno generado — escribe encima si prefieres el tuyo (ej. el del proveedor).</p>
                 </div>
               </div>
               {error && (
