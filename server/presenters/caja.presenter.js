@@ -24,6 +24,8 @@ const presentarTurno = (turno) => ({
   observaciones:           turno.observaciones,
   cajero:                  turno.cajero ? { id: turno.cajero.id, nombre: turno.cajero.nombre } : null,
   aprobador:               turno.aprobador ? { id: turno.aprobador.id, nombre: turno.aprobador.nombre } : null,
+  cerrado_por:             turno.cerrador ? { id: turno.cerrador.id, nombre: turno.cerrador.nombre } : null,
+  motivo_cierre_forzado:   turno.motivo_cierre_forzado || null,
   movimientos:             turno.movimientos ? turno.movimientos.map(presentarMovimiento) : undefined,
 });
 

@@ -107,9 +107,13 @@ const Venta = sequelize.define('Venta', {
   },
   // N° de autorización del pago Yape/Plin en IziPay: siempre 6 dígitos
   // numéricos (validado en el controller), null para ventas en Efectivo.
+  // unique: cada pago real de IziPay solo puede respaldar una venta —
+  // Postgres permite múltiples NULL bajo un unique index, así que esto no
+  // afecta a las ventas en Efectivo.
   referencia_pago: {
     type: DataTypes.STRING(6),
     allowNull: true,
+    unique: true,
   },
   estado: {
     type: DataTypes.ENUM('Completada', 'Anulada'),

@@ -153,6 +153,9 @@ Usuario.hasMany(Turno,   { foreignKey: 'usuario_id', as: 'turnos' });
 // Turno → Usuario (aprobador)
 Turno.belongsTo(Usuario, { foreignKey: 'aprobado_por', as: 'aprobador' });
 
+// Turno → Usuario (quien forzó el cierre, si no fue el propio cajero)
+Turno.belongsTo(Usuario, { foreignKey: 'cerrado_por', as: 'cerrador' });
+
 // MovimientoCaja → Turno
 MovimientoCaja.belongsTo(Turno, { foreignKey: 'turno_id', as: 'turno' });
 Turno.hasMany(MovimientoCaja,   { foreignKey: 'turno_id', as: 'movimientos' });

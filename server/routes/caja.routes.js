@@ -16,5 +16,6 @@ router.post('/movimientos',  verificarRol('Vendedor', 'Administrador'), cajaCont
 router.get('/historial',     verificarRol('Administrador', 'Gerente'),  cajaController.historial);
 router.get('/:id',           verificarRol('Administrador', 'Gerente'),  cajaController.obtenerTurno);
 router.patch('/:id/aprobar', verificarRol('Administrador', 'Gerente'),  cajaController.aprobar);
+router.patch('/:id/cerrar-forzado', verificarRol('Administrador', 'Gerente'), cajaController.cerrarForzado);
 
 module.exports = router;

@@ -19,6 +19,12 @@ import { formatMoneda, formatFecha, formatFechaHora, fechaLocalISO } from '../..
 // Mismo criterio que en reportes/ReportesPage.jsx.
 const AÑOS_HISTORIAL_MAXIMO = 10;
 
+// Umbral para avisar que un turno "Abierto" probablemente fue olvidado por
+// el cajero — mismo valor documentado en HistorialCajaPage.jsx (no hay
+// config compartida cliente/servidor en este proyecto).
+const HORAS_ALERTA_TURNO_ABIERTO = 16;
+const horasAbierto = (turno) => (Date.now() - new Date(turno.fecha_apertura).getTime()) / 3_600_000;
+
 function KpiCard({ titulo, valor, icono: Icono, color, prefijo, onClick }) {
   return (
     <button
@@ -313,6 +319,7 @@ export default function DashboardPage() {
   const [ventasPorDia, setVentasPorDia] = useState([]);
   const [stockCritico, setStockCritico] = useState([]);
   const [productosTop, setProductosTop] = useState([]);
+  const [turnosAbiertos, setTurnosAbiertos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
@@ -362,18 +369,20 @@ export default function DashboardPage() {
     setError('');
     try {
       const rango = { fecha_inicio: fechaInicio, fecha_hasta: fechaHasta };
-      const [resVentas, resInventario, resPorDia, resStock, resTop] = await Promise.all([
+      const [resVentas, resInventario, resPorDia, resStock, resTop, resTurnos] = await Promise.all([
         api.get('/reportes/ventas/resumen', { params: rango }),
         api.get('/reportes/inventario/resumen'),
         api.get('/reportes/ventas/por-dia', { params: rango }),
         api.get('/reportes/inventario/stock-critico', { params: { umbral: 5 } }),
         api.get('/reportes/ventas/productos-top', { params: { ...rango, limite: 5 } }),
+        api.get('/caja/historial', { params: { estado: 'Abierto' } }),
       ]);
       setKpis(resVentas.data);
       setInventario(resInventario.data);
       setVentasPorDia(Array.isArray(resPorDia.data) ? resPorDia.data : []);
       setStockCritico(Array.isArray(resStock.data) ? resStock.data : []);
       setProductosTop(Array.isArray(resTop.data) ? resTop.data : []);
+      setTurnosAbiertos(Array.isArray(resTurnos.data) ? resTurnos.data : []);
     } catch (err) {
       setError(err.response?.data?.mensaje || 'Error al cargar dashboard');
     } finally {
@@ -493,6 +502,10 @@ export default function DashboardPage() {
   const esRangoMesActual = fechaInicio === primerDiaDelMes() && fechaHasta === fechaLocalISO(new Date());
   const etiquetaPeriodo = esRangoMesActual ? 'del Mes' : 'del Período';
 
+  // Turnos "Abierto" que probablemente el cajero se olvidó de cerrar —
+  // se pueden cerrar forzosamente desde Historial de Caja.
+  const turnosOlvidados = turnosAbiertos.filter((t) => horasAbierto(t) > HORAS_ALERTA_TURNO_ABIERTO);
+
   return (
     <div className="space-y-6">
       <Breadcrumb items={[{ label: 'Inicio', path: '/dashboard' }, { label: 'Dashboard' }]} />
@@ -513,6 +526,25 @@ export default function DashboardPage() {
           Actualizar
         </button>
       </div>
+
+      {turnosOlvidados.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <AlertTriangle className="h-5 w-5 shrink-0 text-amber-500" />
+          <p className="flex-1">
+            {turnosOlvidados.length === 1 ? (
+              <>El turno de <strong>{turnosOlvidados[0].cajero?.nombre}</strong> lleva {Math.floor(horasAbierto(turnosOlvidados[0]))}h abierto — probablemente se olvidó de cerrarlo.</>
+            ) : (
+              <>{turnosOlvidados.length} turnos llevan más de {HORAS_ALERTA_TURNO_ABIERTO}h abiertos — probablemente se olvidaron de cerrarlos.</>
+            )}
+          </p>
+          <button
+            onClick={() => navigate('/caja/historial?estado=Abierto')}
+            className="shrink-0 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-amber-600"
+          >
+            Ir a Historial de Caja
+          </button>
+        </div>
+      )}
 
       {/* Filtro de fecha: afecta ventas/ingresos/ticket promedio/top productos.
           Inventario (productos activos, sin stock, stock crítico) es un

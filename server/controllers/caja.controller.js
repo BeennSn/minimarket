@@ -13,6 +13,7 @@ const MONTO_MINIMO_APERTURA_CAJA = 200;
 const INCLUDE_TURNO = [
   { association: 'cajero',    attributes: ['id', 'nombre'] },
   { association: 'aprobador', attributes: ['id', 'nombre'] },
+  { association: 'cerrador',  attributes: ['id', 'nombre'] },
   {
     association: 'movimientos',
     include: [{ association: 'usuario', attributes: ['id', 'nombre'] }],
@@ -75,6 +76,32 @@ const abrir = async (req, res) => {
   }
 };
 
+// Valida los montos contados y aplica el cálculo de cierre (esperado,
+// contado, diferencia) sobre una instancia de Turno ya cargada con sus
+// movimientos — no guarda ni valida nada más allá de eso, lo comparten
+// `cerrar` (el propio cajero) y `cerrarForzado` (Administrador/Gerente).
+const aplicarCierre = (turno, { monto_contado_efectivo, monto_contado_yape, observaciones }) => {
+  const efectivoNum = parseFloat(monto_contado_efectivo);
+  const yapeNum = parseFloat(monto_contado_yape);
+  if (!Number.isFinite(efectivoNum) || efectivoNum < 0 || !Number.isFinite(yapeNum) || yapeNum < 0) {
+    return 'Los montos contados deben ser números válidos mayores o iguales a 0';
+  }
+
+  const { monto_esperado_efectivo, monto_esperado_yape } = calcularEsperados(turno.movimientos);
+
+  turno.estado                  = 'Cerrado';
+  turno.fecha_cierre            = new Date();
+  turno.monto_esperado_efectivo = monto_esperado_efectivo;
+  turno.monto_esperado_yape     = monto_esperado_yape;
+  turno.monto_contado_efectivo  = efectivoNum;
+  turno.monto_contado_yape      = yapeNum;
+  turno.diferencia_efectivo     = parseFloat((efectivoNum - monto_esperado_efectivo).toFixed(2));
+  turno.diferencia_yape         = parseFloat((yapeNum     - monto_esperado_yape).toFixed(2));
+  turno.observaciones           = observaciones || null;
+
+  return null;
+};
+
 // ─── Cerrar turno ──────────────────────────────────────────────────────────────
 const cerrar = async (req, res) => {
   try {
@@ -82,11 +109,6 @@ const cerrar = async (req, res) => {
 
     if (monto_contado_efectivo === undefined || monto_contado_yape === undefined) {
       return res.status(400).json({ mensaje: 'Debes ingresar el monto contado de efectivo y Yape' });
-    }
-    const efectivoNum = parseFloat(monto_contado_efectivo);
-    const yapeNum = parseFloat(monto_contado_yape);
-    if (!Number.isFinite(efectivoNum) || efectivoNum < 0 || !Number.isFinite(yapeNum) || yapeNum < 0) {
-      return res.status(400).json({ mensaje: 'Los montos contados deben ser números válidos mayores o iguales a 0' });
     }
 
     const turno = await Turno.findOne({
@@ -97,26 +119,59 @@ const cerrar = async (req, res) => {
       return res.status(404).json({ mensaje: 'No tienes un turno abierto' });
     }
 
-    const { monto_esperado_efectivo, monto_esperado_yape } = calcularEsperados(turno.movimientos);
-
-    const contadoEfectivo = parseFloat(monto_contado_efectivo);
-    const contadoYape     = parseFloat(monto_contado_yape);
-
-    turno.estado                  = 'Cerrado';
-    turno.fecha_cierre            = new Date();
-    turno.monto_esperado_efectivo = monto_esperado_efectivo;
-    turno.monto_esperado_yape     = monto_esperado_yape;
-    turno.monto_contado_efectivo  = contadoEfectivo;
-    turno.monto_contado_yape      = contadoYape;
-    turno.diferencia_efectivo     = parseFloat((contadoEfectivo - monto_esperado_efectivo).toFixed(2));
-    turno.diferencia_yape         = parseFloat((contadoYape     - monto_esperado_yape).toFixed(2));
-    turno.observaciones           = observaciones || null;
+    const errorMontos = aplicarCierre(turno, { monto_contado_efectivo, monto_contado_yape, observaciones });
+    if (errorMontos) {
+      return res.status(400).json({ mensaje: errorMontos });
+    }
     await turno.save();
 
     const turnoCompleto = await Turno.findByPk(turno.id, { include: INCLUDE_TURNO });
     return res.status(200).json(presentarTurno(turnoCompleto));
   } catch (err) {
     console.error('Error al cerrar turno:', err);
+    return res.status(500).json({ mensaje: 'Error interno del servidor' });
+  }
+};
+
+// ─── Cerrar turno de otro usuario (Administrador/Gerente) ─────────────────────
+// Para cuando un cajero se olvida de cerrar su turno (o ya no está
+// disponible) y por eso queda "Abierto" indefinidamente, bloqueando que
+// vuelva a abrir uno nuevo. Exige el mismo conteo físico real que un cierre
+// normal — nunca se cierra "a ciegas" con montos en blanco — más un motivo
+// obligatorio que deja rastro de quién y por qué lo forzó.
+const cerrarForzado = async (req, res) => {
+  try {
+    const { monto_contado_efectivo, monto_contado_yape, motivo, observaciones } = req.body;
+
+    if (!motivo || !motivo.trim()) {
+      return res.status(400).json({ mensaje: 'El motivo del cierre forzado es obligatorio' });
+    }
+    if (monto_contado_efectivo === undefined || monto_contado_yape === undefined) {
+      return res.status(400).json({ mensaje: 'Debes ingresar el monto contado de efectivo y Yape' });
+    }
+
+    const turno = await Turno.findByPk(req.params.id, {
+      include: [{ association: 'movimientos' }],
+    });
+    if (!turno) {
+      return res.status(404).json({ mensaje: 'Turno no encontrado' });
+    }
+    if (turno.estado !== 'Abierto') {
+      return res.status(400).json({ mensaje: 'Solo se pueden forzar cierres de turnos abiertos' });
+    }
+
+    const errorMontos = aplicarCierre(turno, { monto_contado_efectivo, monto_contado_yape, observaciones });
+    if (errorMontos) {
+      return res.status(400).json({ mensaje: errorMontos });
+    }
+    turno.cerrado_por = req.usuario.id;
+    turno.motivo_cierre_forzado = motivo.trim();
+    await turno.save();
+
+    const turnoCompleto = await Turno.findByPk(turno.id, { include: INCLUDE_TURNO });
+    return res.status(200).json(presentarTurno(turnoCompleto));
+  } catch (err) {
+    console.error('Error al forzar cierre de turno:', err);
     return res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
 };
@@ -258,4 +313,4 @@ const aprobar = async (req, res) => {
   }
 };
 
-module.exports = { abrir, cerrar, obtenerActivo, registrarMovimiento, historial, obtenerTurno, aprobar };
+module.exports = { abrir, cerrar, cerrarForzado, obtenerActivo, registrarMovimiento, historial, obtenerTurno, aprobar };

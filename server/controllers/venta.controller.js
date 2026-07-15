@@ -53,6 +53,16 @@ const registrar = async (req, res) => {
       return res.status(400).json({ mensaje: 'El N° de autorización es obligatorio y debe tener 6 dígitos numéricos' });
     }
 
+    // Un N° de autorización corresponde a un único pago real en IziPay: si ya
+    // quedó registrado en otra venta, no puede reutilizarse — eso rompería la
+    // trazabilidad (dos ventas distintas "respaldadas" por el mismo pago).
+    if (metodo_pago === 'Yape') {
+      const yaRegistrado = await Venta.findOne({ where: { referencia_pago } });
+      if (yaRegistrado) {
+        return res.status(400).json({ mensaje: `El N° de autorización ${referencia_pago} ya fue registrado en otra venta (#${yaRegistrado.id})` });
+      }
+    }
+
     // ─── Turno de caja obligatorio ─────────────────────────────────────────
     // Validación de negocio (no solo de UI): sin un turno abierto del propio
     // vendedor autenticado, la venta ni siquiera llega a tocar stock/BD.
@@ -283,6 +293,13 @@ const registrar = async (req, res) => {
   } catch (err) {
     if (err.status && err.mensaje) {
       return res.status(err.status).json({ mensaje: err.mensaje });
+    }
+    // Cubre la ventana de carrera entre el pre-chequeo de arriba y el commit
+    // de la transacción (dos ventas con el mismo N° de autorización enviadas
+    // casi al mismo tiempo) — el unique index de la BD es el que de verdad
+    // lo impide; esto solo traduce ese error a un mensaje entendible.
+    if (err.name === 'SequelizeUniqueConstraintError' && err.fields?.referencia_pago) {
+      return res.status(400).json({ mensaje: 'El N° de autorización ya fue registrado en otra venta' });
     }
     console.error('Error en registrar venta:', err);
     return res.status(500).json({ mensaje: 'Error interno del servidor' });

@@ -15,6 +15,12 @@ const Turno = sequelize.define('Turno', {
   diferencia_yape:          { type: DataTypes.DECIMAL(10, 2), allowNull: true },
   observaciones:            { type: DataTypes.TEXT, allowNull: true },
   aprobado_por:             { type: DataTypes.INTEGER, allowNull: true },
+  // null: el cierre lo hizo el propio cajero (flujo normal). Con valor: fue
+  // un cierre forzado por un Administrador/Gerente porque el cajero no
+  // cerró su turno — motivo_cierre_forzado es obligatorio en ese caso
+  // (validado en el controller, no acá).
+  cerrado_por:              { type: DataTypes.INTEGER, allowNull: true },
+  motivo_cierre_forzado:    { type: DataTypes.STRING(255), allowNull: true },
 }, {
   tableName: 'turnos',
   timestamps: false,
