@@ -13,6 +13,12 @@ import api from '../../utils/axios';
 import Breadcrumb from '../../components/Breadcrumb';
 import { formatMoneda, formatFecha, formatFechaHora, fechaLocalISO } from '../../utils/format';
 
+// Tope de años hacia atrás para el filtro de fechas: bloquea valores
+// absurdos tecleados a mano (ej. 13/4/1978) sin depender de que el
+// navegador respete min/max en un <input type="date"> escrito a mano.
+// Mismo criterio que en reportes/ReportesPage.jsx.
+const AÑOS_HISTORIAL_MAXIMO = 10;
+
 function KpiCard({ titulo, valor, icono: Icono, color, prefijo, onClick }) {
   return (
     <button
@@ -321,6 +327,12 @@ export default function DashboardPage() {
   const [fechaInicioInput, setFechaInicioInput] = useState(fechaInicio);
   const [fechaHastaInput, setFechaHastaInput] = useState(fechaHasta);
 
+  const fechaHoy = fechaLocalISO(new Date());
+  const fechaMinima = (() => {
+    const hoy = new Date();
+    return fechaLocalISO(new Date(hoy.getFullYear() - AÑOS_HISTORIAL_MAXIMO, hoy.getMonth(), hoy.getDate()));
+  })();
+
   // Detalle por tarjeta: se carga bajo demanda al abrir cada modal (no en la
   // carga inicial del dashboard) y se cachea en estado para no re-pedirlo
   // cada vez que se reabre la misma tarjeta en la misma visita.
@@ -333,6 +345,19 @@ export default function DashboardPage() {
   const [solicitudesPendientesDetalle, setSolicitudesPendientesDetalle] = useState(null);
 
   const fetchData = useCallback(async (esRefresco = false) => {
+    if (fechaInicio && fechaHasta && fechaInicio > fechaHasta) {
+      setError('La fecha "Desde" no puede ser posterior a la fecha "Hasta"');
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
+    if ((fechaInicio && (fechaInicio < fechaMinima || fechaInicio > fechaHoy)) ||
+        (fechaHasta && (fechaHasta < fechaMinima || fechaHasta > fechaHoy))) {
+      setError(`Las fechas deben estar entre ${fechaMinima} y ${fechaHoy}`);
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
     if (esRefresco) setRefreshing(true);
     setError('');
     try {
@@ -456,14 +481,6 @@ export default function DashboardPage() {
     );
   }
 
-  if (error) {
-    return (
-      <div className="flex h-96 items-center justify-center">
-        <div className="rounded-lg bg-red-50 px-6 py-4 text-sm text-red-600">{error}</div>
-      </div>
-    );
-  }
-
   const hoy = new Date();
   const fechaActual = hoy.toLocaleDateString('es-PE', {
     year: 'numeric', month: 'long', day: 'numeric',
@@ -506,7 +523,8 @@ export default function DashboardPage() {
           <input
             type="date"
             value={fechaInicioInput}
-            max={fechaHastaInput}
+            min={fechaMinima}
+            max={fechaHastaInput || fechaHoy}
             onChange={(e) => setFechaInicioInput(e.target.value)}
             className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:border-indigo-500 focus:outline-none"
           />
@@ -516,8 +534,8 @@ export default function DashboardPage() {
           <input
             type="date"
             value={fechaHastaInput}
-            min={fechaInicioInput}
-            max={fechaLocalISO(new Date())}
+            min={fechaInicioInput || fechaMinima}
+            max={fechaHoy}
             onChange={(e) => setFechaHastaInput(e.target.value)}
             className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:border-indigo-500 focus:outline-none"
           />
@@ -539,6 +557,14 @@ export default function DashboardPage() {
         </span>
       </div>
 
+      {error && (
+        <div className="rounded-lg bg-red-50 px-6 py-4 text-sm text-red-600">{error}</div>
+      )}
+
+      {/* Mientras haya un error de filtro, no se muestran KPIs/gráficos con
+          datos viejos/de otro período. */}
+      {!error && (
+      <>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
         <KpiCard
           titulo={`Total Ventas ${etiquetaPeriodo}`}
@@ -705,6 +731,8 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+      </>
+      )}
 
       {modalActivo && (
         <ModalDetalle
