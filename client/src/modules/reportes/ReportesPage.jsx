@@ -51,6 +51,10 @@ export default function ReportesPage() {
   }, [fechaInicio, fechaHasta]);
 
   const cargarDatos = useCallback(async (esRefresco = false) => {
+    if (fechaInicio && fechaHasta && fechaInicio > fechaHasta) {
+      setError('La fecha "Desde" no puede ser posterior a la fecha "Hasta"');
+      return;
+    }
     if (esRefresco) setRefreshing(true);
     else setLoading(true);
     setError('');
@@ -78,7 +82,11 @@ export default function ReportesPage() {
     }
   }, [buildParams]);
 
-  useEffect(() => { cargarDatos(); }, [cargarDatos]);
+  // Solo carga al montar: cargarDatos cambia de identidad en cada tecla de
+  // fechaInicio/fechaHasta (vía buildParams), pero la carga real solo debe
+  // dispararse al hacer clic en "Aplicar filtros" o "Limpiar", no en cada tecla.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { cargarDatos(); }, []);
 
   useEffect(() => {
     datosRef.current = { resumen, ventasPorDia, metodoPago, productosTop, margenProductos, mermasPorMotivo, fechaInicio, fechaHasta };
@@ -296,14 +304,6 @@ export default function ReportesPage() {
     );
   }
 
-  if (error) {
-    return (
-      <div className="flex h-96 items-center justify-center">
-        <div className="rounded-lg bg-red-50 px-6 py-4 text-sm text-red-600">{error}</div>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
       <Breadcrumb items={[{ label: 'Inicio', path: '/dashboard' }, { label: 'Reportes' }]} />
@@ -334,6 +334,7 @@ export default function ReportesPage() {
             <input
               type="date" value={fechaInicio}
               onChange={(e) => setFechaInicio(e.target.value)}
+              max={fechaHasta || undefined}
               className="rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
             />
           </div>
@@ -342,6 +343,7 @@ export default function ReportesPage() {
             <input
               type="date" value={fechaHasta}
               onChange={(e) => setFechaHasta(e.target.value)}
+              min={fechaInicio || undefined}
               className="rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
             />
           </div>
@@ -363,6 +365,15 @@ export default function ReportesPage() {
         </div>
       </div>
 
+      {error && (
+        <div className="rounded-lg bg-red-50 px-6 py-4 text-sm text-red-600">{error}</div>
+      )}
+
+      {/* Mientras haya un error de filtro, no se muestran reportes con datos
+          viejos/por defecto (ej. Top 10 Productos) — Stock Crítico, más abajo,
+          es independiente del rango de fechas y sí se sigue mostrando. */}
+      {!error && (
+      <>
       {/* ─── Resumen ──────────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
@@ -591,6 +602,8 @@ export default function ReportesPage() {
           </div>
         )}
       </div>
+      </>
+      )}
 
       {/* ─── Stock Crítico ──────────────────────────────────────────────────────── */}
       <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
