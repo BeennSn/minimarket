@@ -17,6 +17,7 @@ const Turno              = require('./Turno');
 const MovimientoCaja     = require('./MovimientoCaja');
 const ConsumoLote        = require('./ConsumoLote');
 const AjusteInventario   = require('./AjusteInventario');
+const PresentacionVenta  = require('./PresentacionVenta');
 
 // ─── Asociaciones ─────────────────────────────────────────────────────────────
 
@@ -50,6 +51,14 @@ Venta.hasMany(DetalleVenta,   { foreignKey: 'venta_id', as: 'detalles' });
 // DetalleVenta → Producto
 DetalleVenta.belongsTo(Producto, { foreignKey: 'producto_id', as: 'producto' });
 Producto.hasMany(DetalleVenta,   { foreignKey: 'producto_id', as: 'detalles_venta' });
+
+// Producto → PresentacionVenta
+Producto.hasMany(PresentacionVenta,   { foreignKey: 'producto_id', as: 'presentaciones' });
+PresentacionVenta.belongsTo(Producto, { foreignKey: 'producto_id', as: 'producto' });
+
+// DetalleVenta → PresentacionVenta
+DetalleVenta.belongsTo(PresentacionVenta, { foreignKey: 'presentacion_venta_id', as: 'presentacion' });
+PresentacionVenta.hasMany(DetalleVenta,   { foreignKey: 'presentacion_venta_id', as: 'detalles_venta' });
 
 // EntradaMercaderia → Producto
 EntradaMercaderia.belongsTo(Producto, { foreignKey: 'producto_id', as: 'producto' });
@@ -184,4 +193,5 @@ module.exports = {
   MovimientoCaja,
   ConsumoLote,
   AjusteInventario,
+  PresentacionVenta,
 };

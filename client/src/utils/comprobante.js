@@ -65,14 +65,22 @@ export function construirNumeroComprobante(venta, empresa) {
 
 export function calcularDesglose(venta, igvRate) {
   const detalles = venta?.detalles || venta?.items || [];
-  const filas = detalles.map((d) => ({
-    nombre: d.producto?.nombre || d.nombre || 'Producto',
-    marca: d.producto?.marca || d.marca || '',
-    codigo: d.producto?.codigo_barras || '',
-    cantidad: Number(d.cantidad || 0),
-    precioUnitario: Number(d.precio_unitario ?? d.precio ?? 0),
-    subtotal: Number(d.subtotal ?? (Number(d.cantidad || 0) * Number(d.precio_unitario ?? d.precio ?? 0))),
-  }));
+  const filas = detalles.map((d) => {
+    // cantidad_presentacion es "cuántas de la presentación elegida" (ej. 2
+    // Docena); cantidad a secas son unidades base (ej. 24) y no debe
+    // imprimirse en el comprobante — confundiría al cliente.
+    const cantidad = Number(d.cantidad_presentacion ?? d.cantidad ?? 0);
+    const precioUnitario = Number(d.precio_unitario ?? d.precio ?? 0);
+    return {
+      nombre: d.producto?.nombre || d.nombre || 'Producto',
+      marca: d.producto?.marca || d.marca || '',
+      codigo: d.producto?.codigo_barras || '',
+      presentacion: d.presentacion_nombre_snapshot || null,
+      cantidad,
+      precioUnitario,
+      subtotal: Number(d.subtotal ?? cantidad * precioUnitario),
+    };
+  });
 
   const total = Number(venta?.monto_total ?? venta?.total ?? filas.reduce((s, f) => s + f.subtotal, 0));
   const tieneIgv = igvRate > 0;
@@ -184,7 +192,7 @@ export async function generarComprobantePDF(venta, empresa, igvRate) {
     <tr style="background:${i % 2 === 0 ? '#ffffff' : '#f9fafb'};">
       <td style="padding:6px 8px;text-align:center;border-bottom:1px solid #f3f4f6;">${f.cantidad}</td>
       ${esFactura ? `<td style="padding:6px 8px;border-bottom:1px solid #f3f4f6;color:#6b7280;">${esc(f.codigo) || '—'}</td>` : ''}
-      <td style="padding:6px 8px;border-bottom:1px solid #f3f4f6;">${esc(f.nombre)}${f.marca ? ` <span style="color:#9ca3af;">(${esc(f.marca)})</span>` : ''}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #f3f4f6;">${esc(f.nombre)}${f.marca ? ` <span style="color:#9ca3af;">(${esc(f.marca)})</span>` : ''}${f.presentacion && f.presentacion !== 'Unidad' ? ` <span style="color:#6366f1;">— ${esc(f.presentacion)}</span>` : ''}</td>
       <td style="padding:6px 8px;text-align:right;border-bottom:1px solid #f3f4f6;">${money(f.precioUnitario)}</td>
       <td style="padding:6px 8px;text-align:right;border-bottom:1px solid #f3f4f6;font-weight:600;">${money(f.subtotal)}</td>
     </tr>

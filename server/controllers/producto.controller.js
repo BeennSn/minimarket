@@ -4,7 +4,7 @@
  */
 
 const { Op } = require('sequelize');
-const { sequelize, Producto, Categoria, Proveedor, EntradaMercaderia } = require('../models');
+const { sequelize, Producto, Categoria, Proveedor, EntradaMercaderia, PresentacionVenta } = require('../models');
 const { presentarProducto, presentarLista } = require('../presenters/producto.presenter');
 const { buscarEnApisExternas } = require('../services/barcodeService');
 const { hoyPeru } = require('../utils/fechas');
@@ -14,6 +14,7 @@ const UNIDADES_COMPRA = ['Unidad', 'Caja', 'Paquete', 'Docena', 'Otro'];
 const INCLUDE = [
   { model: Categoria, as: 'categoria', attributes: ['id', 'nombre'] },
   { model: Proveedor, as: 'proveedor', attributes: ['id', 'nombre', 'ruc'] },
+  { model: PresentacionVenta, as: 'presentaciones' },
 ];
 
 // Calcula, para cada producto, la fecha de vencimiento más próxima entre sus
@@ -242,18 +243,37 @@ const crear = async (req, res) => {
     // posterior — así todo movimiento de stock queda en el historial de
     // EntradaMercaderia desde el día uno, sin excepciones "mágicas" en la
     // creación del producto.
-    const productoCreado = await Producto.create({
-      nombre: nombre.trim(),
-      marca: marca.trim(),
-      categoria_id,
-      precio,
-      stock: 0,
-      codigo_barras: codigo_barras || null,
-      activo: true,
-      stock_minimo: stock_minimo !== undefined && stock_minimo !== null && stock_minimo !== '' ? parseInt(stock_minimo, 10) : null,
-      unidad_compra: unidad_compra || 'Unidad',
-      factor_conversion: factor_conversion !== undefined && factor_conversion !== null && factor_conversion !== '' ? parseInt(factor_conversion, 10) : 1,
-      maneja_vencimiento: maneja_vencimiento === undefined || maneja_vencimiento === null ? true : !!maneja_vencimiento,
+    //
+    // Junto con el producto se crea su presentación de venta "Unidad"
+    // (factor 1, precio = el precio recién cargado), marcada como default:
+    // así todo producto nace con al menos una presentación de venta lista
+    // para usar en el POS, sin que el usuario tenga que configurar nada
+    // extra para el caso común (vender por unidad).
+    const productoCreado = await sequelize.transaction(async (t) => {
+      const nuevo = await Producto.create({
+        nombre: nombre.trim(),
+        marca: marca.trim(),
+        categoria_id,
+        precio,
+        stock: 0,
+        codigo_barras: codigo_barras || null,
+        activo: true,
+        stock_minimo: stock_minimo !== undefined && stock_minimo !== null && stock_minimo !== '' ? parseInt(stock_minimo, 10) : null,
+        unidad_compra: unidad_compra || 'Unidad',
+        factor_conversion: factor_conversion !== undefined && factor_conversion !== null && factor_conversion !== '' ? parseInt(factor_conversion, 10) : 1,
+        maneja_vencimiento: maneja_vencimiento === undefined || maneja_vencimiento === null ? true : !!maneja_vencimiento,
+      }, { transaction: t });
+
+      await PresentacionVenta.create({
+        producto_id: nuevo.id,
+        nombre: 'Unidad',
+        factor_conversion: 1,
+        precio,
+        es_default: true,
+        activo: true,
+      }, { transaction: t });
+
+      return nuevo;
     });
 
     const productoCompleto = await Producto.findByPk(productoCreado.id, { include: INCLUDE });
@@ -346,7 +366,23 @@ const actualizar = async (req, res) => {
     }
     if (maneja_vencimiento !== undefined) producto.maneja_vencimiento = !!maneja_vencimiento;
 
-    await producto.save();
+    await sequelize.transaction(async (t) => {
+      await producto.save({ transaction: t });
+
+      // El campo "Precio" del formulario sigue siendo, para el caso común,
+      // el precio de la presentación default — así que si cambió acá
+      // también se refleja en esa presentación (y no solo en Producto.precio).
+      if (precio !== undefined) {
+        const presentacionDefault = await PresentacionVenta.findOne({
+          where: { producto_id: producto.id, es_default: true },
+          transaction: t,
+        });
+        if (presentacionDefault && Number(presentacionDefault.precio) !== Number(precio)) {
+          presentacionDefault.precio = precio;
+          await presentacionDefault.save({ transaction: t });
+        }
+      }
+    });
 
     const productoActualizado = await Producto.findByPk(producto.id, { include: INCLUDE });
     await adjuntarProximasFechas([productoActualizado]);

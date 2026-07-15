@@ -9,6 +9,10 @@ const presentarDetalle = (detalle) => ({
   cantidad:        detalle.cantidad,
   precio_unitario: detalle.precio_unitario,
   subtotal:        detalle.subtotal,
+  presentacion_venta_id:        detalle.presentacion_venta_id || null,
+  cantidad_presentacion:        detalle.cantidad_presentacion ?? detalle.cantidad,
+  presentacion_nombre_snapshot: detalle.presentacion_nombre_snapshot || 'Unidad',
+  presentacion_factor_snapshot: detalle.presentacion_factor_snapshot ?? 1,
 });
 
 const presentarVenta = (venta) => ({
