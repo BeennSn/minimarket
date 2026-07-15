@@ -1,10 +1,15 @@
 const { Op } = require('sequelize');
-const { sequelize, Venta, DetalleVenta, Producto, Usuario, Cliente, Turno, MovimientoCaja, Configuracion } = require('../models');
+const { sequelize, Venta, DetalleVenta, Producto, Usuario, Cliente, Turno, MovimientoCaja, Configuracion, BajaInventario } = require('../models');
 const { presentarVenta, presentarLista } = require('../presenters/venta.presenter');
 const { consumirStockFIFO, revertirConsumo, calcularStockVigente } = require('../services/inventario.service');
 const { calcularEsperados } = require('../services/caja.service');
 const { consultarRucSunat } = require('../services/consulta.service');
 const { inicioDiaPeru, finDiaPeruExclusivo } = require('../utils/fechas');
+
+// Mismo catálogo que MOTIVOS_BAJA en inventario.controller.js (sin config
+// compartida cliente/servidor ni entre controllers en este proyecto) — una
+// devolución que no repone stock a un producto es, en el fondo, una baja.
+const MOTIVOS_PERDIDA_DEVOLUCION = ['Vencido', 'Dañado', 'Robo o faltante', 'Consumo interno', 'Error de registro', 'Otro'];
 
 // Efectivo realmente disponible en el turno para dar vuelto: apertura +
 // movimientos en efectivo (ventas, ingresos manuales) - egresos/anulaciones.
@@ -418,7 +423,7 @@ const verificarYape = async (req, res) => {
 
 const anular = async (req, res) => {
   try {
-    const { motivo } = req.body;
+    const { motivo, detalles: decisiones } = req.body;
 
     if (!motivo || !motivo.trim()) {
       return res.status(400).json({ mensaje: 'El motivo de anulación es obligatorio' });
@@ -432,6 +437,25 @@ const anular = async (req, res) => {
     }
     if (venta.estado === 'Anulada') {
       return res.status(400).json({ mensaje: 'La venta ya fue anulada' });
+    }
+
+    // Anular también sirve como devolución de cliente: por cada producto de
+    // la venta hay que decidir si vuelve a stock vendible (ej. error de
+    // cobro) o no (ej. dañado/vencido) — en ese último caso se exige un
+    // motivo del catálogo de Bajas de Inventario, porque se va a generar una
+    // baja real para que la pérdida aparezca en reportes de mermas.
+    if (!Array.isArray(decisiones)) {
+      return res.status(400).json({ mensaje: 'Debes indicar si cada producto de la venta vuelve a stock' });
+    }
+    const decisionPorDetalle = new Map(decisiones.map((d) => [Number(d.id), d]));
+    for (const detalle of venta.detalles) {
+      const decision = decisionPorDetalle.get(detalle.id);
+      if (!decision) {
+        return res.status(400).json({ mensaje: `Falta indicar si el producto de la línea #${detalle.id} vuelve a stock` });
+      }
+      if (decision.reponer_stock === false && !MOTIVOS_PERDIDA_DEVOLUCION.includes(decision.motivo_perdida)) {
+        return res.status(400).json({ mensaje: 'El motivo de la pérdida no es válido para un producto que no vuelve a stock' });
+      }
     }
 
     const movimientoVenta = await MovimientoCaja.findOne({ where: { venta_id: venta.id, tipo: 'Venta' } });
@@ -456,7 +480,20 @@ const anular = async (req, res) => {
       }
 
       for (const detalle of venta.detalles) {
-        await revertirConsumo({ tipo: 'Venta', referencia_id: detalle.id }, t);
+        const decision = decisionPorDetalle.get(detalle.id);
+        if (decision.reponer_stock === false) {
+          const bajaCreada = await BajaInventario.create({
+            producto_id: detalle.producto_id,
+            cantidad: detalle.cantidad,
+            motivo: decision.motivo_perdida,
+            motivo_detalle: decision.motivo_perdida_detalle?.trim() || null,
+            usuario_id: req.usuario.id,
+            venta_id: venta.id,
+          }, { transaction: t });
+          await revertirConsumo({ tipo: 'Venta', referencia_id: detalle.id, reponerStock: false, bajaId: bajaCreada.id }, t);
+        } else {
+          await revertirConsumo({ tipo: 'Venta', referencia_id: detalle.id }, t);
+        }
       }
 
       ventaLock.estado = 'Anulada';

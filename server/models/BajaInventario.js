@@ -35,6 +35,17 @@ const BajaInventario = sequelize.define('BajaInventario', {
       key: 'id',
     },
   },
+  // Si esta baja se generó automáticamente al anular una venta (devolución
+  // donde el producto no vuelve a stock vendible), queda la referencia acá.
+  // Null para bajas registradas manualmente desde Inventario → Bajas.
+  venta_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: 'ventas',
+      key: 'id',
+    },
+  },
 }, {
   tableName: 'bajas_inventario',
   timestamps: true,

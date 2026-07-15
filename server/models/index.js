@@ -87,6 +87,10 @@ Producto.hasMany(BajaInventario,   { foreignKey: 'producto_id', as: 'bajas' });
 BajaInventario.belongsTo(Usuario, { foreignKey: 'usuario_id', as: 'usuario' });
 Usuario.hasMany(BajaInventario,   { foreignKey: 'usuario_id', as: 'bajas' });
 
+// BajaInventario → Venta (si se originó al anular una venta sin reponer stock)
+BajaInventario.belongsTo(Venta, { foreignKey: 'venta_id', as: 'venta' });
+Venta.hasMany(BajaInventario,   { foreignKey: 'venta_id', as: 'bajas_generadas' });
+
 // AjusteInventario → Producto
 AjusteInventario.belongsTo(Producto, { foreignKey: 'producto_id', as: 'producto' });
 Producto.hasMany(AjusteInventario,   { foreignKey: 'producto_id', as: 'ajustes' });

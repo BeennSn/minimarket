@@ -134,17 +134,32 @@ const consumirStockFIFO = async ({ producto_id, cantidad, tipo, referencia = {},
 };
 
 // ─── Revertir un consumo (anulación de venta o baja) ──────────────────────────
-const revertirConsumo = async ({ tipo, referencia_id }, t) => {
+// reponerStock=false: para cuando se anula una venta pero el producto NO
+// vuelve a stock vendible (ej. devolución por daño/vencimiento) — el stock
+// ya está correctamente descontado (no se toca), y el ConsumoLote se
+// reconvierte a una baja real (bajaId) en vez de destruirse, para que la
+// pérdida quede trazable en Bajas de Inventario igual que una baja manual.
+const revertirConsumo = async ({ tipo, referencia_id, reponerStock = true, bajaId = null }, t) => {
   const where = tipo === 'Venta'
     ? { tipo: 'Venta', detalle_venta_id: referencia_id }
     : { tipo: 'Baja', baja_id: referencia_id };
 
   // Lock de fila: si dos reversiones concurrentes apuntaran a los mismos
   // ConsumoLote, la segunda espera a que la primera termine (commit) y los
-  // haya destruido — al reconsultar ya no los encuentra, en vez de revertir
-  // el mismo consumo dos veces.
+  // haya destruido/reconvertido — al reconsultar ya no los encuentra en su
+  // forma original, en vez de revertir el mismo consumo dos veces.
   const consumos = await ConsumoLote.findAll({ where, transaction: t, lock: t.LOCK.UPDATE });
   if (!consumos.length) return;
+
+  if (!reponerStock) {
+    for (const consumo of consumos) {
+      consumo.tipo = 'Baja';
+      consumo.baja_id = bajaId;
+      consumo.detalle_venta_id = null;
+      await consumo.save({ transaction: t });
+    }
+    return;
+  }
 
   let totalDevuelto = 0;
   let producto_id = null;

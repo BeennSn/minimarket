@@ -10,6 +10,11 @@ import { useStockSync } from '../../context/StockSyncContext';
 import { useConfiguracion } from '../../hooks/useConfiguracion';
 import { generarComprobantePDF, construirNumeroComprobante } from '../../utils/comprobante';
 
+// Mismo catálogo que MOTIVOS_PERDIDA_DEVOLUCION en venta.controller.js (y
+// MOTIVOS_BAJA en inventario.controller.js) — sin config compartida
+// cliente/servidor en este proyecto.
+const MOTIVOS_PERDIDA = ['Vencido', 'Dañado', 'Robo o faltante', 'Consumo interno', 'Error de registro', 'Otro'];
+
 export default function HistorialVentasPage() {
   const { usuario } = useAuth();
   const { notificarCambioStock } = useStockSync();
@@ -30,6 +35,28 @@ export default function HistorialVentasPage() {
   const [ventaAAnular, setVentaAAnular] = useState(null);
   const [motivoAnular, setMotivoAnular] = useState('');
   const [anulando, setAnulando] = useState(false);
+  // Por cada línea de la venta: si vuelve a stock vendible o no (y, si no,
+  // con qué motivo) — clave = id de la línea (DetalleVenta).
+  const [decisionesRepo, setDecisionesRepo] = useState({});
+
+  const abrirModalAnular = (venta) => {
+    setVentaAAnular(venta);
+    const iniciales = {};
+    for (const detalle of venta.detalles || []) {
+      iniciales[detalle.id] = { reponer: true, motivo: '', detalle: '' };
+    }
+    setDecisionesRepo(iniciales);
+  };
+
+  const cerrarModalAnular = () => {
+    setVentaAAnular(null);
+    setMotivoAnular('');
+    setDecisionesRepo({});
+  };
+
+  const actualizarDecision = (detalleId, cambios) => {
+    setDecisionesRepo((prev) => ({ ...prev, [detalleId]: { ...prev[detalleId], ...cambios } }));
+  };
 
   const rangoFechaInvalido = Boolean(fechaInicio && fechaHasta && fechaInicio > fechaHasta);
 
@@ -90,12 +117,30 @@ export default function HistorialVentasPage() {
       mostrarError('Debes indicar un motivo de anulación');
       return;
     }
+    for (const detalle of ventaAAnular.detalles || []) {
+      const decision = decisionesRepo[detalle.id];
+      if (!decision.reponer && !decision.motivo) {
+        mostrarError(`Indica el motivo por el que "${detalle.producto?.nombre}" no vuelve a stock`);
+        return;
+      }
+    }
     setAnulando(true);
     try {
-      await api.patch(`/ventas/${ventaAAnular.id}/anular`, { motivo: motivoAnular.trim() });
+      const detallesPayload = (ventaAAnular.detalles || []).map((detalle) => {
+        const decision = decisionesRepo[detalle.id];
+        return {
+          id: detalle.id,
+          reponer_stock: decision.reponer,
+          motivo_perdida: decision.reponer ? undefined : decision.motivo,
+          motivo_perdida_detalle: decision.reponer ? undefined : (decision.detalle.trim() || undefined),
+        };
+      });
+      await api.patch(`/ventas/${ventaAAnular.id}/anular`, {
+        motivo: motivoAnular.trim(),
+        detalles: detallesPayload,
+      });
       mostrarExito(`Venta #${String(ventaAAnular.id).padStart(6, '0')} anulada`);
-      setVentaAAnular(null);
-      setMotivoAnular('');
+      cerrarModalAnular();
       cargarVentas();
       notificarCambioStock();
     } catch (err) {
@@ -256,7 +301,7 @@ export default function HistorialVentasPage() {
                           </button>
                           {puedeAnular && v.estado !== 'Anulada' && (
                             <button
-                              onClick={() => setVentaAAnular(v)}
+                              onClick={() => abrirModalAnular(v)}
                               className="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50"
                             >
                               <Ban className="h-3.5 w-3.5" />
@@ -416,31 +461,80 @@ export default function HistorialVentasPage() {
         </div>
       )}
 
-      {/* Modal anular venta */}
+      {/* Modal anular venta / devolución */}
       {ventaAAnular && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-          onClick={() => { if (!anulando) { setVentaAAnular(null); setMotivoAnular(''); } }}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => { if (!anulando) cerrarModalAnular(); }}
         >
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <h2 className="mb-2 text-lg font-bold text-gray-800">
               Anular venta #{String(ventaAAnular.id).padStart(6, '0')}
             </h2>
             <p className="mb-4 text-sm text-gray-500">
-              Se repondrá el stock vendido y se ajustará el monto en la caja del turno abierto. Esta acción no se puede deshacer.
+              Se ajustará el monto en la caja del turno abierto. Para cada producto, indica si vuelve a stock
+              vendible o no. Esta acción no se puede deshacer.
             </p>
+
             <label className="mb-1 block text-xs font-medium text-gray-500">Motivo de anulación</label>
             <textarea
               value={motivoAnular}
               onChange={(e) => setMotivoAnular(e.target.value)}
-              rows={3}
+              rows={2}
               autoFocus
               className="mb-4 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400"
               placeholder="Ej: producto incorrecto, cliente se arrepintió, error de cobro..."
             />
+
+            <p className="mb-2 text-xs font-medium text-gray-500">Productos de la venta</p>
+            <div className="mb-4 space-y-2">
+              {(ventaAAnular.detalles || []).map((detalle) => {
+                const decision = decisionesRepo[detalle.id] || { reponer: true, motivo: '', detalle: '' };
+                return (
+                  <div key={detalle.id} className="rounded-lg border border-gray-200 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm text-gray-700">
+                        {detalle.producto?.nombre} <span className="text-gray-400">x{detalle.cantidad}</span>
+                      </span>
+                      <label className="flex shrink-0 items-center gap-1.5 text-xs text-gray-600">
+                        <input
+                          type="checkbox"
+                          checked={decision.reponer}
+                          onChange={(e) => actualizarDecision(detalle.id, { reponer: e.target.checked, motivo: '' })}
+                          className="h-4 w-4 rounded border-gray-300 text-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                        />
+                        Repone stock
+                      </label>
+                    </div>
+                    {!decision.reponer && (
+                      <div className="mt-2 grid grid-cols-2 gap-2">
+                        <select
+                          value={decision.motivo}
+                          onChange={(e) => actualizarDecision(detalle.id, { motivo: e.target.value })}
+                          className="w-full rounded-md border border-gray-200 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-red-400"
+                        >
+                          <option value="">Motivo de la pérdida...</option>
+                          {MOTIVOS_PERDIDA.map((m) => (
+                            <option key={m} value={m}>{m}</option>
+                          ))}
+                        </select>
+                        <input
+                          type="text"
+                          value={decision.detalle}
+                          onChange={(e) => actualizarDecision(detalle.id, { detalle: e.target.value })}
+                          placeholder="Detalle (opcional)"
+                          className="w-full rounded-md border border-gray-200 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-red-400"
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
             <div className="flex justify-end gap-2">
               <button
-                onClick={() => { setVentaAAnular(null); setMotivoAnular(''); }}
+                onClick={cerrarModalAnular}
                 disabled={anulando}
                 className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-50"
               >

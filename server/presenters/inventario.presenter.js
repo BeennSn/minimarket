@@ -35,6 +35,7 @@ const presentarBaja = (baja) => ({
   cantidad: baja.cantidad,
   motivo:   baja.motivo,
   motivo_detalle: baja.motivo_detalle ?? null,
+  venta_id: baja.venta_id ?? null,
   usuario: {
     id:     baja.usuario.id,
     nombre: baja.usuario.nombre,

@@ -942,6 +942,11 @@ export default function InventarioPage() {
                       <tr key={b.id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                         <td className="px-4 py-3 text-gray-800">
                           {b.producto?.nombre || b.producto_nombre}
+                          {b.venta_id && (
+                            <span className="ml-2 inline-block rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700">
+                              Devolución venta #{b.venta_id}
+                            </span>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-gray-500">
                           {b.lotes && b.lotes.length > 0 ? (
