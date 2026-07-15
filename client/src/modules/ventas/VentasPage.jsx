@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import {
   Search, User, X, Trash2, Minus, Plus, Banknote,
   CheckCircle, Loader2, ShoppingCart, ChevronLeft, ChevronRight,
-  ScanLine, ChevronDown, ChevronUp, FileText, Camera, QrCode, AlertTriangle,
+  ScanLine, ChevronDown, ChevronUp, FileText, QrCode, AlertTriangle,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useStockSync } from '../../context/StockSyncContext';
@@ -183,9 +183,7 @@ export default function VentasPage() {
   const [buscandoCodigo, setBuscandoCodigo] = useState(false);
   const [mostrarLista, setMostrarLista] = useState(false);
   const [barcodeFocused, setBarcodeFocused] = useState(false);
-  const [showCamera, setShowCamera] = useState(false);
   const inputCodigoRef = useRef(null);
-  const scannerRef = useRef(null);
   const buscarRef = useRef(null);
 
   const [buscandoDni, setBuscandoDni] = useState(false);
@@ -231,48 +229,6 @@ export default function VentasPage() {
 
   // Mantiene buscarRef siempre actualizado para usarlo desde el scanner sin closures stale
   useEffect(() => { buscarRef.current = buscarPorCodigo; });
-
-  // Inicia/detiene la cámara cuando se abre/cierra el modal
-  useEffect(() => {
-    if (!showCamera) return;
-    let controls;
-
-    Promise.all([
-      import('@zxing/browser'),
-      import('@zxing/library'),
-    ]).then(([{ BrowserMultiFormatReader }, { BarcodeFormat, DecodeHintType }]) => {
-      const hints = new Map();
-      hints.set(DecodeHintType.POSSIBLE_FORMATS, [
-        BarcodeFormat.EAN_13,
-        BarcodeFormat.EAN_8,
-        BarcodeFormat.CODE_128,
-        BarcodeFormat.UPC_A,
-        BarcodeFormat.UPC_E,
-      ]);
-      hints.set(DecodeHintType.TRY_HARDER, true);
-
-      const reader = new BrowserMultiFormatReader(hints);
-      reader
-        .decodeFromConstraints(
-          { video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } } },
-          'barcode-video',
-          (result, err) => {
-            if (result) {
-              controls?.stop();
-              setShowCamera(false);
-              buscarRef.current(result.getText());
-            }
-          }
-        )
-        .then((c) => { controls = c; scannerRef.current = c; })
-        .catch(() => setShowCamera(false));
-    });
-
-    return () => {
-      controls?.stop();
-      scannerRef.current = null;
-    };
-  }, [showCamera]);
 
   // Devuelve el foco al campo de barras cuando el usuario hace clic fuera de un input
   useEffect(() => {
@@ -671,42 +627,33 @@ export default function VentasPage() {
 
         {!esSoloLectura && (
           <>
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <ScanLine className={`absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 transition-colors ${barcodeFocused ? 'text-green-500' : 'text-gray-400'}`} />
-                <input
-                  ref={inputCodigoRef}
-                  type="text"
-                  value={codigoBarras}
-                  onChange={(e) => setCodigoBarras(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && buscarPorCodigo()}
-                  onFocus={() => setBarcodeFocused(true)}
-                  onBlur={() => setBarcodeFocused(false)}
-                  placeholder={barcodeFocused ? 'Escanea o escribe el código...' : 'Haz clic aquí para escanear un producto'}
-                  autoFocus
-                  className={`w-full rounded-2xl border-2 bg-white px-4 py-3 pl-10 pr-36 text-base shadow-sm focus:outline-none focus:ring-2 transition-colors ${
-                    barcodeFocused
-                      ? 'border-green-400 focus:ring-green-100'
-                      : 'border-indigo-200 focus:border-indigo-400 focus:ring-indigo-100'
-                  }`}
-                />
-                {barcodeFocused && !buscandoCodigo && (
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-xs text-green-600 pointer-events-none">
-                    <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-                    Listo para escanear
-                  </span>
-                )}
-                {buscandoCodigo && (
-                  <Loader2 className="absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 animate-spin text-indigo-500" />
-                )}
-              </div>
-              <button
-                onClick={() => setShowCamera(true)}
-                title="Escanear con cámara"
-                className="flex items-center justify-center rounded-2xl border-2 border-indigo-200 bg-white px-4 text-gray-500 shadow-sm transition-colors hover:border-indigo-400 hover:text-indigo-600"
-              >
-                <Camera className="h-5 w-5" />
-              </button>
+            <div className="relative">
+              <ScanLine className={`absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 transition-colors ${barcodeFocused ? 'text-green-500' : 'text-gray-400'}`} />
+              <input
+                ref={inputCodigoRef}
+                type="text"
+                value={codigoBarras}
+                onChange={(e) => setCodigoBarras(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && buscarPorCodigo()}
+                onFocus={() => setBarcodeFocused(true)}
+                onBlur={() => setBarcodeFocused(false)}
+                placeholder={barcodeFocused ? 'Escanea o escribe el código...' : 'Haz clic aquí para escanear un producto'}
+                autoFocus
+                className={`w-full rounded-2xl border-2 bg-white px-4 py-3 pl-10 pr-36 text-base shadow-sm focus:outline-none focus:ring-2 transition-colors ${
+                  barcodeFocused
+                    ? 'border-green-400 focus:ring-green-100'
+                    : 'border-indigo-200 focus:border-indigo-400 focus:ring-indigo-100'
+                }`}
+              />
+              {barcodeFocused && !buscandoCodigo && (
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-xs text-green-600 pointer-events-none">
+                  <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                  Listo para escanear
+                </span>
+              )}
+              {buscandoCodigo && (
+                <Loader2 className="absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 animate-spin text-indigo-500" />
+              )}
             </div>
           </>
         )}
@@ -1222,30 +1169,6 @@ export default function VentasPage() {
         <ModalComprobante venta={ventaExitosa} empresa={empresa} pdfError={pdfError} onCerrar={cerrarComprobante} onDescargarPDF={descargarPDF} />
       )}
 
-      {showCamera && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
-          <div className="relative mx-4 w-full max-w-sm rounded-2xl bg-white p-4 shadow-xl">
-            <div className="mb-3 flex items-center justify-between">
-              <h3 className="font-semibold text-gray-800">Escanear código de barras</h3>
-              <button
-                onClick={() => setShowCamera(false)}
-                className="rounded-full p-1 text-gray-500 hover:bg-gray-100"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <p className="mb-3 text-center text-xs text-gray-500">
-              Centra el código de barras dentro del encuadre
-            </p>
-            <div className="relative overflow-hidden rounded-xl bg-black">
-              <video id="barcode-video" className="w-full" autoPlay muted playsInline />
-              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                <div className="h-20 w-72 rounded border-2 border-green-400 opacity-80" />
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
