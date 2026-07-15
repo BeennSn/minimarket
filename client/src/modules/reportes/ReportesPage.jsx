@@ -7,6 +7,11 @@ import { fechaLocalISO } from '../../utils/format';
 import { useStockSync } from '../../context/StockSyncContext';
 import Breadcrumb from '../../components/Breadcrumb';
 
+// Tope de años hacia atrás para el filtro de fechas: bloquea valores
+// absurdos tecleados a mano (ej. 13/4/1978) sin depender de que el
+// navegador respete min/max en un <input type="date"> escrito a mano.
+const AÑOS_HISTORIAL_MAXIMO = 10;
+
 function formatFecha(dia) {
   if (!dia) return '';
   const date = new Date(dia + 'T00:00:00');
@@ -36,6 +41,12 @@ export default function ReportesPage() {
   const [generando, setGenerando] = useState(false);
   const datosRef = useRef(null);
 
+  const fechaHoy = fechaLocalISO(new Date());
+  const fechaMinima = (() => {
+    const hoy = new Date();
+    return fechaLocalISO(new Date(hoy.getFullYear() - AÑOS_HISTORIAL_MAXIMO, hoy.getMonth(), hoy.getDate()));
+  })();
+
   // Stock crítico
   const [stockCritico, setStockCritico] = useState([]);
   const [umbral, setUmbral] = useState(5);
@@ -53,6 +64,11 @@ export default function ReportesPage() {
   const cargarDatos = useCallback(async (esRefresco = false) => {
     if (fechaInicio && fechaHasta && fechaInicio > fechaHasta) {
       setError('La fecha "Desde" no puede ser posterior a la fecha "Hasta"');
+      return;
+    }
+    if ((fechaInicio && (fechaInicio < fechaMinima || fechaInicio > fechaHoy)) ||
+        (fechaHasta && (fechaHasta < fechaMinima || fechaHasta > fechaHoy))) {
+      setError(`Las fechas deben estar entre ${formatFechaCompleta(fechaMinima)} y ${formatFechaCompleta(fechaHoy)}`);
       return;
     }
     if (esRefresco) setRefreshing(true);
@@ -334,7 +350,8 @@ export default function ReportesPage() {
             <input
               type="date" value={fechaInicio}
               onChange={(e) => setFechaInicio(e.target.value)}
-              max={fechaHasta || undefined}
+              min={fechaMinima}
+              max={fechaHasta || fechaHoy}
               className="rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
             />
           </div>
@@ -343,7 +360,8 @@ export default function ReportesPage() {
             <input
               type="date" value={fechaHasta}
               onChange={(e) => setFechaHasta(e.target.value)}
-              min={fechaInicio || undefined}
+              min={fechaInicio || fechaMinima}
+              max={fechaHoy}
               className="rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
             />
           </div>
