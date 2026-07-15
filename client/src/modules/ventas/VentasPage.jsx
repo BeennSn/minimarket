@@ -1086,6 +1086,14 @@ export default function VentasPage() {
                         <p className="mt-1 text-xs text-gray-400">
                           Cópialo de la pantalla de confirmación de IziPay: es lo único que permite ubicar este pago si hay que reclamarlo o conciliarlo después.
                         </p>
+                        <div className="mt-2 flex items-start gap-1.5 rounded-lg bg-amber-50 px-2.5 py-2 text-xs text-amber-700">
+                          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                          <span>
+                            No inventes ni copies el número de otra venta: debe ser exactamente el que muestra IziPay
+                            para este pago. Un número incorrecto rompe la trazabilidad y no se podrá ubicar ni
+                            verificar esta operación después.
+                          </span>
+                        </div>
                       </div>
                       <button
                         onClick={() => setYapeVerificado(true)}
