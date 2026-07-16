@@ -570,7 +570,14 @@ export default function InventarioPage() {
                   <input
                     type="date"
                     value={filtroEntradaDesde}
-                    onChange={(e) => setFiltroEntradaDesde(e.target.value)}
+                    max={filtroEntradaHasta || undefined}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setFiltroEntradaDesde(val);
+                      if (val && filtroEntradaHasta && val > filtroEntradaHasta) {
+                        setFiltroEntradaHasta(val);
+                      }
+                    }}
                     className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                   />
                 </div>
@@ -579,7 +586,11 @@ export default function InventarioPage() {
                   <input
                     type="date"
                     value={filtroEntradaHasta}
-                    onChange={(e) => setFiltroEntradaHasta(e.target.value)}
+                    min={filtroEntradaDesde || undefined}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setFiltroEntradaHasta(val && filtroEntradaDesde && val < filtroEntradaDesde ? filtroEntradaDesde : val);
+                    }}
                     className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                   />
                 </div>
@@ -874,7 +885,14 @@ export default function InventarioPage() {
                   <input
                     type="date"
                     value={filtroBajaDesde}
-                    onChange={(e) => setFiltroBajaDesde(e.target.value)}
+                    max={filtroBajaHasta || undefined}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setFiltroBajaDesde(val);
+                      if (val && filtroBajaHasta && val > filtroBajaHasta) {
+                        setFiltroBajaHasta(val);
+                      }
+                    }}
                     className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                   />
                 </div>
@@ -883,7 +901,11 @@ export default function InventarioPage() {
                   <input
                     type="date"
                     value={filtroBajaHasta}
-                    onChange={(e) => setFiltroBajaHasta(e.target.value)}
+                    min={filtroBajaDesde || undefined}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setFiltroBajaHasta(val && filtroBajaDesde && val < filtroBajaDesde ? filtroBajaDesde : val);
+                    }}
                     className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                   />
                 </div>
@@ -1109,7 +1131,14 @@ export default function InventarioPage() {
                   <input
                     type="date"
                     value={filtroAjusteDesde}
-                    onChange={(e) => setFiltroAjusteDesde(e.target.value)}
+                    max={filtroAjusteHasta || undefined}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setFiltroAjusteDesde(val);
+                      if (val && filtroAjusteHasta && val > filtroAjusteHasta) {
+                        setFiltroAjusteHasta(val);
+                      }
+                    }}
                     className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                   />
                 </div>
@@ -1118,7 +1147,11 @@ export default function InventarioPage() {
                   <input
                     type="date"
                     value={filtroAjusteHasta}
-                    onChange={(e) => setFiltroAjusteHasta(e.target.value)}
+                    min={filtroAjusteDesde || undefined}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setFiltroAjusteHasta(val && filtroAjusteDesde && val < filtroAjusteDesde ? filtroAjusteDesde : val);
+                    }}
                     className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                   />
                 </div>
