@@ -81,6 +81,20 @@ const registrarEntrada = async (req, res) => {
       const errorFecha = validarFechaVencimiento(fecha_vencimiento, producto.maneja_vencimiento);
       if (errorFecha) throw { status: 400, mensaje: errorFecha };
 
+      // El Almacenero solo puede registrar la primera carga de stock de un
+      // producto (nunca tuvo ninguna entrada) directo desde acá. A partir de
+      // la segunda entrada en adelante es una reposición, y esa debe pasar
+      // por una solicitud aprobada (Solicitudes → completar), no por este
+      // formulario libre — si no, cualquiera podía "reponer" cualquier
+      // cantidad sin que nadie la haya pedido. El Administrador no tiene
+      // esta restricción.
+      if (req.usuario.rol === 'Almacenero') {
+        const tieneEntradasPrevias = await EntradaMercaderia.count({ where: { producto_id }, transaction: t });
+        if (tieneEntradasPrevias > 0) {
+          throw { status: 403, mensaje: 'Este producto ya tiene stock registrado. Para reponerlo, crea una solicitud de reposición desde el módulo de Solicitudes.' };
+        }
+      }
+
       // Proveedor opcional: hay compras informales (mercado mayorista, sin
       // proveedor formal) que no deberían bloquear registrar la entrada. Si
       // se manda uno, sí se valida que exista y esté activo.

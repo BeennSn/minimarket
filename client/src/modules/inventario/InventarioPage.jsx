@@ -3,6 +3,7 @@ import { Loader2, Filter, X, AlertTriangle } from 'lucide-react';
 import api from '../../utils/axios';
 import { formatFechaHora, fechaLocalISO } from '../../utils/format';
 import { useStockSync } from '../../context/StockSyncContext';
+import { useAuth } from '../../context/AuthContext';
 import Breadcrumb from '../../components/Breadcrumb';
 import Spinner from '../../components/Spinner';
 import Toast from '../../components/Toast';
@@ -22,6 +23,7 @@ const generarCodigoLote = () => {
 };
 
 export default function InventarioPage() {
+  const { usuario } = useAuth();
   const { toast, mostrarExito, mostrarError, cerrar } = useToast();
   const { stockVersion, notificarCambioStock } = useStockSync();
   const [tabActiva, setTabActiva] = useState('entradas');
@@ -301,6 +303,20 @@ export default function InventarioPage() {
     }
   };
 
+  // Un Almacenero solo puede registrar la primera carga de stock de un
+  // producto (nunca tuvo ninguna entrada) desde este formulario libre — a
+  // partir de la segunda entrada, reponer stock requiere una solicitud
+  // aprobada (ver Solicitudes). `entradas` ya trae el histórico completo
+  // (GET /inventario/entradas sin filtros), así que no hace falta pedirle
+  // nada nuevo al backend para calcular esto.
+  const productosConEntradaPrevia = useMemo(
+    () => new Set(entradas.map((e) => e.producto?.id)),
+    [entradas]
+  );
+  const productosElegiblesEntrada = usuario?.rol === 'Almacenero'
+    ? productos.filter((p) => !productosConEntradaPrevia.has(p.id))
+    : productos;
+
   const productoSeleccionado = productos.find((p) => String(p.id) === String(productoId));
 
   // Lotes del producto elegido en Bajas, marcando cuáles ya están vencidos
@@ -465,12 +481,19 @@ export default function InventarioPage() {
                     className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                   >
                     <option value="">Seleccionar...</option>
-                    {productos.map((p) => (
+                    {productosElegiblesEntrada.map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.nombre} - {p.marca}
                       </option>
                     ))}
                   </select>
+                  {usuario?.rol === 'Almacenero' && (
+                    <p className="mt-1 text-xs text-gray-400">
+                      {productosElegiblesEntrada.length > 0
+                        ? 'Solo se listan productos sin stock registrado todavía (primera carga). Para reponer un producto existente, crea una solicitud de reposición en el módulo Solicitudes.'
+                        : 'No hay productos nuevos pendientes de primera carga. Para reponer stock, crea una solicitud de reposición en el módulo Solicitudes.'}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="mb-1 block text-sm font-medium text-gray-700">
