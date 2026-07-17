@@ -122,21 +122,23 @@ export default function ClientesPage() {
               <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-500">
                 Compras
               </th>
-              <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-500">
-                Acción
-              </th>
+              {puedeEditar && (
+                <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  Acción
+                </th>
+              )}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {cargando ? (
               <tr>
-                <td colSpan={5} className="py-10 text-center text-sm text-gray-400">
+                <td colSpan={puedeEditar ? 5 : 4} className="py-10 text-center text-sm text-gray-400">
                   Cargando…
                 </td>
               </tr>
             ) : filtrados.length === 0 ? (
               <tr>
-                <td colSpan={5} className="py-10 text-center text-sm text-gray-400">
+                <td colSpan={puedeEditar ? 5 : 4} className="py-10 text-center text-sm text-gray-400">
                   {busqueda ? 'Sin resultados para esa búsqueda' : 'No hay clientes registrados aún'}
                 </td>
               </tr>
@@ -198,17 +200,19 @@ export default function ClientesPage() {
                       {c.total_compras}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-center">
-                    {editando !== c.id && puedeEditar && (
-                      <button
-                        onClick={() => abrirEdicion(c)}
-                        className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-indigo-600"
-                        title="Editar email"
-                      >
-                        <Edit2 className="h-4 w-4" />
-                      </button>
-                    )}
-                  </td>
+                  {puedeEditar && (
+                    <td className="px-4 py-3 text-center">
+                      {editando !== c.id && (
+                        <button
+                          onClick={() => abrirEdicion(c)}
+                          className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-indigo-600"
+                          title="Editar email"
+                        >
+                          <Edit2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </td>
+                  )}
                 </tr>
               ))
             )}
