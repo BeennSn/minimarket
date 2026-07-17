@@ -498,6 +498,7 @@ export default function InventarioPage() {
                     min="1"
                     value={cantidad}
                     onChange={(e) => setCantidad(e.target.value)}
+                    onKeyDown={(e) => { if (['e', 'E', '+', '-'].includes(e.key)) e.preventDefault(); }}
                     required
                     className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                   />
@@ -818,6 +819,7 @@ export default function InventarioPage() {
                         max={loteSeleccionado ? loteSeleccionado.cantidad_restante : undefined}
                         value={cantidad}
                         onChange={(e) => setCantidad(e.target.value)}
+                        onKeyDown={(e) => { if (['e', 'E', '+', '-'].includes(e.key)) e.preventDefault(); }}
                         required
                         className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                       />
@@ -1048,6 +1050,7 @@ export default function InventarioPage() {
                     min="0"
                     value={cantidadContada}
                     onChange={(e) => setCantidadContada(e.target.value)}
+                    onKeyDown={(e) => { if (['e', 'E', '+', '-'].includes(e.key)) e.preventDefault(); }}
                     required
                     className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                   />
