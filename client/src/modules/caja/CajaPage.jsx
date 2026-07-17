@@ -5,7 +5,6 @@ import {
 import api from '../../utils/axios';
 import { sanitizarMonto } from '../../utils/format';
 import { calcularMontosCaja } from '../../utils/caja';
-import { useAuth } from '../../context/AuthContext';
 
 // Props comunes para los 4 inputs de dinero del módulo: bloquean "e"/"+"/"-"
 // y sanean lo pegado, igual que en Ventas/Productos.
@@ -45,13 +44,7 @@ const ES_NEGATIVO = (tipo) => tipo === 'Egreso' || tipo === 'Anulacion';
 // para el caso obvio; el backend es quien realmente lo exige.
 const MONTO_MINIMO_APERTURA_CAJA = 500;
 
-// Igual que arriba: debe coincidir con MONTO_MAXIMO_MOVIMIENTO en
-// server/controllers/caja.controller.js. Techo pensado para movimientos de
-// caja chica (refuerzos/correcciones de un turno), no para montos de venta.
-const MONTO_MAXIMO_MOVIMIENTO = 5000;
-
 export default function CajaPage() {
-  const { usuario } = useAuth();
   const [turno, setTurno]         = useState(undefined); // undefined = cargando, null = sin turno
   const [cargando, setCargando]   = useState(true);
   const [error, setError]         = useState('');
@@ -59,7 +52,6 @@ export default function CajaPage() {
   // Modales
   const [modalAbrir, setModalAbrir]   = useState(false);
   const [modalCerrar, setModalCerrar] = useState(false);
-  const [modalMov, setModalMov]       = useState(false);
 
   // Formulario apertura
   const [montoApertura, setMontoApertura] = useState('');
@@ -68,11 +60,6 @@ export default function CajaPage() {
   const [contadoEfectivo, setContadoEfectivo] = useState('');
   const [contadoYape, setContadoYape]         = useState('');
   const [observaciones, setObservaciones]     = useState('');
-
-  // Formulario movimiento manual
-  const [movTipo, setMovTipo]       = useState('Ingreso');
-  const [movMonto, setMovMonto]     = useState('');
-  const [movDesc, setMovDesc]       = useState('');
 
   const [enviando, setEnviando] = useState(false);
 
@@ -129,30 +116,6 @@ export default function CajaPage() {
       setObservaciones('');
     } catch (err) {
       setError(err.response?.data?.mensaje || 'Error al cerrar turno');
-    } finally {
-      setEnviando(false);
-    }
-  };
-
-  // ─── Registrar movimiento ───────────────────────────────────────────────────
-  const handleMovimiento = async (e) => {
-    e.preventDefault();
-    if (parseFloat(movMonto) > MONTO_MAXIMO_MOVIMIENTO) {
-      setError(`El monto de un movimiento no puede superar S/ ${MONTO_MAXIMO_MOVIMIENTO.toFixed(2)}`);
-      return;
-    }
-    setEnviando(true);
-    setError('');
-    try {
-      const { data } = await api.post('/caja/movimientos', {
-        tipo: movTipo,
-        monto: parseFloat(movMonto), descripcion: movDesc,
-      });
-      setTurno((prev) => ({ ...prev, movimientos: [...(prev.movimientos || []), data] }));
-      setModalMov(false);
-      setMovMonto(''); setMovDesc('');
-    } catch (err) {
-      setError(err.response?.data?.mensaje || 'Error al registrar movimiento');
     } finally {
       setEnviando(false);
     }
@@ -216,14 +179,6 @@ export default function CajaPage() {
                 </p>
               </div>
               <div className="flex gap-2">
-                {usuario?.rol !== 'Vendedor' && (
-                  <button
-                    onClick={() => setModalMov(true)}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                  >
-                    <Plus className="h-4 w-4" /> Movimiento
-                  </button>
-                )}
                 <button
                   onClick={() => setModalCerrar(true)}
                   className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700"
@@ -386,52 +341,6 @@ export default function CajaPage() {
         </Modal>
       )}
 
-      {/* ── Modal: Movimiento manual ── */}
-      {modalMov && (
-        <Modal titulo="Registrar movimiento" onClose={() => setModalMov(false)}>
-          <form onSubmit={handleMovimiento} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Tipo</label>
-              <select value={movTipo} onChange={(e) => setMovTipo(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
-                <option value="Ingreso">Ingreso</option>
-                <option value="Egreso">Egreso</option>
-              </select>
-            </div>
-            <p className="-mt-2 text-xs text-gray-400">
-              Los movimientos manuales son siempre en efectivo (ej: reforzar la caja con más vueltos, o retirar efectivo). Si una venta se registró con el método de pago equivocado, anúlala y vuelve a registrarla con el método correcto.
-            </p>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Monto (S/)</label>
-              <input
-                {...propsMonto(movMonto, setMovMonto)}
-                required
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                placeholder="0.00" autoFocus
-              />
-              <p className="mt-1 text-xs text-gray-400">Máximo S/ {MONTO_MAXIMO_MOVIMIENTO.toFixed(2)} por movimiento.</p>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
-              <input type="text" required
-                value={movDesc} onChange={(e) => setMovDesc(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                placeholder="Ej: Refuerzo de efectivo para vueltos"
-              />
-            </div>
-            <div className="flex justify-end gap-2">
-              <button type="button" onClick={() => setModalMov(false)}
-                className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">
-                Cancelar
-              </button>
-              <button type="submit" disabled={enviando}
-                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50">
-                {enviando ? 'Guardando...' : 'Registrar'}
-              </button>
-            </div>
-          </form>
-        </Modal>
-      )}
     </div>
   );
 }

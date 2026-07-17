@@ -9,7 +9,9 @@ require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
 
 const { sequelize } = require('../models');
 
-// Orden: hijos antes que padres (respeta FK constraints)
+// Se limpia con TRUNCATE ... CASCADE en una sola sentencia: evita tener que
+// mantener a mano el orden exacto que exigen las FK (DELETE sí lo exige, y a
+// esta lista ya se le había quedado afuera 'ajustes_inventario' una vez).
 const TABLAS = [
   'consumos_lote',
   'movimientos_caja',
@@ -17,6 +19,7 @@ const TABLAS = [
   'ventas',
   'entradas_mercaderia',
   'bajas_inventario',
+  'ajustes_inventario',
   'turnos',
   'solicitudes_reposicion',
   'logs_acceso',
@@ -31,11 +34,10 @@ async function limpiar() {
     await sequelize.authenticate();
     console.log('✅ Conectado a la base de datos\n');
 
+    await sequelize.query(
+      `TRUNCATE TABLE ${TABLAS.map((t) => `"${t}"`).join(', ')} RESTART IDENTITY CASCADE`
+    );
     for (const tabla of TABLAS) {
-      await sequelize.query(`DELETE FROM "${tabla}"`);
-      await sequelize.query(
-        `SELECT setval(pg_get_serial_sequence('"${tabla}"', 'id'), 1, false)`
-      );
       console.log(`  ✓ ${tabla}`);
     }
 
