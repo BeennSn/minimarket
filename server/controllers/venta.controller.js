@@ -41,7 +41,7 @@ const MSG_SIN_TURNO = 'No puedes realizar ventas porque no tienes un turno de ca
 
 const registrar = async (req, res) => {
   try {
-    const { metodo_pago, monto_recibido, items, tipo_comprobante, cliente_dni, cliente_nombre, cliente_ruc, cliente_razon_social, cliente_direccion, yape_verificado, referencia_pago } = req.body;
+    const { metodo_pago, monto_recibido, items, tipo_comprobante, cliente_dni, cliente_nombre, cliente_ruc, yape_verificado, referencia_pago } = req.body;
 
     if (!items || items.length === 0) {
       return res.status(400).json({ mensaje: 'La venta debe tener al menos un producto' });
@@ -87,14 +87,20 @@ const registrar = async (req, res) => {
       }
     }
 
+    // Se llenan solo si es Factura, con lo que devuelve la propia consulta a
+    // SUNAT de acá abajo — nunca con cliente_razon_social/cliente_direccion
+    // del body. El frontend ya deja esos campos de solo lectura tras validar
+    // el RUC, pero eso es solo UI: nada impide llamar este endpoint directo
+    // con una razón social o dirección inventada junto a un RUC real: sin
+    // esto, la factura se emitía igual con el dato falso, aunque el RUC
+    // estuviera perfectamente validado.
+    let razonSocialFinal = null;
+    let direccionFinal = null;
+
     if (tipo_comprobante === 'Factura') {
       if (!/^\d{11}$/.test(cliente_ruc)) {
         return res.status(400).json({ mensaje: 'Para emitir factura se requiere un RUC válido de 11 dígitos' });
       }
-      // El frontend ya verifica esto contra SUNAT antes de habilitar la
-      // venta (VentasPage.jsx:buscarRuc), pero eso solo es UI — nada impide
-      // llamar este endpoint directo con cualquier RUC de 11 dígitos y una
-      // razón social inventada. Se revalida acá con el mismo criterio.
       let datosRuc;
       try {
         datosRuc = await consultarRucSunat(cliente_ruc);
@@ -107,6 +113,8 @@ const registrar = async (req, res) => {
       if (datosRuc.condicion && datosRuc.condicion.toUpperCase() !== 'HABIDO') {
         return res.status(400).json({ mensaje: `RUC con domicilio no habido en SUNAT (condición: ${datosRuc.condicion})` });
       }
+      razonSocialFinal = datosRuc.razon_social || null;
+      direccionFinal = datosRuc.direccion || null;
     }
 
     if (cliente_dni) {
@@ -266,8 +274,8 @@ const registrar = async (req, res) => {
         serie_comprobante: tipoComprobanteFinal === 'Factura' ? config.serie_factura : config.serie_boleta,
         cliente_dni:   cliente_dni || null,
         cliente_ruc:   cliente_ruc || null,
-        cliente_razon_social: cliente_razon_social || null,
-        cliente_direccion: cliente_direccion || null,
+        cliente_razon_social: razonSocialFinal,
+        cliente_direccion: direccionFinal,
         yape_verificado: esYapeVerificado,
         yape_verificado_por: esYapeVerificado ? req.usuario.id : null,
         yape_verificado_en: esYapeVerificado ? new Date() : null,

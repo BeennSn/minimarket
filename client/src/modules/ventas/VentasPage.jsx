@@ -625,9 +625,10 @@ export default function VentasPage() {
           tipo_comprobante: tipoComprobante === 'Factura' ? 'Factura' : 'Boleta',
           cliente_dni: tipoComprobante === 'BoletaDNI' ? clienteDni : null,
           cliente_nombre: tipoComprobante === 'BoletaDNI' ? nombreDni : null,
+          // razón social y dirección ya no se envían: el servidor las toma
+          // directo de su propia consulta a SUNAT (venta.controller.js), no
+          // de estos campos (que en el frontend son de solo lectura).
           cliente_ruc: tipoComprobante === 'Factura' ? clienteRuc : null,
-          cliente_razon_social: tipoComprobante === 'Factura' ? clienteRazonSocial : null,
-          cliente_direccion: tipoComprobante === 'Factura' ? clienteDireccion : null,
         };
 
         const { data } = await api.post('/ventas', body);
@@ -1061,9 +1062,9 @@ export default function VentasPage() {
                     <input
                       type="text"
                       value={clienteRazonSocial}
-                      onChange={(e) => setClienteRazonSocial(e.target.value)}
-                      placeholder="Nombre de la empresa"
-                      className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                      disabled
+                      placeholder="Se completa al verificar el RUC con SUNAT"
+                      className="w-full rounded-lg border border-gray-200 bg-gray-50 px-4 py-2 text-sm text-gray-500"
                     />
                   </div>
                   <div>
@@ -1071,9 +1072,9 @@ export default function VentasPage() {
                     <input
                       type="text"
                       value={clienteDireccion}
-                      onChange={(e) => setClienteDireccion(e.target.value)}
-                      placeholder="Av. Ejemplo 123"
-                      className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                      disabled
+                      placeholder="Se completa al verificar el RUC con SUNAT"
+                      className="w-full rounded-lg border border-gray-200 bg-gray-50 px-4 py-2 text-sm text-gray-500"
                     />
                   </div>
                 </div>
