@@ -202,13 +202,10 @@ const obtenerActivo = async (req, res) => {
 // ─── Registrar movimiento manual (Ingreso / Egreso) ───────────────────────────
 const registrarMovimiento = async (req, res) => {
   try {
-    const { tipo, descripcion, metodo, monto } = req.body;
+    const { tipo, descripcion, monto } = req.body;
 
     if (!['Ingreso', 'Egreso'].includes(tipo)) {
       return res.status(400).json({ mensaje: 'Tipo de movimiento inválido. Use Ingreso o Egreso' });
-    }
-    if (!['Efectivo', 'Yape'].includes(metodo)) {
-      return res.status(400).json({ mensaje: 'Método inválido. Use Efectivo o Yape' });
     }
     if (!monto || isNaN(monto) || parseFloat(monto) <= 0) {
       return res.status(400).json({ mensaje: 'El monto debe ser mayor a 0' });
@@ -231,7 +228,10 @@ const registrarMovimiento = async (req, res) => {
       turno_id:    turno.id,
       tipo,
       descripcion: descripcion.trim(),
-      metodo,
+      // Un movimiento manual siempre es efectivo físico (reforzar/retirar de
+      // la caja chica) — Yape solo se registra automáticamente desde las
+      // ventas (venta.controller.js), nunca por esta vía manual.
+      metodo:      'Efectivo',
       monto:       parseFloat(monto),
       usuario_id:  req.usuario.id,
     });

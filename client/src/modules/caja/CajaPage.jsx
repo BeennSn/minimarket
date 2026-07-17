@@ -71,7 +71,6 @@ export default function CajaPage() {
 
   // Formulario movimiento manual
   const [movTipo, setMovTipo]       = useState('Ingreso');
-  const [movMetodo, setMovMetodo]   = useState('Efectivo');
   const [movMonto, setMovMonto]     = useState('');
   const [movDesc, setMovDesc]       = useState('');
 
@@ -146,7 +145,7 @@ export default function CajaPage() {
     setError('');
     try {
       const { data } = await api.post('/caja/movimientos', {
-        tipo: movTipo, metodo: movMetodo,
+        tipo: movTipo,
         monto: parseFloat(movMonto), descripcion: movDesc,
       });
       setTurno((prev) => ({ ...prev, movimientos: [...(prev.movimientos || []), data] }));
@@ -389,28 +388,16 @@ export default function CajaPage() {
       {modalMov && (
         <Modal titulo="Registrar movimiento" onClose={() => setModalMov(false)}>
           <form onSubmit={handleMovimiento} className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Tipo</label>
-                <select value={movTipo} onChange={(e) => setMovTipo(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
-                  <option value="Ingreso">Ingreso</option>
-                  <option value="Egreso">Egreso</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Método</label>
-                <select value={movMetodo} onChange={(e) => setMovMetodo(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
-                  <option value="Efectivo">Efectivo</option>
-                  <option value="Yape">Yape</option>
-                </select>
-              </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Tipo</label>
+              <select value={movTipo} onChange={(e) => setMovTipo(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                <option value="Ingreso">Ingreso</option>
+                <option value="Egreso">Egreso</option>
+              </select>
             </div>
             <p className="-mt-2 text-xs text-gray-400">
-              {movMetodo === 'Efectivo'
-                ? 'Efectivo: refuerzo o retiro de dinero físico de la caja (ej: reforzar vueltos).'
-                : 'Yape: corrige el total esperado de Yape del turno (ej: una venta se registró con el método equivocado).'}
+              Los movimientos manuales son siempre en efectivo (ej: reforzar la caja con más vueltos, o retirar efectivo). Si una venta se registró con el método de pago equivocado, anúlala y vuelve a registrarla con el método correcto.
             </p>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Monto (S/)</label>
