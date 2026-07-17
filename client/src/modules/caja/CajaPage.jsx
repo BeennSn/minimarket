@@ -45,6 +45,11 @@ const ES_NEGATIVO = (tipo) => tipo === 'Egreso' || tipo === 'Anulacion';
 // para el caso obvio; el backend es quien realmente lo exige.
 const MONTO_MINIMO_APERTURA_CAJA = 200;
 
+// Igual que arriba: debe coincidir con MONTO_MAXIMO_MOVIMIENTO en
+// server/controllers/caja.controller.js. Techo pensado para movimientos de
+// caja chica (refuerzos/correcciones de un turno), no para montos de venta.
+const MONTO_MAXIMO_MOVIMIENTO = 5000;
+
 export default function CajaPage() {
   const { usuario } = useAuth();
   const [turno, setTurno]         = useState(undefined); // undefined = cargando, null = sin turno
@@ -133,6 +138,10 @@ export default function CajaPage() {
   // ─── Registrar movimiento ───────────────────────────────────────────────────
   const handleMovimiento = async (e) => {
     e.preventDefault();
+    if (parseFloat(movMonto) > MONTO_MAXIMO_MOVIMIENTO) {
+      setError(`El monto de un movimiento no puede superar S/ ${MONTO_MAXIMO_MOVIMIENTO.toFixed(2)}`);
+      return;
+    }
     setEnviando(true);
     setError('');
     try {
@@ -398,6 +407,11 @@ export default function CajaPage() {
                 </select>
               </div>
             </div>
+            <p className="-mt-2 text-xs text-gray-400">
+              {movMetodo === 'Efectivo'
+                ? 'Efectivo: refuerzo o retiro de dinero físico de la caja (ej: reforzar vueltos).'
+                : 'Yape: corrige el total esperado de Yape del turno (ej: una venta se registró con el método equivocado).'}
+            </p>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Monto (S/)</label>
               <input
@@ -406,13 +420,14 @@ export default function CajaPage() {
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                 placeholder="0.00" autoFocus
               />
+              <p className="mt-1 text-xs text-gray-400">Máximo S/ {MONTO_MAXIMO_MOVIMIENTO.toFixed(2)} por movimiento.</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
               <input type="text" required
                 value={movDesc} onChange={(e) => setMovDesc(e.target.value)}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                placeholder="Ej: Pago de limpieza"
+                placeholder="Ej: Refuerzo de efectivo para vueltos"
               />
             </div>
             <div className="flex justify-end gap-2">

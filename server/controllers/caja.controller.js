@@ -10,6 +10,10 @@ const { calcularEsperados } = require('../services/caja.service');
 // client/src/modules/caja/CajaPage.jsx — si se cambia acá, cambiar también ahí.
 const MONTO_MINIMO_APERTURA_CAJA = 200;
 
+// Techo para movimientos manuales de caja chica (refuerzos/correcciones de un
+// turno) — duplicado a propósito en client/src/modules/caja/CajaPage.jsx.
+const MONTO_MAXIMO_MOVIMIENTO = 5000;
+
 const INCLUDE_TURNO = [
   { association: 'cajero',    attributes: ['id', 'nombre'] },
   { association: 'aprobador', attributes: ['id', 'nombre'] },
@@ -208,6 +212,9 @@ const registrarMovimiento = async (req, res) => {
     }
     if (!monto || isNaN(monto) || parseFloat(monto) <= 0) {
       return res.status(400).json({ mensaje: 'El monto debe ser mayor a 0' });
+    }
+    if (parseFloat(monto) > MONTO_MAXIMO_MOVIMIENTO) {
+      return res.status(400).json({ mensaje: `El monto de un movimiento no puede superar S/ ${MONTO_MAXIMO_MOVIMIENTO.toFixed(2)}` });
     }
     if (!descripcion || !descripcion.trim()) {
       return res.status(400).json({ mensaje: 'La descripción es obligatoria' });

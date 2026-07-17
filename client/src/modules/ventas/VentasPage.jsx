@@ -192,7 +192,6 @@ export default function VentasPage() {
   const [dniValidado, setDniValidado] = useState(false);
   const [rucValidado, setRucValidado] = useState(false);
   const [rucInfo, setRucInfo] = useState(null);
-  const [clienteId, setClienteId] = useState(null);
   // true cuando el DNI ya estaba registrado con un nombre distinto al que
   // acaba de devolver RENIEC — no bloquea la venta, solo avisa (podría ser un
   // DNI mal tecleado que coincide con el de otra persona ya registrada).
@@ -403,7 +402,7 @@ export default function VentasPage() {
 
   const datosClienteValidos = () => {
     if (tipoComprobante === 'BoletaSimple') return true;
-    if (tipoComprobante === 'BoletaDNI') return /^\d{8}$/.test(clienteDni) && dniValidado && clienteId != null;
+    if (tipoComprobante === 'BoletaDNI') return /^\d{8}$/.test(clienteDni) && dniValidado;
     if (tipoComprobante === 'Factura') {
       return /^\d{11}$/.test(clienteRuc) && rucValidado;
     }
@@ -440,7 +439,6 @@ export default function VentasPage() {
     setDniValidado(false);
     setRucValidado(false);
     setRucInfo(null);
-    setClienteId(null);
     setClienteNombreNoCoincide(false);
     setError('');
     setPdfError('');
@@ -459,16 +457,17 @@ export default function VentasPage() {
       const { data } = await api.get(`/consulta/dni/${clienteDni}`);
       setNombreDni(data.nombre_completo);
       setDniValidado(true);
+      // Solo lectura: el cliente recién se crea si la venta se concreta
+      // (server/controllers/venta.controller.js). Esto solo es para avisar
+      // si el DNI ya estaba registrado con otro nombre (posible error de
+      // digitación), sin crear nada todavía.
       try {
-        const { data: cliente } = await api.post('/clientes/buscar-o-crear', {
-          nombre: data.nombre_completo,
-          dni: clienteDni,
-        });
-        setClienteId(cliente.id);
-        setClienteNombreNoCoincide(cliente.nombre_coincide === false);
+        const { data: cliente } = await api.get(`/clientes/dni/${clienteDni}`);
+        setClienteNombreNoCoincide(
+          cliente.existe && cliente.nombre.trim().toLowerCase() !== data.nombre_completo.trim().toLowerCase()
+        );
       } catch {
-        // clienteId se queda en null; datosClienteValidos() bloqueará la venta
-        // hasta que se reintente la consulta de DNI con éxito.
+        setClienteNombreNoCoincide(false);
       }
     } catch (err) {
       setNombreDni('');
@@ -553,7 +552,6 @@ export default function VentasPage() {
 
     try {
       const body = {
-        cliente_id: tipoComprobante === 'BoletaDNI' ? clienteId : null,
         metodo_pago: metodoPago,
         monto_recibido: metodoPago === 'Efectivo' ? parsearMontoRecibido(montoRecibido) : null,
         yape_verificado: metodoPago === 'Yape' ? yapeVerificado : false,
@@ -564,6 +562,7 @@ export default function VentasPage() {
         })),
         tipo_comprobante: tipoComprobante === 'Factura' ? 'Factura' : 'Boleta',
         cliente_dni: tipoComprobante === 'BoletaDNI' ? clienteDni : null,
+        cliente_nombre: tipoComprobante === 'BoletaDNI' ? nombreDni : null,
         cliente_ruc: tipoComprobante === 'Factura' ? clienteRuc : null,
         cliente_razon_social: tipoComprobante === 'Factura' ? clienteRazonSocial : null,
         cliente_direccion: tipoComprobante === 'Factura' ? clienteDireccion : null,

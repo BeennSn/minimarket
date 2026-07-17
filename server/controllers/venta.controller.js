@@ -41,7 +41,7 @@ const MSG_SIN_TURNO = 'No puedes realizar ventas porque no tienes un turno de ca
 
 const registrar = async (req, res) => {
   try {
-    const { cliente_id, metodo_pago, monto_recibido, items, tipo_comprobante, cliente_dni, cliente_ruc, cliente_razon_social, cliente_direccion, yape_verificado, referencia_pago } = req.body;
+    const { metodo_pago, monto_recibido, items, tipo_comprobante, cliente_dni, cliente_nombre, cliente_ruc, cliente_razon_social, cliente_direccion, yape_verificado, referencia_pago } = req.body;
 
     if (!items || items.length === 0) {
       return res.status(400).json({ mensaje: 'La venta debe tener al menos un producto' });
@@ -113,8 +113,10 @@ const registrar = async (req, res) => {
       if (!/^\d{8}$/.test(cliente_dni)) {
         return res.status(400).json({ mensaje: 'Para boleta con DNI se requiere un DNI válido de 8 dígitos' });
       }
-      const clienteVerificado = cliente_id && await Cliente.findOne({ where: { id: cliente_id, dni: cliente_dni } });
-      if (!clienteVerificado) {
+      // El nombre viene de la consulta RENIEC hecha en el frontend (no se
+      // re-verifica acá, igual que antes) — solo se exige que venga, ya que
+      // hace falta para crear el Cliente si el DNI es nuevo.
+      if (!cliente_nombre || !cliente_nombre.trim()) {
         return res.status(400).json({ mensaje: 'El DNI debe verificarse (consulta RENIEC) antes de registrar la venta' });
       }
     }
@@ -235,9 +237,24 @@ const registrar = async (req, res) => {
       config[campoCorrelativo] = (config[campoCorrelativo] || 0) + 1;
       await config.save({ transaction: t });
 
+      // El Cliente recién se crea (o se reutiliza si el DNI ya existía) acá,
+      // atómico con la venta: si algo más adelante en esta transacción falla
+      // y se hace rollback, el Cliente tampoco queda creado. Antes se creaba
+      // apenas se validaba el DNI (buscarOCrear), dejando clientes huérfanos
+      // por cada consulta que no terminaba en una venta real.
+      let clienteFinalId = null;
+      if (cliente_dni) {
+        const [clienteRow] = await Cliente.findOrCreate({
+          where: { dni: cliente_dni },
+          defaults: { nombre: cliente_nombre },
+          transaction: t,
+        });
+        clienteFinalId = clienteRow.id;
+      }
+
       const nuevaVenta = await Venta.create({
         usuario_id:    req.usuario.id,
-        cliente_id:    cliente_id || null,
+        cliente_id:    clienteFinalId,
         turno_id:      turno.id,
         metodo_pago,
         monto_total:   monto_total.toFixed(2),

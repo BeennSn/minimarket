@@ -2,32 +2,26 @@ const { Cliente, Venta } = require('../models');
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const buscarOCrear = async (req, res) => {
+// Solo lectura: consulta si ya existe un cliente con ese DNI, sin crearlo.
+// El cliente se crea recién cuando la venta se concreta (venta.controller.js),
+// no al validar el DNI — antes esto usaba findOrCreate y quedaba un registro
+// de Cliente huérfano cada vez que un cajero solo consultaba el DNI sin
+// llegar a vender.
+const buscarPorDni = async (req, res) => {
   try {
-    const { nombre, dni, email } = req.body;
-
-    if (dni) {
-      const [cliente, creado] = await Cliente.findOrCreate({
-        where: { dni },
-        defaults: { nombre, email },
-      });
-      // Si el DNI ya estaba registrado con otro nombre, no se sobreescribe
-      // solo (podría ser un DNI mal tecleado que coincide con el de otra
-      // persona) — se avisa para que el cajero lo confirme, sin bloquear.
-      const nombreCoincide = creado || !nombre || cliente.nombre.trim().toLowerCase() === nombre.trim().toLowerCase();
-      return res.status(200).json({
-        id: cliente.id,
-        nombre: cliente.nombre,
-        dni: cliente.dni,
-        email: cliente.email,
-        nombre_coincide: nombreCoincide,
-      });
+    const { dni } = req.params;
+    if (!/^\d{8}$/.test(dni)) {
+      return res.status(400).json({ mensaje: 'DNI inválido' });
     }
 
-    const nuevo = await Cliente.create({ nombre, email });
-    return res.status(200).json({ id: nuevo.id, nombre: nuevo.nombre, dni: null, email: nuevo.email, nombre_coincide: true });
+    const cliente = await Cliente.findOne({ where: { dni } });
+    if (!cliente) {
+      return res.status(200).json({ existe: false });
+    }
+
+    return res.status(200).json({ existe: true, id: cliente.id, nombre: cliente.nombre, dni: cliente.dni });
   } catch (err) {
-    console.error('Error en buscarOCrear cliente:', err);
+    console.error('Error en buscarPorDni cliente:', err);
     return res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
 };
@@ -78,4 +72,4 @@ const actualizar = async (req, res) => {
   }
 };
 
-module.exports = { buscarOCrear, listar, actualizar };
+module.exports = { buscarPorDni, listar, actualizar };

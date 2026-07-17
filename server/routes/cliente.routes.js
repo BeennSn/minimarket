@@ -12,10 +12,10 @@ router.get(
   clienteController.listar
 );
 
-router.post(
-  '/buscar-o-crear',
+router.get(
+  '/dni/:dni',
   verificarRol('Vendedor', 'Administrador'),
-  clienteController.buscarOCrear
+  clienteController.buscarPorDni
 );
 
 router.put(
