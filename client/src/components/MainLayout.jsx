@@ -1,6 +1,8 @@
 import { useState, useEffect, Suspense } from 'react';
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import Spinner from './Spinner';
+import ConfirmDialog from './ConfirmDialog';
+import api from '../utils/axios';
 import {
   LayoutDashboard,
   Users,
@@ -67,14 +69,35 @@ export default function MainLayout() {
   const [collapsed, setCollapsed] = useState(() => {
     return localStorage.getItem('sidebar_collapsed') === 'true';
   });
+  const [avisoTurnoAbierto, setAvisoTurnoAbierto] = useState(false);
 
   useEffect(() => {
     localStorage.setItem('sidebar_collapsed', String(collapsed));
   }, [collapsed]);
 
-  const handleLogout = async () => {
+  const cerrarSesionYSalir = async () => {
     await logout();
     navigate('/login');
+  };
+
+  const handleLogout = async () => {
+    // Solo estos roles pueden tener un turno de caja abierto ("Mi Caja" en
+    // NAV_ITEMS) — para el resto no tiene sentido ni consultar. Es solo un
+    // recordatorio (no bloquea el cierre de sesión): si el cajero se olvidó
+    // de cerrar su turno, es mejor avisarle acá que dejarlo abierto sin que
+    // nadie se dé cuenta hasta el siguiente arqueo.
+    if (['Vendedor', 'Administrador'].includes(usuario?.rol)) {
+      try {
+        const { data: turno } = await api.get('/caja/activo');
+        if (turno) {
+          setAvisoTurnoAbierto(true);
+          return;
+        }
+      } catch {
+        // Si la consulta falla, no bloquea el cierre de sesión normal.
+      }
+    }
+    await cerrarSesionYSalir();
   };
 
   const filteredNav = NAV_ITEMS.filter((item) => rolSatisface(usuario?.rol, item.roles));
@@ -155,6 +178,18 @@ export default function MainLayout() {
           </Suspense>
         </main>
       </div>
+
+      <ConfirmDialog
+        abierto={avisoTurnoAbierto}
+        titulo="Tienes un turno de caja abierto"
+        mensaje="Todavía no cerraste tu turno en Mi Caja. ¿Seguro que quieres cerrar sesión sin cerrarlo?"
+        colorConfirmar="#6366f1"
+        onCancelar={() => setAvisoTurnoAbierto(false)}
+        onConfirmar={() => {
+          setAvisoTurnoAbierto(false);
+          cerrarSesionYSalir();
+        }}
+      />
     </div>
   );
 }

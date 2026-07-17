@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Search, X, ChevronLeft, ChevronRight, LogIn, LogOut, Info, Loader2 } from 'lucide-react';
+import { Search, X, ChevronLeft, ChevronRight, LogIn, LogOut, Info, Loader2, RefreshCw } from 'lucide-react';
 import api from '../../utils/axios';
 import Breadcrumb from '../../components/Breadcrumb';
 import { formatFechaHora } from '../../utils/format';
@@ -134,6 +134,15 @@ export default function LogsAccesoPage() {
         >
           <X className="mr-1 inline h-4 w-4" />
           Limpiar
+        </button>
+        <button
+          onClick={cargarLogs}
+          disabled={loading}
+          title="Actualizar"
+          className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <RefreshCw className={`mr-1 inline h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+          Actualizar
         </button>
         {rangoFechaInvalido && (
           <p className="w-full text-xs text-red-500">
