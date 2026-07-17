@@ -316,7 +316,7 @@ export default function CajaPage() {
                 {...propsMonto(montoApertura, setMontoApertura)}
                 required
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                placeholder="Ej: 200.00"
+                placeholder="Ej: 500.00"
                 autoFocus
               />
               <p className="mt-1 text-xs text-gray-400">
