@@ -42,11 +42,19 @@ export function AuthProvider({ children }) {
     setUsuario(data.usuario ?? null);
   };
 
-  const logout = () => {
-    // Best-effort: avisa al servidor para liberar el cupo de "sesión activa" de
-    // esta cuenta (ver login() en auth.controller.js). No se espera la
-    // respuesta para no demorar el cierre de sesión local.
-    api.post('/auth/logout').catch(() => {});
+  const logout = async () => {
+    // Se espera la respuesta antes de limpiar el estado local: si no, al
+    // navegar de inmediato la petición podía quedar en el aire y el servidor
+    // nunca marcaba sesion_activa=false ni registraba el LogAcceso de
+    // "Logout" — quedaba pendiente hasta el siguiente login, que lo detectaba
+    // como sesión vieja sin cerrar y lo registraba tarde y con el motivo
+    // equivocado ("nuevo inicio de sesión en otro dispositivo").
+    try {
+      await api.post('/auth/logout');
+    } catch {
+      // Best-effort: si el servidor no responde, la sesión igual se cierra
+      // localmente para no dejar al usuario atrapado.
+    }
     localStorage.removeItem('token');
     localStorage.removeItem('usuario');
     setToken(null);

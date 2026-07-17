@@ -72,8 +72,8 @@ export default function MainLayout() {
     localStorage.setItem('sidebar_collapsed', String(collapsed));
   }, [collapsed]);
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     navigate('/login');
   };
 
