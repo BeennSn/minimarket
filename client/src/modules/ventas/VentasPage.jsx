@@ -966,7 +966,6 @@ export default function VentasPage() {
                           setClienteRuc(val);
                           setRucValidado(false);
                           setRucInfo(null);
-                          if (val.length === 11) buscarRuc(val);
                         }}
                         onKeyDown={(e) => e.key === 'Enter' && buscarRuc()}
                         placeholder="20123456789"
