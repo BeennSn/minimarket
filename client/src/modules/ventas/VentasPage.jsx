@@ -192,6 +192,7 @@ export default function VentasPage() {
   const [barcodeFocused, setBarcodeFocused] = useState(false);
   const inputCodigoRef = useRef(null);
   const buscarRef = useRef(null);
+  const enviandoVentaRef = useRef(false);
 
   const [buscandoDni, setBuscandoDni] = useState(false);
   const [buscandoRuc, setBuscandoRuc] = useState(false);
@@ -199,6 +200,14 @@ export default function VentasPage() {
   const [dniValidado, setDniValidado] = useState(false);
   const [rucValidado, setRucValidado] = useState(false);
   const [rucInfo, setRucInfo] = useState(null);
+  // Guardan el DNI/RUC exacto de la última consulta que dio un resultado
+  // definitivo negativo (no existe / no encontrado / dado de baja), para no
+  // volver a gastar una petición a la API externa (cuota limitada) si el
+  // cajero le da varias veces a la lupita sin cambiar el valor. Un fallo
+  // transitorio del proveedor (caído, sin cuota) NO se guarda acá — ese caso
+  // debe poder reintentarse siempre.
+  const [dniNoEncontrado, setDniNoEncontrado] = useState('');
+  const [rucNoEncontrado, setRucNoEncontrado] = useState('');
   // true cuando el DNI ya estaba registrado con un nombre distinto al que
   // acaba de devolver RENIEC — no bloquea la venta, solo avisa (podría ser un
   // DNI mal tecleado que coincide con el de otra persona ya registrada).
@@ -447,6 +456,8 @@ export default function VentasPage() {
     setRucValidado(false);
     setRucInfo(null);
     setClienteNombreNoCoincide(false);
+    setDniNoEncontrado('');
+    setRucNoEncontrado('');
     setError('');
     setPdfError('');
     setPasoYape('inicio');
@@ -456,8 +467,17 @@ export default function VentasPage() {
 
   const buscarDni = async () => {
     if (clienteDni.length !== 8) return;
+    // Ya validado con éxito: no volver a gastar una consulta si no cambió el
+    // valor (dniValidado se resetea a false apenas se edita el campo).
+    if (dniValidado) return;
+    // Ese DNI puntual ya salió "no encontrado" — no reintentar hasta que
+    // cambie el valor. Se sigue mostrando el mismo mensaje para que el clic
+    // no se sienta como si no hiciera nada.
+    if (clienteDni === dniNoEncontrado) {
+      setError('No se encontró información para ese DNI');
+      return;
+    }
     setBuscandoDni(true);
-    setDniValidado(false);
     setClienteNombreNoCoincide(false);
     setError('');
     try {
@@ -479,6 +499,13 @@ export default function VentasPage() {
     } catch (err) {
       setNombreDni('');
       setError(err.response?.data?.mensaje || 'No se encontró información para ese DNI');
+      // Solo se marca como "no encontrado" (bloquea reintentos del mismo
+      // valor) cuando RENIEC respondió con certeza que el DNI no existe
+      // (404). Un error de servicio (502/503/500 — caído, sin cuota, sin
+      // configurar) no se guarda acá: ese sí debe poder reintentarse.
+      if (err.response?.status === 404) {
+        setDniNoEncontrado(clienteDni);
+      }
     } finally {
       setBuscandoDni(false);
     }
@@ -487,6 +514,13 @@ export default function VentasPage() {
   const buscarRuc = async (rucValue) => {
     const ruc = rucValue ?? clienteRuc;
     if (ruc.length !== 11) return;
+    // Mismo criterio que buscarDni: ya validado, o ya se sabe que este RUC
+    // puntual no sirve — no gastar otra consulta contra la API externa.
+    if (rucValidado && ruc === clienteRuc) return;
+    if (ruc === rucNoEncontrado) {
+      setError('No se encontró información para ese RUC en SUNAT');
+      return;
+    }
     setBuscandoRuc(true);
     setRucValidado(false);
     setRucInfo(null);
@@ -496,12 +530,17 @@ export default function VentasPage() {
     try {
       const { data } = await api.get(`/consulta/ruc/${ruc}`);
 
+      // "Dado de baja" / "no habido" son respuestas definitivas de SUNAT
+      // para este RUC (no un fallo del servicio) — se marcan igual que un
+      // "no encontrado" para no reintentar el mismo valor sin necesidad.
       if (data.estado && data.estado.toUpperCase() !== 'ACTIVO') {
         setError(`RUC dado de baja en SUNAT (estado: ${data.estado})`);
+        setRucNoEncontrado(ruc);
         return;
       }
       if (data.condicion && data.condicion.toUpperCase() !== 'HABIDO') {
         setError(`RUC con domicilio no habido en SUNAT (condición: ${data.condicion})`);
+        setRucNoEncontrado(ruc);
         return;
       }
 
@@ -511,84 +550,103 @@ export default function VentasPage() {
       setRucInfo({ razon_social: data.razon_social, condicion: data.condicion, estado: data.estado });
     } catch (err) {
       setError(err.response?.data?.mensaje || 'No se encontró información para ese RUC en SUNAT');
+      // Igual que en buscarDni: solo se bloquea el reintento cuando SUNAT
+      // confirmó que el RUC no existe (404) — un error de servicio se puede
+      // reintentar siempre.
+      if (err.response?.status === 404) {
+        setRucNoEncontrado(ruc);
+      }
     } finally {
       setBuscandoRuc(false);
     }
   };
 
   const realizarVenta = async () => {
-    setError('');
-
-    if (sinTurno) {
-      setError('No puedes realizar ventas porque no tienes un turno de caja abierto. Abre un turno para continuar.');
-      return;
-    }
-
-    if (vueltoInsuficiente) {
-      setError(`Monto en caja insuficiente para dar el vuelto. Efectivo disponible: S/. ${efectivoDisponible.toFixed(2)}. Registra un ingreso en Caja antes de continuar.`);
-      return;
-    }
-
-    if (!datosClienteValidos()) {
-      if (tipoComprobante === 'BoletaDNI') {
-        if (!/^\d{8}$/.test(clienteDni)) {
-          setError('El DNI debe tener exactamente 8 dígitos');
-        } else if (!dniValidado) {
-          setError('Debes verificar el DNI con RENIEC antes de continuar');
-        } else {
-          setError('No se pudo registrar el cliente con ese DNI. Vuelve a consultar el DNI antes de continuar.');
-        }
-      } else if (tipoComprobante === 'Factura') {
-        setError('El RUC debe tener 11 dígitos');
-      }
-      return;
-    }
-
-    const itemSinStock = carrito.find((i) => i.cantidad > stockVendible(i));
-    if (itemSinStock) {
-      const disponible = stockVendible(itemSinStock);
-      setError(
-        disponible < itemSinStock.stock
-          ? `"${itemSinStock.nombre}" tiene unidades vencidas: solo hay ${disponible} vigente(s) disponible(s)`
-          : `Stock insuficiente para "${itemSinStock.nombre}". Disponible: ${disponible}`
-      );
-      return;
-    }
-
-    setLoading(true);
+    // Guardia síncrona (no basta con el `disabled={loading}` del botón):
+    // dos clics en el mismo tick antes del re-render podían colarse los dos
+    // y registrar la misma venta dos veces. Envuelve toda la función en un
+    // try/finally externo para liberar el ref en cualquier salida temprana
+    // (turno cerrado, vuelto insuficiente, datos de cliente inválidos, sin
+    // stock), no solo al final del caso feliz.
+    if (enviandoVentaRef.current) return;
+    enviandoVentaRef.current = true;
 
     try {
-      const body = {
-        metodo_pago: metodoPago,
-        monto_recibido: metodoPago === 'Efectivo' ? parsearMontoRecibido(montoRecibido) : null,
-        yape_verificado: metodoPago === 'Yape' ? yapeVerificado : false,
-        referencia_pago: metodoPago === 'Yape' ? (nroAutorizacion || null) : null,
-        items: carrito.map((item) => ({
-          producto_id: item.id,
-          cantidad: item.cantidad,
-        })),
-        tipo_comprobante: tipoComprobante === 'Factura' ? 'Factura' : 'Boleta',
-        cliente_dni: tipoComprobante === 'BoletaDNI' ? clienteDni : null,
-        cliente_nombre: tipoComprobante === 'BoletaDNI' ? nombreDni : null,
-        cliente_ruc: tipoComprobante === 'Factura' ? clienteRuc : null,
-        cliente_razon_social: tipoComprobante === 'Factura' ? clienteRazonSocial : null,
-        cliente_direccion: tipoComprobante === 'Factura' ? clienteDireccion : null,
-      };
+      setError('');
 
-      const { data } = await api.post('/ventas', body);
-      setVentaExitosa(data);
-      setModalComprobante(true);
-      generarYDescargarComprobante(data);
-      cargarProductos();
-      notificarCambioStock();
-    } catch (err) {
-      if (!err.response) {
-        setError('Sin respuesta del servidor. Verifique si la venta fue registrada antes de reintentar.');
-      } else {
-        setError(err.response?.data?.mensaje || err.response?.data?.message || 'Error al realizar venta');
+      if (sinTurno) {
+        setError('No puedes realizar ventas porque no tienes un turno de caja abierto. Abre un turno para continuar.');
+        return;
+      }
+
+      if (vueltoInsuficiente) {
+        setError(`Monto en caja insuficiente para dar el vuelto. Efectivo disponible: S/. ${efectivoDisponible.toFixed(2)}. Registra un ingreso en Caja antes de continuar.`);
+        return;
+      }
+
+      if (!datosClienteValidos()) {
+        if (tipoComprobante === 'BoletaDNI') {
+          if (!/^\d{8}$/.test(clienteDni)) {
+            setError('El DNI debe tener exactamente 8 dígitos');
+          } else if (!dniValidado) {
+            setError('Debes verificar el DNI con RENIEC antes de continuar');
+          } else {
+            setError('No se pudo registrar el cliente con ese DNI. Vuelve a consultar el DNI antes de continuar.');
+          }
+        } else if (tipoComprobante === 'Factura') {
+          setError('El RUC debe tener 11 dígitos');
+        }
+        return;
+      }
+
+      const itemSinStock = carrito.find((i) => i.cantidad > stockVendible(i));
+      if (itemSinStock) {
+        const disponible = stockVendible(itemSinStock);
+        setError(
+          disponible < itemSinStock.stock
+            ? `"${itemSinStock.nombre}" tiene unidades vencidas: solo hay ${disponible} vigente(s) disponible(s)`
+            : `Stock insuficiente para "${itemSinStock.nombre}". Disponible: ${disponible}`
+        );
+        return;
+      }
+
+      setLoading(true);
+
+      try {
+        const body = {
+          metodo_pago: metodoPago,
+          monto_recibido: metodoPago === 'Efectivo' ? parsearMontoRecibido(montoRecibido) : null,
+          yape_verificado: metodoPago === 'Yape' ? yapeVerificado : false,
+          referencia_pago: metodoPago === 'Yape' ? (nroAutorizacion || null) : null,
+          items: carrito.map((item) => ({
+            producto_id: item.id,
+            cantidad: item.cantidad,
+          })),
+          tipo_comprobante: tipoComprobante === 'Factura' ? 'Factura' : 'Boleta',
+          cliente_dni: tipoComprobante === 'BoletaDNI' ? clienteDni : null,
+          cliente_nombre: tipoComprobante === 'BoletaDNI' ? nombreDni : null,
+          cliente_ruc: tipoComprobante === 'Factura' ? clienteRuc : null,
+          cliente_razon_social: tipoComprobante === 'Factura' ? clienteRazonSocial : null,
+          cliente_direccion: tipoComprobante === 'Factura' ? clienteDireccion : null,
+        };
+
+        const { data } = await api.post('/ventas', body);
+        setVentaExitosa(data);
+        setModalComprobante(true);
+        generarYDescargarComprobante(data);
+        cargarProductos();
+        notificarCambioStock();
+      } catch (err) {
+        if (!err.response) {
+          setError('Sin respuesta del servidor. Verifique si la venta fue registrada antes de reintentar.');
+        } else {
+          setError(err.response?.data?.mensaje || err.response?.data?.message || 'Error al realizar venta');
+        }
+      } finally {
+        setLoading(false);
       }
     } finally {
-      setLoading(false);
+      enviandoVentaRef.current = false;
     }
   };
 
@@ -939,7 +997,7 @@ export default function VentasPage() {
                     <button
                       type="button"
                       onClick={buscarDni}
-                      disabled={clienteDni.length !== 8 || buscandoDni}
+                      disabled={clienteDni.length !== 8 || buscandoDni || dniValidado || clienteDni === dniNoEncontrado}
                       title="Consultar RENIEC"
                       className="rounded-lg bg-indigo-500 px-3 py-2 text-white transition-colors hover:bg-indigo-600 disabled:opacity-50"
                     >
@@ -982,7 +1040,7 @@ export default function VentasPage() {
                       <button
                         type="button"
                         onClick={() => buscarRuc()}
-                        disabled={clienteRuc.length !== 11 || buscandoRuc}
+                        disabled={clienteRuc.length !== 11 || buscandoRuc || rucValidado || clienteRuc === rucNoEncontrado}
                         title="Consultar SUNAT"
                         className="rounded-lg bg-indigo-500 px-3 py-2 text-white transition-colors hover:bg-indigo-600 disabled:opacity-50"
                       >

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { CheckCircle, ChevronDown, ChevronUp, AlertCircle, AlertTriangle, Loader, X } from 'lucide-react';
 import api from '../../utils/axios';
@@ -43,13 +43,16 @@ function ModalCerrarForzado({ turno, onClose, onCerrado }) {
   const [observaciones, setObservaciones]     = useState('');
   const [enviando, setEnviando] = useState(false);
   const [error, setError]       = useState('');
+  const enviandoRef = useRef(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (enviandoRef.current) return;
     if (!motivo.trim()) {
       setError('El motivo del cierre forzado es obligatorio');
       return;
     }
+    enviandoRef.current = true;
     setEnviando(true);
     setError('');
     try {
@@ -64,6 +67,7 @@ function ModalCerrarForzado({ turno, onClose, onCerrado }) {
     } catch (err) {
       setError(err.response?.data?.mensaje || 'Error al forzar el cierre del turno');
     } finally {
+      enviandoRef.current = false;
       setEnviando(false);
     }
   };
@@ -158,6 +162,7 @@ function FilaTurno({ turno, puedeAprobar, onActualizado, onAbrirCierreForzado })
   const [expandido, setExpandido] = useState(false);
   const [detalle, setDetalle]     = useState(null);
   const [aprobando, setAprobando] = useState(false);
+  const aprobandoRef = useRef(false);
   const horasAbiertoTurno = turno.estado === 'Abierto' ? horasAbierto(turno) : 0;
 
   const cargarDetalle = async () => {
@@ -172,6 +177,8 @@ function FilaTurno({ turno, puedeAprobar, onActualizado, onAbrirCierreForzado })
   };
 
   const handleAprobar = async () => {
+    if (aprobandoRef.current) return;
+    aprobandoRef.current = true;
     setAprobando(true);
     try {
       const { data } = await api.patch(`/caja/${turno.id}/aprobar`);
@@ -179,6 +186,7 @@ function FilaTurno({ turno, puedeAprobar, onActualizado, onAbrirCierreForzado })
     } catch {
       // silencioso — el padre recargará
     } finally {
+      aprobandoRef.current = false;
       setAprobando(false);
     }
   };

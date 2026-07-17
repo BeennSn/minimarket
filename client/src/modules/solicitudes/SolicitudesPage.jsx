@@ -25,6 +25,9 @@ function ModalCrearSolicitud({ abierto, onCerrar, productos, proveedores, onCrea
   const [proveedorId, setProveedorId] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState('');
+  // Guardia síncrona contra doble clic/doble Enter en el mismo tick, antes
+  // de que `disabled={enviando}` llegue a pintarse.
+  const enviandoRef = useRef(false);
 
   const productoSeleccionado = productos.find((p) => p.id === Number(productoId));
   // Advertencia no bloqueante: el producto ya tiene un proveedor habitual
@@ -54,6 +57,8 @@ function ModalCrearSolicitud({ abierto, onCerrar, productos, proveedores, onCrea
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (enviandoRef.current) return;
+    enviandoRef.current = true;
     setEnviando(true);
     setError('');
     try {
@@ -66,6 +71,7 @@ function ModalCrearSolicitud({ abierto, onCerrar, productos, proveedores, onCrea
     } catch (err) {
       setError(err.response?.data?.mensaje || err.response?.data?.message || 'Error al crear solicitud');
     } finally {
+      enviandoRef.current = false;
       setEnviando(false);
     }
   };
@@ -142,6 +148,7 @@ function ModalAprobar({ abierto, onCerrar, solicitud, productos, proveedores, on
   const [fechaEstimada, setFechaEstimada] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState('');
+  const enviandoRef = useRef(false);
 
   // El include de /inventario/solicitudes no trae el proveedor_id del
   // producto, así que se cruza con la lista de productos ya cargada en la
@@ -161,10 +168,12 @@ function ModalAprobar({ abierto, onCerrar, solicitud, productos, proveedores, on
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (enviandoRef.current) return;
     if (fechaEstimada < fechaLocalISO(new Date())) {
       setError('La fecha estimada no puede ser anterior a hoy');
       return;
     }
+    enviandoRef.current = true;
     setEnviando(true);
     setError('');
     try {
@@ -176,6 +185,7 @@ function ModalAprobar({ abierto, onCerrar, solicitud, productos, proveedores, on
     } catch (err) {
       setError(err.response?.data?.mensaje || err.response?.data?.message || 'Error al aprobar solicitud');
     } finally {
+      enviandoRef.current = false;
       setEnviando(false);
     }
   };
@@ -244,6 +254,7 @@ function ModalRechazar({ abierto, onCerrar, solicitud, onRechazada }) {
   const [motivo, setMotivo] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState('');
+  const enviandoRef = useRef(false);
 
   useEffect(() => {
     if (abierto) {
@@ -254,6 +265,8 @@ function ModalRechazar({ abierto, onCerrar, solicitud, onRechazada }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (enviandoRef.current) return;
+    enviandoRef.current = true;
     setEnviando(true);
     setError('');
     try {
@@ -264,6 +277,7 @@ function ModalRechazar({ abierto, onCerrar, solicitud, onRechazada }) {
     } catch (err) {
       setError(err.response?.data?.mensaje || err.response?.data?.message || 'Error al rechazar solicitud');
     } finally {
+      enviandoRef.current = false;
       setEnviando(false);
     }
   };
@@ -315,6 +329,7 @@ function ModalCompletar({ abierto, onCerrar, solicitud, onCompletada }) {
   const [fechaVencimiento, setFechaVencimiento] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState('');
+  const enviandoRef = useRef(false);
 
   const fechaHoy = useMemo(() => fechaLocalISO(new Date()), []);
   const manejaVencimiento = solicitud?.producto?.maneja_vencimiento !== false;
@@ -335,6 +350,7 @@ function ModalCompletar({ abierto, onCerrar, solicitud, onCompletada }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (enviandoRef.current) return;
     const cr = solicitud.cantidad;
     if (manejaVencimiento) {
       if (!fechaVencimiento) {
@@ -346,6 +362,7 @@ function ModalCompletar({ abierto, onCerrar, solicitud, onCompletada }) {
         return;
       }
     }
+    enviandoRef.current = true;
     setEnviando(true);
     setError('');
     try {
@@ -357,6 +374,7 @@ function ModalCompletar({ abierto, onCerrar, solicitud, onCompletada }) {
     } catch (err) {
       setError(err.response?.data?.mensaje || 'Error al completar solicitud');
     } finally {
+      enviandoRef.current = false;
       setEnviando(false);
     }
   };

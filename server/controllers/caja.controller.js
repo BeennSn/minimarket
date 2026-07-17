@@ -154,27 +154,40 @@ const cerrarForzado = async (req, res) => {
       return res.status(400).json({ mensaje: 'Debes ingresar el monto contado de efectivo y Yape' });
     }
 
-    const turno = await Turno.findByPk(req.params.id, {
-      include: [{ association: 'movimientos' }],
+    // Lock de fila: dos administradores forzando el cierre del mismo turno
+    // olvidado casi al mismo tiempo (o un doble clic que se coló antes de
+    // que el botón se deshabilitara) no deben poder pisarse los montos —
+    // el segundo, tras esperar el lock, encuentra el turno ya cerrado y
+    // sale con el mismo error que un intento normal fuera de tiempo.
+    const turnoCompleto = await sequelize.transaction(async (t) => {
+      const turno = await Turno.findByPk(req.params.id, {
+        include: [{ association: 'movimientos' }],
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+      if (!turno) {
+        throw { status: 404, mensaje: 'Turno no encontrado' };
+      }
+      if (turno.estado !== 'Abierto') {
+        throw { status: 400, mensaje: 'Solo se pueden forzar cierres de turnos abiertos' };
+      }
+
+      const errorMontos = aplicarCierre(turno, { monto_contado_efectivo, monto_contado_yape, observaciones });
+      if (errorMontos) {
+        throw { status: 400, mensaje: errorMontos };
+      }
+      turno.cerrado_por = req.usuario.id;
+      turno.motivo_cierre_forzado = motivo.trim();
+      await turno.save({ transaction: t });
+
+      return Turno.findByPk(turno.id, { include: INCLUDE_TURNO, transaction: t });
     });
-    if (!turno) {
-      return res.status(404).json({ mensaje: 'Turno no encontrado' });
-    }
-    if (turno.estado !== 'Abierto') {
-      return res.status(400).json({ mensaje: 'Solo se pueden forzar cierres de turnos abiertos' });
-    }
 
-    const errorMontos = aplicarCierre(turno, { monto_contado_efectivo, monto_contado_yape, observaciones });
-    if (errorMontos) {
-      return res.status(400).json({ mensaje: errorMontos });
-    }
-    turno.cerrado_por = req.usuario.id;
-    turno.motivo_cierre_forzado = motivo.trim();
-    await turno.save();
-
-    const turnoCompleto = await Turno.findByPk(turno.id, { include: INCLUDE_TURNO });
     return res.status(200).json(presentarTurno(turnoCompleto));
   } catch (err) {
+    if (err.status && err.mensaje) {
+      return res.status(err.status).json({ mensaje: err.mensaje });
+    }
     console.error('Error al forzar cierre de turno:', err);
     return res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
