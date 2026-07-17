@@ -20,7 +20,6 @@ import {
   ChevronRight,
   Wallet,
   History,
-  UserCheck,
   Fingerprint,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -39,7 +38,6 @@ const NAV_ITEMS = [
   { to: '/caja/historial', icon: History, label: 'Historial Caja',  roles: ['Administrador', 'Gerente'] },
   { to: '/inventario', icon: Warehouse, label: 'Inventario', roles: ['Almacenero', 'Administrador'] },
   { to: '/solicitudes', icon: ClipboardList, label: 'Solicitudes', roles: ['Almacenero', 'Administrador', 'Gerente'] },
-  { to: '/clientes', icon: UserCheck, label: 'Clientes', roles: ['Administrador', 'Gerente'] },
   { to: '/reportes', icon: BarChart2, label: 'Reportes', roles: ['Gerente', 'Administrador'] },
   { to: '/configuracion', icon: Settings, label: 'Configuración', roles: ['Administrador'] },
 ];
