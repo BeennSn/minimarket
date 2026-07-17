@@ -974,7 +974,7 @@ export default function VentasPage() {
                       />
                       <button
                         type="button"
-                        onClick={buscarRuc}
+                        onClick={() => buscarRuc()}
                         disabled={clienteRuc.length !== 11 || buscandoRuc}
                         title="Consultar SUNAT"
                         className="rounded-lg bg-indigo-500 px-3 py-2 text-white transition-colors hover:bg-indigo-600 disabled:opacity-50"
