@@ -1,4 +1,4 @@
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import Spinner from './Spinner';
 import ConfirmDialog from './ConfirmDialog';
@@ -70,6 +70,14 @@ export default function MainLayout() {
     return localStorage.getItem('sidebar_collapsed') === 'true';
   });
   const [avisoTurnoAbierto, setAvisoTurnoAbierto] = useState(false);
+  const [saliendo, setSaliendo] = useState(false);
+  // Ref, no state: un state recién se refleja en el próximo render, así que
+  // dos clics disparados en el mismo tick (doble clic real, o Enter
+  // repetido) todavía podían colarse los dos antes de que el botón se
+  // deshabilitara visualmente — cada uno con su propio POST /auth/logout.
+  // El ref se lee/escribe de forma síncrona, así que el segundo clic se
+  // corta acá mismo, sin siquiera llegar a hacer la petición de red.
+  const saliendoRef = useRef(false);
 
   useEffect(() => {
     localStorage.setItem('sidebar_collapsed', String(collapsed));
@@ -81,23 +89,31 @@ export default function MainLayout() {
   };
 
   const handleLogout = async () => {
-    // Solo estos roles pueden tener un turno de caja abierto ("Mi Caja" en
-    // NAV_ITEMS) — para el resto no tiene sentido ni consultar. Es solo un
-    // recordatorio (no bloquea el cierre de sesión): si el cajero se olvidó
-    // de cerrar su turno, es mejor avisarle acá que dejarlo abierto sin que
-    // nadie se dé cuenta hasta el siguiente arqueo.
-    if (['Vendedor', 'Administrador'].includes(usuario?.rol)) {
-      try {
-        const { data: turno } = await api.get('/caja/activo');
-        if (turno) {
-          setAvisoTurnoAbierto(true);
-          return;
+    if (saliendoRef.current) return;
+    saliendoRef.current = true;
+    setSaliendo(true);
+    try {
+      // Solo estos roles pueden tener un turno de caja abierto ("Mi Caja" en
+      // NAV_ITEMS) — para el resto no tiene sentido ni consultar. Es solo un
+      // recordatorio (no bloquea el cierre de sesión): si el cajero se
+      // olvidó de cerrar su turno, es mejor avisarle acá que dejarlo abierto
+      // sin que nadie se dé cuenta hasta el siguiente arqueo.
+      if (['Vendedor', 'Administrador'].includes(usuario?.rol)) {
+        try {
+          const { data: turno } = await api.get('/caja/activo');
+          if (turno) {
+            setAvisoTurnoAbierto(true);
+            return;
+          }
+        } catch {
+          // Si la consulta falla, no bloquea el cierre de sesión normal.
         }
-      } catch {
-        // Si la consulta falla, no bloquea el cierre de sesión normal.
       }
+      await cerrarSesionYSalir();
+    } finally {
+      saliendoRef.current = false;
+      setSaliendo(false);
     }
-    await cerrarSesionYSalir();
   };
 
   const filteredNav = NAV_ITEMS.filter((item) => rolSatisface(usuario?.rol, item.roles));
@@ -153,7 +169,8 @@ export default function MainLayout() {
           )}
           <button
             onClick={handleLogout}
-            className="flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm text-[#9ca3af] transition-colors hover:bg-[#1f2937] hover:text-white"
+            disabled={saliendo}
+            className="flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm text-[#9ca3af] transition-colors hover:bg-[#1f2937] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
             title="Cerrar sesión"
           >
             <LogOut className="h-5 w-5 shrink-0" />
@@ -186,6 +203,8 @@ export default function MainLayout() {
         colorConfirmar="#6366f1"
         onCancelar={() => setAvisoTurnoAbierto(false)}
         onConfirmar={() => {
+          if (saliendoRef.current) return;
+          saliendoRef.current = true;
           setAvisoTurnoAbierto(false);
           cerrarSesionYSalir();
         }}

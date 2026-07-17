@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { ShoppingBag, Mail, Lock, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -22,6 +22,11 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [avisoSesionCerrada, setAvisoSesionCerrada] = useState('');
+  // Ref, no solo el state `loading`: un doble clic/doble Enter en el mismo
+  // tick podía disparar dos handleSubmit antes de que el botón se
+  // deshabilitara por el re-render, mandando dos POST /auth/login con las
+  // mismas credenciales (mismo problema detectado en el botón de logout).
+  const enviandoRef = useRef(false);
 
   useEffect(() => {
     if (token && usuario?.rol) {
@@ -39,6 +44,8 @@ export default function LoginPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (enviandoRef.current) return;
+    enviandoRef.current = true;
     setError('');
     setLoading(true);
 
@@ -49,6 +56,7 @@ export default function LoginPage() {
     } catch (err) {
       setError(err.response?.data?.mensaje || err.response?.data?.message || 'Error al iniciar sesión');
     } finally {
+      enviandoRef.current = false;
       setLoading(false);
     }
   };

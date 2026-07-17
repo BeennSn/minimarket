@@ -2,7 +2,7 @@ const bcrypt = require('bcryptjs');
 const jwt    = require('jsonwebtoken');
 const { Op } = require('sequelize');
 
-const { Usuario, LogAcceso } = require('../models');
+const { sequelize, Usuario, LogAcceso } = require('../models');
 const { presentarLogin, presentarUsuario } = require('../presenters/auth.presenter');
 const { enviarCorreo } = require('../services/mail.service');
 
@@ -44,40 +44,53 @@ const login = async (req, res) => {
       return res.status(401).json({ mensaje: 'Credenciales incorrectas' });
     }
 
-    // Solo una sesión activa a la vez: si ya hay una, se cierra automáticamente
-    // (sube session_version, invalidando el token anterior) y se permite el
-    // nuevo login, en vez de rechazarlo.
-    if (usuario.sesion_activa) {
-      usuario.motivo_sesion_cerrada = 'Nuevo inicio de sesión en otro dispositivo';
-      usuario.session_version = (usuario.session_version || 0) + 1;
-      await LogAcceso.create({
-        usuario_id:     usuario.id,
-        nombre_usuario: usuario.nombre,
-        rol:            usuario.rol,
-        tipo:           'Logout',
-        fecha_hora:     new Date(),
-        detalle: 'Sesión anterior cerrada automáticamente por nuevo inicio de sesión',
-      });
-    }
+    // Todo lo que toca sesion_activa/session_version va bajo lock de fila:
+    // dos peticiones de login casi simultáneas (doble clic, doble Enter que
+    // se coló antes de que el botón se deshabilite) podían leer
+    // sesion_activa=false ambas antes de que la primera terminara de
+    // guardarlo en true, y las dos creaban su propio LogAcceso "Login" sin
+    // que ninguna registrara el cierre de la otra — mismo problema que
+    // logout() tenía con clics repetidos, solo que del lado del login.
+    await sequelize.transaction(async (t) => {
+      const usuarioLock = await Usuario.findByPk(usuario.id, { transaction: t, lock: t.LOCK.UPDATE });
 
-    usuario.intentos_fallidos = 0;
-    usuario.bloqueo_hasta = null;
-    usuario.sesion_activa = true;
-    await usuario.save();
+      // Solo una sesión activa a la vez: si ya hay una, se cierra
+      // automáticamente (sube session_version, invalidando el token
+      // anterior) y se permite el nuevo login, en vez de rechazarlo.
+      if (usuarioLock.sesion_activa) {
+        usuarioLock.motivo_sesion_cerrada = 'Nuevo inicio de sesión en otro dispositivo';
+        usuarioLock.session_version = (usuarioLock.session_version || 0) + 1;
+        await LogAcceso.create({
+          usuario_id:     usuarioLock.id,
+          nombre_usuario: usuarioLock.nombre,
+          rol:            usuarioLock.rol,
+          tipo:           'Logout',
+          fecha_hora:     new Date(),
+          detalle: 'Sesión anterior cerrada automáticamente por nuevo inicio de sesión',
+        }, { transaction: t });
+      }
+
+      usuarioLock.intentos_fallidos = 0;
+      usuarioLock.bloqueo_hasta = null;
+      usuarioLock.sesion_activa = true;
+      await usuarioLock.save({ transaction: t });
+
+      await LogAcceso.create({
+        usuario_id:     usuarioLock.id,
+        nombre_usuario: usuarioLock.nombre,
+        rol:            usuarioLock.rol,
+        tipo:           'Login',
+        fecha_hora:     new Date(),
+      }, { transaction: t });
+
+      usuario.session_version = usuarioLock.session_version;
+    });
 
     const token = jwt.sign(
       { id: usuario.id, rol: usuario.rol, sv: usuario.session_version },
       JWT_SECRET,
       { expiresIn: JWT_EXPIRES_IN }
     );
-
-    await LogAcceso.create({
-      usuario_id:     usuario.id,
-      nombre_usuario: usuario.nombre,
-      rol:            usuario.rol,
-      tipo:           'Login',
-      fecha_hora:     new Date(),
-    });
 
     return res.status(200).json(presentarLogin(token, usuario));
   } catch (err) {
@@ -88,19 +101,28 @@ const login = async (req, res) => {
 
 const logout = async (req, res) => {
   try {
-    const usuario = await Usuario.findByPk(req.usuario.id);
-    if (usuario) {
-      usuario.sesion_activa = false;
-      await usuario.save();
+    // Bajo lock + idempotente: si el cajero le da varios clics seguidos a
+    // "Cerrar sesión" (o el request se reintenta por red lenta), cada clic
+    // dispara su propio POST /auth/logout con el mismo token todavía válido
+    // — sin esto, cada uno creaba su propio LogAcceso "Logout" aunque la
+    // sesión ya estuviera cerrada por el primero. Ahora solo el que
+    // encuentra sesion_activa=true (el primero en tomar el lock) registra
+    // el cierre; los demás no hacen nada.
+    await sequelize.transaction(async (t) => {
+      const usuario = await Usuario.findByPk(req.usuario.id, { transaction: t, lock: t.LOCK.UPDATE });
+      if (usuario && usuario.sesion_activa) {
+        usuario.sesion_activa = false;
+        await usuario.save({ transaction: t });
 
-      await LogAcceso.create({
-        usuario_id:     usuario.id,
-        nombre_usuario: usuario.nombre,
-        rol:            usuario.rol,
-        tipo:           'Logout',
-        fecha_hora:     new Date(),
-      });
-    }
+        await LogAcceso.create({
+          usuario_id:     usuario.id,
+          nombre_usuario: usuario.nombre,
+          rol:            usuario.rol,
+          tipo:           'Logout',
+          fecha_hora:     new Date(),
+        }, { transaction: t });
+      }
+    });
     return res.status(200).json({ mensaje: 'Sesión cerrada correctamente' });
   } catch (err) {
     console.error('Error en logout:', err);
