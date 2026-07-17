@@ -43,7 +43,7 @@ const ES_NEGATIVO = (tipo) => tipo === 'Egreso' || tipo === 'Anulacion';
 // server/controllers/caja.controller.js (no hay config compartida
 // cliente/servidor en este proyecto) — esto solo evita el viaje de red
 // para el caso obvio; el backend es quien realmente lo exige.
-const MONTO_MINIMO_APERTURA_CAJA = 200;
+const MONTO_MINIMO_APERTURA_CAJA = 500;
 
 // Igual que arriba: debe coincidir con MONTO_MAXIMO_MOVIMIENTO en
 // server/controllers/caja.controller.js. Techo pensado para movimientos de

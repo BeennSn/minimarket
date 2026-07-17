@@ -8,7 +8,7 @@ const { calcularEsperados } = require('../services/caja.service');
 // desde la primera venta del día. Mismo valor duplicado (a propósito, no hay
 // mecanismo de config compartida cliente/servidor en este proyecto) en
 // client/src/modules/caja/CajaPage.jsx — si se cambia acá, cambiar también ahí.
-const MONTO_MINIMO_APERTURA_CAJA = 200;
+const MONTO_MINIMO_APERTURA_CAJA = 500;
 
 // Techo para movimientos manuales de caja chica (refuerzos/correcciones de un
 // turno) — duplicado a propósito en client/src/modules/caja/CajaPage.jsx.
