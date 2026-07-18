@@ -217,14 +217,7 @@ function ModalProveedor({ abierto, onCerrar, onGuardar, proveedorEditando, prove
             />
             {nombreBloqueado && (
               <p className="mt-1 text-xs text-gray-400">
-                Nombre oficial según SUNAT — no editable.{' '}
-                <button
-                  type="button"
-                  onClick={() => setNombreBloqueado(false)}
-                  className="font-medium text-indigo-500 hover:underline"
-                >
-                  Editar manualmente
-                </button>
+                Nombre oficial según SUNAT — no editable.
               </p>
             )}
           </div>
