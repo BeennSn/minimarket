@@ -31,8 +31,12 @@ const SolicitudReposicion = sequelize.define('SolicitudReposicion', {
       key: 'id',
     },
   },
+  // DATEONLY (no DATE): es una fecha de calendario ("llega el 18/07"), sin
+  // hora ni zona — igual que fecha_vencimiento en EntradaMercaderia/Producto.
+  // Con DATE, un 'YYYY-MM-DD' se guarda como medianoche UTC y el navegador en
+  // Perú (UTC-5) lo muestra retrocedido un día.
   fecha_estimada: {
-    type: DataTypes.DATE,
+    type: DataTypes.DATEONLY,
     allowNull: true,
   },
   motivo_rechazo: {
